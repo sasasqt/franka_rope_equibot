@@ -8,7 +8,7 @@ from equibot.envs.sim_mobile.base_env import BaseEnv
 from equibot.envs.sim_mobile.utils.init_utils import rotate_around_z
 
 
-def evaluate_and_replace_expressions(input_file, output_file, local_vars):
+def evaluate_and_replace_expressions(input_file, output_file, local_vars, f):
     with open(input_file, "r") as file:
         content = file.read()
 
@@ -22,9 +22,10 @@ def evaluate_and_replace_expressions(input_file, output_file, local_vars):
 
     # find all "${...}" expressions and replace with evaluated results
     processed_content = re.sub(r"\${(.*?)}", eval_expression, content)
-    with open(output_file, "w") as file:
-        file.write(processed_content)
-
+    f.write(processed_content)
+    # with open(output_file, "w") as file:
+    #    file.write(processed_content)
+    
 
 class ClosingEnv(BaseEnv):
     BASE_INIT_ROT = 0
@@ -121,16 +122,23 @@ class ClosingEnv(BaseEnv):
             H=self._box_size[2],
             T=self._box_thickness,
         )
-        with NamedTemporaryFile(mode="w", suffix=".urdf") as f:
-            evaluate_and_replace_expressions(template_path, f.name, local_vars)
-            box_id = p.loadURDF(
-                f.name,
-                np.zeros([3]),
-                useFixedBase=True,
-                flags=p.URDF_MAINTAIN_LINK_ORDER
-                | p.URDF_USE_SELF_COLLISION
-                | p.URDF_USE_SELF_COLLISION_EXCLUDE_ALL_PARENTS,
-            )
+        with NamedTemporaryFile(mode="w", suffix=".urdf", delete=False) as f:
+            # Whether the name can be used to open the file a second time, while the named temporary file is still open,
+            # varies across platforms (it can be so used on Unix; it cannot on Windows). 
+            # see https://docs.python.org/3.9/library/tempfile.html
+            evaluate_and_replace_expressions(template_path, f.name, local_vars, f)
+            _f=f.name
+    
+        box_id = p.loadURDF(
+            _f,
+            np.zeros([3]),
+            useFixedBase=True,
+            flags=p.URDF_MAINTAIN_LINK_ORDER
+            | p.URDF_USE_SELF_COLLISION
+            | p.URDF_USE_SELF_COLLISION_EXCLUDE_ALL_PARENTS,
+        )
+        if os.path.exists(_f):
+            os.remove(_f)
 
         p.changeVisualShape(box_id, -1, rgbaColor=[0.678, 0.573, 0.439, 1.0])
 

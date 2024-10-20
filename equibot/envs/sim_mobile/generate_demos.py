@@ -21,6 +21,9 @@ from equibot.envs.sim_mobile.utils.init_utils import rotate_around_z
 from equibot.policies.utils.media import add_caption_to_img, save_video, save_image
 from equibot.policies.utils.misc import get_env_class
 
+# multi threading
+from concurrent.futures import ProcessPoolExecutor 
+import time
 
 np.set_printoptions(precision=2, linewidth=150, threshold=10000, suppress=True)
 
@@ -272,8 +275,8 @@ def run_demo(args, counter=0):
                     "dist": cam_dist * np.max(env._soft_object_scale),
                     "views": list(np.arange(num_views)),
                     "fov": 30,
-                    "width": 240,
-                    "height": 240,
+                    "width": 480, # 240 in 256 res
+                    "height": 480, # 240 in 256 res
                 }
                 H, W = cam_info["height"], cam_info["width"]
                 render_dict = env.render(
@@ -505,7 +508,7 @@ def get_args(parent=None):
     )
     # Camera args.
     parser.add_argument(
-        "--cam_resolution", type=int, default=240, help="Point cloud resolution"
+        "--cam_resolution", type=int, default=480, help="Point cloud resolution" # 240 in 256 res
     )
     parser.add_argument(
         "--cam_rec_interval",
@@ -526,10 +529,17 @@ def get_args(parent=None):
     parser.add_argument("--cam_fov", type=int, default=45)
     parser.add_argument("--cam_dist", type=float, default=1.0)
     parser.add_argument("--speed_multiplier", type=float, default=1.0)
-
     args, unknown = parser.parse_known_args()
     return args, unknown
+       
 
+# Mutltithreading
+def task(pattern_ix,args,seed,seed_env,seed_cam):
+    args.seed = (seed * 99999 + pattern_ix) % 100001
+    args.seed_env = (seed_env * 99999 + pattern_ix) % 100001
+    args.seed_cam = (seed_cam * 99999 + pattern_ix) % 100001
+    logging.info(f"!!! {pattern_ix} returned!!! ")	
+    return run_demo(args, pattern_ix),pattern_ix
 
 def main():
     # read args
@@ -539,15 +549,55 @@ def main():
     seed_cam = args.seed_cam
 
     pattern_ix = 0
-    for i in tqdm(range(args.num_demos), desc="Demos"):
-        while True:
-            args.seed = (seed * 99999 + pattern_ix) % 100001
-            args.seed_env = (seed_env * 99999 + pattern_ix) % 100001
-            args.seed_cam = (seed_cam * 99999 + pattern_ix) % 100001
-            success = run_demo(args, pattern_ix)
-            pattern_ix += 1
-            if success:
-                break
+    # for i in tqdm(range(args.num_demos), desc="Demos"):
+    #     while True:
+    #         args.seed = (seed * 99999 + pattern_ix) % 100001
+    #         args.seed_env = (seed_env * 99999 + pattern_ix) % 100001
+    #         args.seed_cam = (seed_cam * 99999 + pattern_ix) % 100001
+    #         success = run_demo(args, pattern_ix)
+    #         pattern_ix += 1
+    #         if success:
+    #             break
+
+    # SLIDE EFFECT: the episode count might not be consecutive (if one failed due to reward less than expected)
+    # 
+    with ProcessPoolExecutor(max_workers=os.cpu_count()-2) as executor:
+        pattern_ix = 0
+        successed = 0
+        futures = []
+        pbar = tqdm(total=args.num_demos, desc="Demos")
+
+        while successed < args.num_demos:
+            if successed+len(futures)<args.num_demos:
+                future = executor.submit(task, pattern_ix,args,seed,seed_env,seed_cam)
+                futures.append(future)
+                pattern_ix += 1
+                logging.info(f"!!! {pattern_ix} submitted!!! ")	
+            # Check completed futures
+            for future in list(futures):
+                if future.done():
+                    futures.remove(future)
+                    result, idx=future.result()
+                    logging.info(f"!!! {idx} done!!! ")	
+
+                    if result:
+                        successed += 1
+                        pbar.update(1)
+                        logging.info(f"!!! {idx} successed!!! ")	
+                        if successed >= args.num_demos:
+                            break
+                    else:
+                        logging.info(f"!!! {idx} failed!!! ")	
+                    logging.info(f"!!! total successed: {successed}!!! ")	
+                            
+            time.sleep(2)
+
+        # Wait for all pending futures to complete
+        for future in futures:
+            future.result()
+
+        pbar.close()
+
 
 
 if __name__ == "__main__":

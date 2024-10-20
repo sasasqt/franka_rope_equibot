@@ -85,7 +85,8 @@ training:
   lr: 3e-5
   weight_decay: 1e-6
   num_eval_episodes: 10
-  eval_interval: 1000000 # do not eval during training
+  eval_interval: 50
+  # eval_interval: 1000000 # do not eval during training
   save_interval: 50
   vis_interval: 100
   ckpt: null
@@ -99,5 +100,5 @@ hydra:
     dir: ${log_dir}/${prefix}
 
 wandb:
-  entity: [enter wandb entity name here]
-  project: [enter wandb project name here]
+  entity: ab36
+  project: equibot

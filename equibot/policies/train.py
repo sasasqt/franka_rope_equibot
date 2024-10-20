@@ -16,11 +16,14 @@ from equibot.policies.utils.misc import get_env_class, get_dataset, get_agent
 from equibot.policies.vec_eval import run_eval
 from equibot.envs.subproc_vec_env import SubprocVecEnv
 
+import logging
 
 @hydra.main(config_path="configs", config_name="fold_synthetic")
 def main(cfg):
     assert cfg.mode == "train"
     np.random.seed(cfg.seed)
+
+    logging.basicConfig(level=logging.INFO)
 
     # initialize parameters
     batch_size = cfg.training.batch_size
@@ -42,11 +45,11 @@ def main(cfg):
 
     # init dataloader
     train_dataset = get_dataset(cfg, "train")
-    num_workers = cfg.data.dataset.num_workers
+    num_workers = min(os.cpu_count(),cfg.data.dataset.num_workers)
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=batch_size,
-        num_workers=num_workers,
+        num_workers=0, # faster and workaround for pickle in windows
         shuffle=True,
         drop_last=True,
         pin_memory=True,
@@ -59,9 +62,11 @@ def main(cfg):
     env_fns = []
     env_class = get_env_class(cfg.env.env_class)
     env_args = dict(OmegaConf.to_container(cfg.env.args, resolve=True))
+    logging.info(env_args) 
 
     def create_env(env_args, i):
-        env_args.seed = cfg.seed * 100 + i
+        # env_args.seed = cfg.seed * 100 + i
+        env_args['seed']=cfg.seed * 100 + i
         return env_class(OmegaConf.create(env_args))
 
     if cfg.training.eval_interval <= cfg.training.num_epochs:

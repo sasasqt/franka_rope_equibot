@@ -8,8 +8,16 @@ from torch.utils.data import Dataset
 
 from equibot.policies.utils.misc import rotate_around_z
 
+from functools import partial
+
+def key_fn(x): # replace lambda, lambda cannot be pickled in windows!
+        return "_".join(x.split("/")[-1].split("_")[:-1])
+
+def default_value(x): # replace lambda, lambda cannot be pickled in windows!
+    return x
 
 class BaseDataset(Dataset):
+    
     def __init__(self, cfg, mode) -> None:
         super().__init__()
 
@@ -47,7 +55,8 @@ class BaseDataset(Dataset):
 
         self.file_names = sorted(glob.glob(self.data_dir))
         if "num_demos" in cfg:
-            key_fn = lambda x: "_".join(x.split("/")[-1].split("_")[:-1])
+            # key_fn = lambda x: "_".join(x.split("/")[-1].split("_")[:-1]) # lambda cannot be pickled in windows!
+            
             ep_list = list(sorted(set([key_fn(fn) for fn in self.file_names])))
             if cfg["num_demos"] < len(ep_list):
                 print("[dataset.py] Filtering demos to {cfg['num_demos']} demos")
@@ -58,9 +67,11 @@ class BaseDataset(Dataset):
         else:
             print("[dataset.py] Using all demos")
 
-        ep_length_dict = defaultdict(lambda: 0)
-        ep_t_offset_dict = defaultdict(lambda: 1000)
-        key_fn = lambda x: "_".join(x.split("/")[-1].split("_")[:-1])
+        ep_length_dict = defaultdict(partial(int, 0))
+        ep_t_offset_dict = defaultdict(partial(int, 1000))
+        # ep_length_dict = defaultdict(lambda: 0) # lambda cannot be pickled in windows!
+        # ep_t_offset_dict = defaultdict(lambda: 1000) # lambda cannot be pickled in windows!
+        # key_fn = lambda x: "_".join(x.split("/")[-1].split("_")[:-1]) # lambda cannot be pickled in windows!
         for fn in self.file_names:
             ep_t = int(fn.split("/")[-1].split(".")[0].split("_")[-1][1:])
 
@@ -99,7 +110,7 @@ class BaseDataset(Dataset):
     def __getitem__(self, idx):
         start_t = time.time()
         fn = self.file_names[idx]
-        key_fn = lambda x: "_".join(x.split("/")[-1].split("_")[:-1])
+        # key_fn = lambda x: "_".join(x.split("/")[-1].split("_")[:-1]) # lambda cannot be pickled in windows!
         offset_t = self.ep_t_offset_dict[key_fn(fn)]
         ep_t = int(fn.split("_")[-1][1:-4]) - offset_t
         start_t = ep_t - (self.obs_horizon - 1)
