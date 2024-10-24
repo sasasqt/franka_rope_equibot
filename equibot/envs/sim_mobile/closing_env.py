@@ -209,3 +209,4 @@ class ClosingEnv(BaseEnv):
             return verts
         else:
             return super()._get_rigid_body_mesh(obj_id)
+

@@ -89,11 +89,15 @@ class VecConditionalUnet1D(nn.Module):
         scalar_input_dim=0,
         scalar_cond_dim=0,
         diffusion_step_embed_dim=256,
-        down_dims=[256, 512, 1024],
+        down_dims=[256,512,1024],
         kernel_size=3,
         cond_predict_scale=False,
     ):
         super().__init__()
+        down_dims=[int(i//(1.72)) for i in down_dims] # divide by sqrt 3 to make trainble params roughly the same or
+
+        logging.info(scalar_input_dim)
+        logging.info(down_dims)
         all_dims = [input_dim] + list(down_dims)
         start_dim = down_dims[0]
 
@@ -174,9 +178,9 @@ class VecConditionalUnet1D(nn.Module):
         self.down_modules = down_modules
         self.final_conv = final_conv
 
-        logger.info(
-            "number of parameters: %e", sum(p.numel() for p in self.parameters())
-        )
+        num_parameters = sum(dict((p.data_ptr(), p.numel()) 
+                        for p in self.parameters()).values())
+        logger.info("number of unique trainable parameters "+num_parameters.__str__())
 
     def forward(
         self,

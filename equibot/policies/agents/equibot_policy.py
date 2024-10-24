@@ -8,6 +8,7 @@ from equibot.policies.vision.sim3_encoder import SIM3Vec4Latent
 from equibot.policies.utils.diffusion.ema_model import EMAModel
 from equibot.policies.utils.equivariant_diffusion.conditional_unet1d import VecConditionalUnet1D
 
+import logging
 
 def vec2mat(vec):
     # converts non-orthogonal x, y vectors to a rotation matrix
@@ -78,8 +79,19 @@ class EquiBotPolicy(nn.Module):
 
         self.noise_scheduler = hydra.utils.instantiate(cfg.model.noise_scheduler)
 
-        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        print(f"Initialized SIM(3) DP Policy with {num_parameters} parameters")
+        # num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        # print(f"Initialized SIM(3) DP Policy with {num_parameters} parameters")
+
+        num_parameters = sum(dict((p.data_ptr(), p.numel()) 
+                        for p in self.parameters()).values())
+        logging.info("Initialized SIM(3) DP Policy with "+num_parameters.__str__()+" unique trainable params in total")
+
+        # for name, param in self.named_parameters():
+        #     if param.requires_grad:
+        #         logging.info(f"Layer: {name}")
+        #         logging.info(f"Shape: {param.shape}")
+        #         logging.info(f"Parameters: {param.numel()}")
+        #         logging.info("-" * 50)
 
     def _init_torch_compile(self):
         if self.use_torch_compile:

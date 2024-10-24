@@ -79,6 +79,7 @@ class SubprocVecEnv(VecEnv):
         self.waiting = False
         self.closed = False
         n_envs = len(env_fns)
+        self.n_envs = n_envs
 
         # In some cases (like on GitHub workflow machine when running tests),
         # "forkserver" method results in an "connection error" (probably due to mpi)
@@ -117,6 +118,9 @@ class SubprocVecEnv(VecEnv):
         self.remotes[0].send(("get_spaces", None))
         observation_space, action_space = self.remotes[0].recv()
         VecEnv.__init__(self, len(env_fns), observation_space, action_space)
+
+    def __len__(self):
+        return self.n_envs
 
     def step_async(self, actions, dummy_reward=False):
         for remote, action in zip(self.remotes, actions):

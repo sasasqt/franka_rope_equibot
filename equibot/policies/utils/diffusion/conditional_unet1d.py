@@ -11,6 +11,7 @@ from equibot.policies.utils.diffusion.conv1d_components import (
 )
 from equibot.policies.utils.diffusion.positional_embedding import SinusoidalPosEmb
 
+import logging
 
 class ConditionalResidualBlock1D(nn.Module):
     def __init__(
@@ -216,7 +217,10 @@ class ConditionalUnet1D(nn.Module):
         self.down_modules = down_modules
         self.final_conv = final_conv
 
-        print("number of parameters: %e", sum(p.numel() for p in self.parameters()))
+        # print("number of parameters: %e", sum(p.numel() for p in self.parameters()))
+        num_parameters = sum(dict((p.data_ptr(), p.numel()) 
+                        for p in self.parameters()).values())
+        logging.info("number of unique trainable parameters "+num_parameters.__str__())
 
     def forward(
         self,

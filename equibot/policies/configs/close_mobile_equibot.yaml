@@ -7,3 +7,6 @@ agent:
 model:
   encoder:
     backbone_type: vn_pointnet
+
+# training:
+#   batch_size: 128  # 128 for equibot on rtx a4500 20gb vram 480p dataset

@@ -80,15 +80,15 @@ model:
   use_torch_compile: false
 
 training:
-  batch_size: 32
+  batch_size: 1536 # 1536 for og dp on rtx a4500 20gb vram 480p dataset, was 32 originally
   num_epochs: 2000
   lr: 3e-5
   weight_decay: 1e-6
-  num_eval_episodes: 10
-  eval_interval: 50
-  # eval_interval: 1000000 # do not eval during training
-  save_interval: 50
-  vis_interval: 100
+  num_eval_episodes: 12
+  eval_interval: 1000000 # do not eval during training
+  save_interval: 50 # was 50
+  vis_interval: 100 # 100
+  # best: 10
   ckpt: null
 
 eval:

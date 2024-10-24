@@ -129,6 +129,8 @@ class FoldingEnv(BaseEnv):
         miny = np.where(mesh_xyzs[:, 1] <= min_xy[1] + 0.001)[0]
         maxy = np.where(mesh_xyzs[:, 1] >= max_xy[1] - 0.001)[0]
 
+        # def find_overlapping_index(a, b):
+        #     return list(set(a).intersection(set(b)))[0]
         find_overlapping_index = lambda a, b: list(set(a).intersection(set(b)))[0]
         corners = [
             find_overlapping_index(minx, miny),

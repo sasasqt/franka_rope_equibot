@@ -8,7 +8,7 @@ from equibot.policies.utils.diffusion.ema_model import EMAModel
 from equibot.policies.utils.diffusion.conditional_unet1d import ConditionalUnet1D
 from equibot.policies.utils.diffusion.resnet_with_gn import get_resnet, replace_bn_with_gn
 
-
+import logging
 class DPPolicy(nn.Module):
     def __init__(self, cfg, device="cpu"):
         super().__init__()
@@ -65,8 +65,11 @@ class DPPolicy(nn.Module):
 
         self.noise_scheduler = hydra.utils.instantiate(cfg.model.noise_scheduler)
 
-        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        print(f"Initialized DP Policy with {num_parameters} parameters")
+        # num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        # print(f"Initialized DP Policy with {num_parameters} parameters")
+        num_parameters = sum(dict((p.data_ptr(), p.numel()) 
+                for p in self.parameters()).values())
+        logging.info("Initialized OG DP Policy with "+num_parameters.__str__()+" unique trainable params in total")
 
     def _init_torch_compile(self):
         if self.cfg.model.use_torch_compile:
