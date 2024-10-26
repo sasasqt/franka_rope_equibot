@@ -9,6 +9,7 @@ from equibot.policies.utils.diffusion.conditional_unet1d import ConditionalUnet1
 from equibot.policies.utils.diffusion.resnet_with_gn import get_resnet, replace_bn_with_gn
 
 import logging
+
 class DPPolicy(nn.Module):
     def __init__(self, cfg, device="cpu"):
         super().__init__()
@@ -55,7 +56,6 @@ class DPPolicy(nn.Module):
             diffusion_step_embed_dim=self.obs_dim * self.obs_horizon,
             global_cond_dim=self.obs_dim * self.obs_horizon,
         )
-
         self.nets = nn.ModuleDict(
             {"encoder": self.encoder, "noise_pred_net": self.noise_pred_net}
         )

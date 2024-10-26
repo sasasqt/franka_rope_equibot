@@ -96,8 +96,6 @@ class VecConditionalUnet1D(nn.Module):
         super().__init__()
         down_dims=[int(i//(1.72)) for i in down_dims] # divide by sqrt 3 to make trainble params roughly the same or
 
-        logging.info(scalar_input_dim)
-        logging.info(down_dims)
         all_dims = [input_dim] + list(down_dims)
         start_dim = down_dims[0]
 

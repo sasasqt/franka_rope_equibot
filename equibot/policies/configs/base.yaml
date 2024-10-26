@@ -80,7 +80,7 @@ model:
   use_torch_compile: false
 
 training:
-  batch_size: 1536 # 1536 for og dp on rtx a4500 20gb vram 480p dataset, was 32 originally
+  batch_size: 512 # for og dp on rtx a4500 20gb vram 480p dataset, was 32 originally
   num_epochs: 2000
   lr: 3e-5
   weight_decay: 1e-6

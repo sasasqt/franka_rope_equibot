@@ -226,8 +226,8 @@ class ConditionalUnet1D(nn.Module):
         self,
         sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
+        global_cond=None, # swap them, when using tensorboard add.graph/netron
         local_cond=None,
-        global_cond=None,
         **kwargs
     ):
         """
@@ -259,6 +259,8 @@ class ConditionalUnet1D(nn.Module):
         # encode local features
         h_local = list()
         if local_cond is not None:
+
+            
             local_cond = einops.rearrange(local_cond, "b h t -> b t h")
             resnet, resnet2 = self.local_cond_encoder
             x = resnet(local_cond, global_feature)

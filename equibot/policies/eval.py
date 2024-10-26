@@ -15,6 +15,7 @@ from equibot.policies.utils.media import combine_videos, save_video
 from equibot.policies.utils.misc import get_env_class, get_dataset, get_agent
 from equibot.envs.subproc_vec_env import SubprocVecEnv
 
+import logging
 
 def organize_obs(render, rgb_render, state):
     if type(render) is list:
@@ -95,7 +96,7 @@ def run_eval(
             # predict actions
             st = time.time()
             ac, ac_dict = agent.act(agent_obs, return_dict=True)
-            print(f"Inference time: {time.time() - st:.3f}s")
+            logging.info(f"Inference time: {time.time() - st:.3f}s")
             if ac_dict is not None:
                 if (
                     "expected_eef_pos" in ac_dict
@@ -106,7 +107,7 @@ def run_eval(
                     if hasattr(env, "visualize_pc"):
                         env.visualize_pc(ac_dict["expected_pc"])
             else:
-                print(f"Warning: ac dict is none!")
+                logging.warning(f"Warning: ac dict is none!")
             if log_dir is not None:
                 history["action"].append(ac)
                 history["eef_pos"].append(obs["state"])
@@ -151,7 +152,7 @@ def run_eval(
         else:
             rew = prev_reward
         rews.append(rew)
-        print(f"Episode {ep_ix + 1} reward: {rew:.4f}.")
+        logging.info(f"Episode {ep_ix + 1} reward: {rew:.4f}.")
 
         if log_dir is not None:
             os.makedirs(log_dir, exist_ok=True)
@@ -192,6 +193,7 @@ def run_eval(
 @hydra.main(config_path="configs", config_name="fold_synthetic")
 def main(cfg):
     assert cfg.mode == "eval"
+    logging.basicConfig(level=logging.INFO)
     device = torch.device(cfg.device)
     if cfg.use_wandb:
         wandb_config = omegaconf.OmegaConf.to_container(
@@ -206,34 +208,46 @@ def main(cfg):
             config=wandb_config,
         )
     np.random.seed(cfg.seed)
-
+    envs = []
     if cfg.env.vectorize:
-        env_fns = []
+        # env_fns = []
         env_class = get_env_class(cfg.env.env_class)
         env_args = dict(OmegaConf.to_container(cfg.env.args, resolve=True))
 
         def create_env(env_args, i):
             env_args["seed"] = cfg.seed * 100 + i
             return env_class(OmegaConf.create(env_args))
-
-        env = SubprocVecEnv(
-            [
-                lambda seed=i: create_env(env_args, seed)
-                for i in range(cfg.training.num_eval_episodes)
-            ]
-        )
+        
+        # oversubscription alittle, decouple #cores and #eval_episodes
+        n_envs=int(os.cpu_count()*1.5)
+        for i in range((cfg.training.num_eval_episodes-1)//n_envs+1):
+            if (i == (cfg.training.num_eval_episodes-1)//n_envs+1):
+                n_envs = cfg.training.num_eval_episodes % n_envs or n_envs
+            envs.append(SubprocVecEnv(
+                [
+                    lambda seed=i: create_env(env_args, seed)
+                    for i in range(n_envs)
+                ]
+           ))
+        # env = SubprocVecEnv(
+        #     [
+        #         lambda seed=i: create_env(env_args, seed)
+        #         for i in range(cfg.training.num_eval_episodes)
+        #     ]
+        # )
         from equibot.policies.vec_eval import run_eval as run_vec_eval
 
         eval_fn = run_vec_eval
     else:
         env = get_env_class(cfg.env.env_class)(cfg.env.args)
+        envs.append(env)
         eval_fn = run_eval
 
     agent = get_agent(cfg.agent.agent_name)(cfg)
     agent.train(False)
-
+    # logging.info(os.getcwd())
     if os.path.isdir(cfg.training.ckpt):
-        ckpt_dir = cfg.training.ckpt
+        ckpt_dir = os.path.join(os.getcwd(),cfg.training.ckpt)
         ckpt_paths = list(glob(os.path.join(ckpt_dir, "ckpt*.pth")))
         assert len(ckpt_paths) >= cfg.eval.num_ckpts_to_eval
         ckpt_paths = list(sorted(ckpt_paths))[-cfg.eval.num_ckpts_to_eval :]
@@ -249,42 +263,59 @@ def main(cfg):
 
         log_dir = os.getcwd()
 
-        eval_metrics = eval_fn(
-            env,
-            agent,
-            vis=True,
-            num_episodes=cfg.training.num_eval_episodes,
-            log_dir=log_dir,
-            reduce_horizon_dim=cfg.data.dataset.reduce_horizon_dim,
-            verbose=True,
-            ckpt_name=ckpt_name,
-        )
-        mean_rew = eval_metrics["rew"]
-        print(f"Evaluation results: mean rew = {mean_rew}")
-        rew_list.append(mean_rew)
-        if cfg.use_wandb:
-            wandb.log(
-                {"eval/" + k: v for k, v in eval_metrics.items() if k != "vis_rollout"}
-            )
-        else:
-            save_filename = os.path.join(
-                os.getcwd(), f"vis_{ckpt_name}_rew{mean_rew:.3f}.mp4"
-            )
-        if "vis_rollout" in eval_metrics:
-            if len(eval_metrics["vis_rollout"].shape) == 4:
-                save_video(eval_metrics["vis_rollout"], save_filename, fps=30)
-            else:
-                assert len(eval_metrics["vis_rollout"][0].shape) == 4
-                for eval_idx, eval_video in enumerate(eval_metrics["vis_rollout"]):
-                    episode_rew = eval_metrics["rew_values"][eval_idx]
-                    save_filename = os.path.join(
-                        os.getcwd(),
-                        f"vis_{ckpt_name}_ep{eval_idx}_rew{episode_rew:.3f}.mp4",
-                    )
-                    save_video(eval_video, save_filename)
-        del eval_metrics
-    np.savez(os.path.join(os.getcwd(), "info.npz"), rews=np.array(rew_list))
+        rewards=[]
+        for i in range(len(envs)):
+            env = envs[i]
 
+            # does not upload images/videos to wandb
+            eval_metrics = eval_fn(
+                env,
+                agent,
+                vis=True,
+                num_episodes=cfg.training.num_eval_episodes,
+                log_dir=log_dir,
+                reduce_horizon_dim=cfg.data.dataset.reduce_horizon_dim,
+                verbose=True,
+                ckpt_name=ckpt_name,
+            )
+            rewards.append(eval_metrics['rew_values'])
+            mean_rew = eval_metrics["rew"]
+            # logging.info(f"Evaluation results: mean rew = {mean_rew}")
+            if cfg.use_wandb:
+                wandb.log(
+                    {"eval/" + k: v for k, v in eval_metrics.items() if not k in ["vis_rollout", "rew_values"]}
+                )
+
+            if "vis_rollout" in eval_metrics:
+                if len(eval_metrics["vis_rollout"].shape) == 4:
+                    save_filename = os.path.join(
+                        os.getcwd(), f"vis_{ckpt_name}_rew{mean_rew:.3f}.mp4"
+                    )
+                    save_video(eval_metrics["vis_rollout"], save_filename, fps=30)
+                else:
+                    assert len(eval_metrics["vis_rollout"][0].shape) == 4
+                    for eval_idx, eval_video in enumerate(eval_metrics["vis_rollout"]):
+                        episode_rew = eval_metrics["rew_values"][eval_idx]
+                        save_filename = os.path.join(
+                            os.getcwd(),
+                            f"vis_{ckpt_name}_ep{eval_idx}_rew{episode_rew:.3f}.mp4",
+                        )
+                        save_video(eval_video, save_filename)
+            del eval_metrics
+
+        # #success is more important (zero reward is unacceptable)
+        rewards=np.ravel(rewards)
+        rew_list.append(rewards)
+        avg_score = geometric_mean_excluding_zero(rewards)+non_zero_elements(rewards)
+        logging.info(f"geo avg reward of current ckpt {ckpt_name} is: "+str(avg_score))
+    logging.info("rewards for different ckpts are:" + str(rew_list))
+    # np.savez(os.path.join(os.getcwd(), "info.npz"), rews=np.array(rew_list))
+
+def geometric_mean_excluding_zero(numbers):
+    return np.exp(np.mean(np.log(numbers[numbers != 0])))
+def non_zero_elements(elements):
+    _arr = np.array(elements)
+    return sum(x != 0 for x in _arr)
 
 if __name__ == "__main__":
     main()

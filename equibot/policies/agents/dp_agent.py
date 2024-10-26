@@ -7,7 +7,6 @@ from equibot.policies.utils.misc import to_torch
 from equibot.policies.agents.dp_policy import DPPolicy
 from equibot.policies.utils.diffusion.lr_scheduler import get_scheduler
 
-
 class DPAgent(object):
     def __init__(self, cfg):
         print(f"Initializing DP agent.")
@@ -189,6 +188,10 @@ class DPAgent(object):
                 z = self.actor.encoder(flattened_pc.permute(0, 2, 1))["global"]
 
             z = z.reshape(batch_size, self.obs_horizon, -1)
+
+            # [2024-10-24 09:18:32,608][root][INFO] - torch.Size([1536, 2, 32])
+            # [2024-10-24 09:18:32,607][root][INFO] - torch.Size([1536, 2, 26])                                                                                                                                                                                                   | 0/1 [00:00<?, ?it/s]
+
             z = torch.cat([z, state], dim=-1)
         obs_cond = z.reshape(batch_size, -1)  # (BS, obs_horizion * obs_dim)
 
@@ -213,7 +216,15 @@ class DPAgent(object):
             noise_pred = self.actor.noise_pred_net(
                 noisy_actions, timesteps, global_cond=obs_cond
             )
-
+        # import logging
+        # logging.info(noise_pred.shape)
+        # logging.info(noisy_actions.shape)
+        # logging.info(timesteps.shape)
+        # logging.info(obs_cond.shape)
+        # 2024-10-24 09:32:56,696][root][INFO] - torch.Size([1536, 16, 14])                                                                                                                                                                                                  | 0/1 [00:00<?, ?it/s]
+        # [2024-10-24 09:32:56,697][root][INFO] - torch.Size([1536, 16, 14])
+        # [2024-10-24 09:32:56,697][root][INFO] - torch.Size([1536])
+        # [2024-10-24 09:32:56,698][root][INFO] - torch.Size([1536, 116])
         loss = nn.functional.mse_loss(noise_pred, noise)
 
         self.optimizer.zero_grad()
@@ -266,7 +277,7 @@ class DPAgent(object):
             ac_normalizer=self.ac_normalizer.state_dict(),
         )
         torch.save(state_dict, save_path)
-
+        
     def _fix_state_dict_keys(self, state_dict):
         return {k: v for k, v in state_dict.items() if not "handle" in k}
 

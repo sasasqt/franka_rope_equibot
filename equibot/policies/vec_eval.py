@@ -89,7 +89,7 @@ def run_eval(
         for ac_ix in range(ac_horizon):
             agent_ac = ac[:, ac_ix] if len(ac.shape) > 2 else ac
             env.step_async(agent_ac, dummy_reward=True)
-            state, _, done, _ = env.step_wait() # TODO timeout + reset
+            state, _, done, _ = env.step_wait() # ~~TODO timeout + reset~~
             rgb_render = render = env.env_method("render")
             obs = organize_obs(render, rgb_render, state)
             obs_history.append(obs)
