@@ -2,3 +2,6 @@ logs/
 **/__pycache__
 .DS_Store
 *.egg-info
+main.exp
+main.lib
+main.obj

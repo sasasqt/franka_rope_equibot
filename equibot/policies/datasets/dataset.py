@@ -38,7 +38,6 @@ class BaseDataset(Dataset):
         self.aug_zero_z_offset = cfg["aug_zero_z_offset"]
         self.reduce_horizon_dim = cfg["reduce_horizon_dim"]
         self.shuffle_pc = cfg["shuffle_pc"]
-        self.min_demo_length = cfg["min_demo_length"]
         if "latency" in cfg:
             self.state_latency = cfg["latency"]["state"]
             self.state_latency_random = cfg["latency"]["random"]
@@ -80,20 +79,6 @@ class BaseDataset(Dataset):
         self.ep_length_dict = ep_length_dict
         self.ep_t_offset_dict = ep_t_offset_dict
 
-        # delete episodes that are too short
-        self.file_names = [
-            fn
-            for fn in self.file_names
-            if ep_length_dict[key_fn(fn)] >= self.min_demo_length
-        ]
-        ep_t_offset_dict = {
-            k: v
-            for k, v in ep_t_offset_dict.items()
-            if ep_length_dict[v] >= self.min_demo_length
-        }
-        ep_length_dict = {
-            k: v for k, v in ep_length_dict.items() if v >= self.min_demo_length
-        }
 
         # check if using two digit or four digit filenames
         if len(self.file_names[0].split("_")[-1].split(".")[0][1:]) == 4:

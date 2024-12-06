@@ -272,7 +272,7 @@ class DPAgent(object):
         state_dict = dict(
             actor=self.actor.state_dict(),
             ema_model=self.actor.ema.averaged_model.state_dict(),
-            pc_normalizer=self.pc_normalizer.state_dict(),
+            pc_normalizer=None if self.pc_normalizer is None else self.pc_normalizer.state_dict(), # AttributeError: 'NoneType' object has no attribute 'state_dict'
             state_normalizer=self.state_normalizer.state_dict(),
             ac_normalizer=self.ac_normalizer.state_dict(),
         )

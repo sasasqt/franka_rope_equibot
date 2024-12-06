@@ -226,8 +226,8 @@ class ConditionalUnet1D(nn.Module):
         self,
         sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
-        global_cond=None, # swap them, when using tensorboard add.graph/netron
         local_cond=None,
+        global_cond=None, # swap them, when using tensorboard add.graph/netron
         **kwargs
     ):
         """

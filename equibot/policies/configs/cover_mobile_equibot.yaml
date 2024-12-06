@@ -5,6 +5,6 @@ agent:
   agent_name: equibot
 
 model:
-  hidden_dim: 8 # was 32
+  hidden_dim: 4 # was 32
   encoder:
     backbone_type: vn_pointnet
