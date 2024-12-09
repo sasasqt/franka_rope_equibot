@@ -94,7 +94,7 @@ for ep, filename in enumerate(os.listdir(input_dir)):
         fut=_fut['data']
         if i==0:
             curr=fut
-            if curr['Right']['applied_joint_positions'][-1]< 0.25: # 0/-0.3 is closed, ~0.5 is opened
+            if curr['Right']['applied_joint_positions'][-1]< 0.025: # 0/-0.3 is closed, ~0.5 is opened
                 gripper_action=0
                 gripper_pose=0
             else:
