@@ -64,9 +64,9 @@ model:
     beta_schedule: squaredcos_cap_v2
     clip_sample: true
     prediction_type: epsilon
-  obs_horizon: 2
-  ac_horizon: 2
-  pred_horizon: 64
+  obs_horizon: 4
+  ac_horizon: 1
+  pred_horizon: 32
   encoder:
     c_dim: ${model.hidden_dim}
     backbone_type: vn_pointnet
@@ -77,10 +77,10 @@ model:
       knn: 8
   obs_mode: ${env.args.obs_mode}
   ac_mode: ${env.args.ac_mode}
-  use_torch_compile: false # was false
+  use_torch_compile: True # was false
 
 training:
-  batch_size: 6144 # for og dp on rtx a4500 20gb vram 480p dataset, was 32 originally
+  batch_size: 4096 # for og dp on rtx a4500 20gb vram 480p dataset, was 32 originally
   num_epochs: 200
   lr: 3e-5
   weight_decay: 1e-6
@@ -106,9 +106,12 @@ wandb:
 franka_rope:
   physics_dt: 1.0/60.0
   rendering_dt: 1.0/60.0
-  _randomize: False
+  _randomize: True
   _randomize_on_reset: False
-  extra_scenes: null #[fixed_cylinder] # list, possible values: fixed_cylinder, visual_line
+  extra_scenes: null #null #[fixed_cylinder] # list, possible values: fixed_cylinder, visual_line
   _rope_damping: 0.6
   _rope_stiffness: 0.1
+  from_demo: r"C:\Users\Shadow\project\franka_rope\demos\test_straighten_right\output_data_2024-12-02_15-38-13.json"
+  start_time: 350
+  manually_close: False
   seed: 42

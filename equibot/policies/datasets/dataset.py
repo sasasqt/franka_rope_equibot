@@ -50,8 +50,7 @@ class BaseDataset(Dataset):
             self.obs_horizon = 1
             self.pred_horizon = 1
 
-        self.data_dir = os.path.join(cfg["path"], "*")
-
+        self.data_dir = os.path.join(cfg["path"], "*.npz")
         self.file_names = sorted(glob.glob(self.data_dir))
         if "num_demos" in cfg:
             # key_fn = lambda x: "_".join(x.split("/")[-1].split("_")[:-1]) # lambda cannot be pickled in windows!
