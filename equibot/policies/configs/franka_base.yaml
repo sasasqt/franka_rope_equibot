@@ -19,7 +19,7 @@ env:
     num_eef: ${env.num_eef}
     dof: ${env.dof}
     seed: ${seed}
-    obs_mode: "state"
+    obs_mode: "pc"
     ac_mode: "rel"
     max_episode_length: ???
     num_points: ${data.dataset.num_points}
@@ -35,7 +35,7 @@ data:
   dataset:
     num_training_steps: ???
     path: null
-    num_points: 1024
+    num_points: 44
     num_augment: 0
     same_aug_per_sample: true
     aug_keep_original: true
@@ -65,7 +65,7 @@ model:
     clip_sample: true
     prediction_type: epsilon
   obs_horizon: 4
-  ac_horizon: 1
+  ac_horizon: 16
   pred_horizon: 32
   encoder:
     c_dim: ${model.hidden_dim}
@@ -80,8 +80,8 @@ model:
   use_torch_compile: True # was false
 
 training:
-  batch_size: 4096 # for og dp on rtx a4500 20gb vram 480p dataset, was 32 originally
-  num_epochs: 200
+  batch_size: 1024 # 15gb # for og dp on rtx a4500 20gb vram 480p dataset, was 32 originally
+  num_epochs: 400
   lr: 3e-5
   weight_decay: 1e-6
   num_eval_episodes: 12

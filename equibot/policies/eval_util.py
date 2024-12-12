@@ -9,6 +9,9 @@ from math import sqrt
 import logging
 from functools import partial
 
+# TODO dont block the ui: put the inference code in a new process, and cross processes communication
+# TODO the objective metrics?
+
 # singleton
 class EvalUtils(ControlFlow):
     @classmethod
