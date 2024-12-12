@@ -235,7 +235,7 @@ def update_action(agent_ac,target,eef,gripper):
     tgt_ori=quat_mul(normalize_quat(np.array(rpy2quat(agent_ac[4:4+3]))),normalize_quat(target_world_ori))
     target.set_world_pose(position=tgt_pos,orientation=tgt_ori)
     print("applied pos: ",tgt_pos)
-    _gripper_status="closing" if agent_ac[0] <0.025 else "opening"
+    _gripper_status="CLOSING" if agent_ac[0] <0.025 else "opening"
     print(f"gripper is {_gripper_status}")
 
 def quat_mul(q1, q2):
