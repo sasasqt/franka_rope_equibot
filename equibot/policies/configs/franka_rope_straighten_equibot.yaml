@@ -1,5 +1,5 @@
 defaults:
-  - franka_rope_straigthen_dp
+  - franka_rope_straighten_dp
 
 agent:
   agent_name: equibot

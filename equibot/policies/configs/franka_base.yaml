@@ -46,7 +46,7 @@ data:
     aug_scale_pos: 0.1
     aug_zero_z_offset: false
     aug_center: [0., 0., 0.]
-    shuffle_pc: true
+    shuffle_pc: false # https://github.com/charlesq34/pointnet2/issues/143#issuecomment-523416620 # was true
     num_workers: 12
     dof: ${env.dof}
     num_eef: ${env.num_eef}
