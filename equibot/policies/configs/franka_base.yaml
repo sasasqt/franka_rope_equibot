@@ -1,7 +1,7 @@
 prefix: default
 device: cuda
 mode: train
-log_dir: logs/${now:%Y-%m-%d_%H-%M-%S}_${mode}
+log_dir: logs/${mode}
 eval_data_path: null
 use_wandb: true
 seed: 0
