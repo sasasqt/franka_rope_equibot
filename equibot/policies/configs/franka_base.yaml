@@ -56,6 +56,30 @@ data:
     reduce_horizon_dim: false
     min_demo_length: 15
 
+  valid_dataset:
+    num_training_steps: ???
+    path: null
+    num_points:  ${data.dataset.num_points}
+    num_augment:  ${data.dataset.num_augment}
+    same_aug_per_sample:  ${data.dataset.same_aug_per_sample}
+    aug_keep_original:  ${data.dataset.aug_keep_original}
+    aug_scale_low:  ${data.dataset.aug_scale_low}
+    aug_scale_high:  ${data.dataset.aug_scale_high}
+    aug_scale_aspect_limit:  ${data.dataset.aug_scale_aspect_limit}
+    aug_scale_rot:  ${data.dataset.aug_scale_rot}
+    aug_scale_pos:  ${data.dataset.aug_scale_pos}
+    aug_zero_z_offset:  ${data.dataset.aug_zero_z_offset}
+    aug_center:  ${data.dataset.aug_center}
+    shuffle_pc:  ${data.dataset.shuffle_pc} # https://github.com/charlesq34/pointnet2/issues/143#issuecomment-523416620 # was true
+    num_workers:  ${data.dataset.num_workers}
+    dof:  ${data.dataset.dof}
+    num_eef:  ${data.dataset.num_eef}
+    eef_dim:  ${data.dataset.eef_dim}
+    obs_horizon:  ${data.dataset.obs_horizon}
+    pred_horizon:  ${data.dataset.pred_horizon}
+    reduce_horizon_dim:  ${data.dataset.reduce_horizon_dim}
+    min_demo_length:  ${data.dataset.min_demo_length}
+
 model:
   hidden_dim: 32
   noise_scheduler:
@@ -85,7 +109,7 @@ training:
   lr: 3e-5
   weight_decay: 1e-6
   num_eval_episodes: 12
-  eval_interval: 1000000 # do not eval during training
+  eval_interval: 1000000 # do not eval during training, eval the saved ckpts instead
   save_interval: 50 # was 50
   vis_interval: 100 # 100
   # best: 10

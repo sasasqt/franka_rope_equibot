@@ -45,8 +45,10 @@ def get_env_class(env_name):
         raise ValueError()
 
 
-def get_dataset(cfg, mode="train"):
+def get_dataset(cfg, mode="train",valid=False):
     from equibot.policies.datasets.dataset import BaseDataset
+    if valid:
+        return BaseDataset(cfg.data.valid_dataset, mode)
     return BaseDataset(cfg.data.dataset, mode)
 
 

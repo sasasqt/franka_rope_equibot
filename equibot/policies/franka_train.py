@@ -10,6 +10,7 @@ import getpass as gt
 from tqdm import tqdm
 from glob import glob
 from omegaconf import OmegaConf
+from torch import nn
 
 from equibot.policies.utils.misc import get_dataset, get_agent
 
@@ -46,13 +47,23 @@ def main(cfg):
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=batch_size,
-        num_workers=1,
+        num_workers=num_workers,
         shuffle=True,
         drop_last=False, # was True
         pin_memory=True,
     )
     cfg.data.dataset.num_training_steps = (
         cfg.training.num_epochs * len(train_dataset) // batch_size
+    )
+
+    valid_dataset = get_dataset(cfg, "train", valid=True)
+    valid_loader = torch.utils.data.DataLoader(
+        valid_dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        shuffle=False,
+        drop_last=False, # was True
+        pin_memory=True,
     )
 
 
@@ -71,6 +82,10 @@ def main(cfg):
     for epoch_ix in tqdm(range(start_epoch_ix, cfg.training.num_epochs)):
         batch_ix = 0
         for batch in tqdm(train_loader, leave=False, desc="Batches"):
+            # print(batch.keys()) # dict_keys(['pc', 'eef_pos', 'action'])
+            # print(batch["pc"].shape) # torch.Size([1024, 4, 44, 3])
+            # print(batch["action"].shape) # torch.Size([1024, 32, 7])
+            # print(batch["eef_pos"].shape) # torch.Size([1024, 4, 1, 13])
             train_metrics = agent.update(
                 batch, vis=False
             )
@@ -96,6 +111,17 @@ def main(cfg):
                 ]:
                     os.remove(fn)
             agent.save_snapshot(save_path)
+        
+            for batch in tqdm(valid_loader, leave=False, desc="validations"):                   
+                obs = dict(
+                    pc=batch["pc"].permute(1, 0, 2, 3).numpy(), # (obs_horizon, B, N, 3)
+                    state=batch["eef_pos"].permute(1, 0, 2, 3).numpy()
+                    ) #pc and eef_pos                    
+                pred_ac=agent.act(
+                    obs
+                )
+                diff=nn.functional.mse_loss(torch.from_numpy(pred_ac),batch["action"])
+                wandb.log({"valid_loss":diff},step=global_step)
 
 if __name__ == "__main__":
     main()
