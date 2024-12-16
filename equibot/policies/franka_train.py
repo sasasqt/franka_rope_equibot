@@ -41,7 +41,8 @@ def main(cfg):
         )
     log_dir = os.getcwd()
     num_workers = min(os.cpu_count(),cfg.data.dataset.num_workers)
-
+    if os.name == 'nt': # if windows
+        num_workers=0 
     # init dataloader
     train_dataset = get_dataset(cfg, "train")
     train_loader = torch.utils.data.DataLoader(

@@ -4,8 +4,8 @@ import os
 from math import sqrt
 import math
 
-input_dir = r"C:\Users\Shadow\project\franka_rope\demos\test_straight_right"
-output_dir = r"C:\Users\Shadow\project\franka_data\test_straight_right"
+input_dir = r"C:\Users\Shadow\project\franka_rope\demos\02_train"
+output_dir = r"C:\Users\Shadow\project\franka_data\abspos_train_straight_right"
 if not os.path.exists(output_dir):
     os.mkdir(output_dir)
 # len(data) = 1

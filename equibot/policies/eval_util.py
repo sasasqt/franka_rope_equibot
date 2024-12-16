@@ -37,11 +37,14 @@ class EvalUtils(ControlFlow):
 
     @classmethod
     async def _reset_async(cls,callback_fn=None):
+
         try:
             pass # TODO save data cls._sample._on_save_data_event()
         except:
             pass
         await super().reset_async()
+        await cls._sample._world.play_async()
+        await cls._sample._on_follow_target_event_async(True)
 
         sample=cls.sample
         world=cls.world
@@ -51,17 +54,25 @@ class EvalUtils(ControlFlow):
         robot=cls.robot
         robot_name=cls.robot_name
         target_name=cls.target_name
+        cls.gravity_dir=[0,0,-1]
 
-        extra_repeat=cls.obs_horizon-1
-        if cls.cfg.from_demo is not None:
-            data_logger=cls.sample._data_logger
+        if cls.cfg.from_demo is None:
+            extra_repeat=cls.obs_horizon-1
+            # await cls._sample._world.play_async()
+            await asyncio.sleep(5)
+            # await cls._sample._world.pause_async()
+
+        else:
+            extra_repeat=0
+            data_logger=cls.data_logger=cls.sample._data_logger
             data_logger.load(log_path=eval(cls.cfg.from_demo))
             demo_length=data_logger.get_num_of_data_frames()
-            start_time=cls.cfg.start_time or int(0.25*demo_length)
+            start_time=cls.start_time=cls.cfg.start_time or int(0.25*demo_length)
 
             if start_time>= demo_length:
                 print(f">>> start time {start_time} excessed the demo length {demo_length}, reset to 1/4 of demo length <<<")
                 start_time=int(0.25*demo_length)
+
             if start_time is not None:
                 if start_time+1-cls.obs_horizon <0:
                     extra_repeat=cls.obs_horizon-start_time-1
@@ -71,14 +82,19 @@ class EvalUtils(ControlFlow):
                     #   start=2 extra_repeat =1
                     #   start=1 extra_repeat=2
                     #   start=0 extra_repeat=3
+                else: 
+                    extra_repeat=0
             else:
                 pass # TODO start time = the first frame where target moves
 
-    
-        
         cls.obs_history=[]
         cls.done=False
-        cls.count=-1
+        cls.count=-20
+        # await cls._sample._world.play_async()
+        # await cls._sample._on_follow_target_event_async(True)
+        # await asyncio.sleep(5)
+        # await cls._sample._world.pause_async()
+
         for i in range(cls.obs_horizon-extra_repeat):
             # obs hon = 4: 
             #   start =4 data_frame_index=1+i extra_repeat=0 i=0-3
@@ -89,10 +105,11 @@ class EvalUtils(ControlFlow):
             if cls.cfg.from_demo is not None:
                 data_frame = data_logger.get_data_frame(data_frame_index=start_time-cls.obs_horizon+1+extra_repeat+i)
                 for idx,_str in enumerate(["Left","Right"]):  
-                    world.scene.get_object(robot_name).set_joint_positions(
-                        np.array(data_frame.data[_str][f"{_str}_joint_positions"])
-                    )
-                    
+                    # world.scene.get_object(robot_name).set_joint_positions(
+                    #     np.array(data_frame.data[_str][f"{_str}_joint_positions"])
+                    # )
+                    # await omni.kit.app.get_app().next_update_async()        
+
                     world.scene.get_object(target_name).set_world_pose(
                         position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                         orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
@@ -103,14 +120,11 @@ class EvalUtils(ControlFlow):
                     orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
                 )
 
-                if eval(str(cls.cfg.manually_close).title()) is True:
-                    robot._gripper.close()
-
 
             right_target_world_pos=scene.get_object(target_name).get_world_pose()[0]
             right_target_world_rot=scene.get_object(target_name).get_world_pose()[1]
             col1,col3=q2cols(right_target_world_rot)
-            gravity_dir=cls.gravity_dir=[0,0,-1]
+            gravity_dir=cls.gravity_dir
             if scene.get_object(robot_name).get_applied_action().joint_positions[-1]< 0.025: # 0/-0.3 is closed, ~0.05 is opened
                 gripper_pose=0
             else:
@@ -122,28 +136,53 @@ class EvalUtils(ControlFlow):
                 state=np.array([[right_target_world_pos[0],right_target_world_pos[1],right_target_world_pos[2],col1[0],col1[1],col1[2],col3[0],col3[1],col3[2],gravity_dir[0],gravity_dir[1],gravity_dir[2],gripper_pose]])
             ) #pc and eef_pose
 
+            if cls.obs_horizon-extra_repeat-1-i<=0:
+                pass
+                # await cls._sample._world.pause_async() 
             cls.obs_history.append(obs)
             if i==0:
-                await cls._sample._world.play_async()
-                await cls._sample._on_follow_target_event_async(True)
-                await asyncio.sleep(5)
-                await cls._sample._world.pause_async()
                 for _ in range(extra_repeat):
                     cls.obs_history.append(obs)
-    
-        await cls._sample._world.play_async()
+
+
+        if cls.cfg.from_demo is not None:
+            data_frame = data_logger.get_data_frame(data_frame_index=start_time+1)
+            for idx,_str in enumerate(["Left","Right"]):   
+                world.scene.get_object(robot_name).set_joint_positions(
+                    np.array(data_frame.data[_str][f"{_str}_joint_positions"])
+                )
+
+            for idx,_str in enumerate(["Left","Right"]):   
+                world.scene.get_object(target_name).set_world_pose(
+                    position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
+                    orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
+                )
+
+                rope.set_world_pose(
+                    positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
+                    orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
+                )
+
+        # data_frame = data_logger.get_data_frame(data_frame_index=start_time-cls.obs_horizon+1+extra_repeat+i)
+        # for idx,_str in enumerate(["Left","Right"]):  
+        #     world.scene.get_object(robot_name).set_joint_positions(
+        #         np.array(data_frame.data[_str][f"{_str}_joint_positions"])
+        #     )
+        cls.sample._pre_physics_callback=partial(cls._post_reset,_onDone_async=cls._reset_async)
 
         cls._sample._on_logging_event(True)
+        # await cls._sample._world.play_async()
 
-        cls.sample._pre_physics_callback=partial(cls._post_reset,_onDone_async=cls._reset_async)
         # await cls._sample._world.pause_async()
         if callback_fn is not None:
             callback_fn()
 
+        
     @classmethod
     def _post_reset(cls,step_size=None,_onDone_async=None):
+        print("---")
         if step_size is None:
-            return
+            pass # return
         if cls.done:
             asyncio.ensure_future(_onDone_async(cls))
             return
@@ -167,13 +206,28 @@ class EvalUtils(ControlFlow):
         gravity_dir=cls.gravity_dir
         done=cls.done
 
+        print(cls.count)
+        # during the initial alignment, the hand/gripper will rotate to match with the orientation of the targert cube
+        if cls.cfg.from_demo is not None and cls.count < 0:
+            data_frame = cls.data_logger.get_data_frame(data_frame_index=cls.start_time+1)
+            for idx,_str in enumerate(["Left","Right"]):  
+                world.scene.get_object(target_name).set_world_pose(
+                    position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
+                    orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
+                )
+                rope.set_world_pose(
+                    positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
+                    orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
+                )
+            return
+        
         # Make obs
         right_target_world_pos=scene.get_object(target_name).get_world_pose()[0]
-        print("pos after update: ", right_target_world_pos)
+        print("pos obs-ed: ", right_target_world_pos)
         right_target_world_rot=scene.get_object(target_name).get_world_pose()[1]
         col1,col3=q2cols(right_target_world_rot)
         gravity_dir=[0,0,-1]
-        if scene.get_object(robot_name).get_applied_action().joint_positions[-1]< 0.025: # 0/-0.3 is closed, ~0.5 is opened
+        if scene.get_object(robot_name).get_applied_action().joint_positions[-1]< 0.025: # 0/-0.3 is closed, ~0.05 is opened
             gripper_pose=0
         else:
             gripper_pose=1
@@ -208,21 +262,24 @@ class EvalUtils(ControlFlow):
 
         # predict actions
         st = time.time()
-        # print(agent_obs)
-        # print(agent_obs['pc'][0][0])
-        # print(type(agent_obs['pc'][0][0]))
-        # print(agent_obs['state'])
-        # print(agent_obs['state'].shape,len(agent_obs['state'].shape))
         if cls.count % ac_horizon == 0:
-            cls.ac=ac = agent.act(agent_obs, return_dict=False)
+
+            ac = agent.act(agent_obs, return_dict=False)
+            if eval(str(cls.cfg.manually_close).title()) is True:
+                for i in range(len(ac)):
+                    ac[i][0]=-0.3
+            cls.ac=ac
+
         logging.info(f"Inference time: {time.time() - st:.3f}s")
 
         ac=cls.ac
         # take actions
         if len(obs["pc"]) == 0 or len(obs["pc"][0]) == 0:
             return
-        agent_ac = ac[cls.count% ac_horizon] if len(ac.shape) > 1 else ac
+        agent_ac = ac[cls.count% ac_horizon] if len(ac.shape) > 1 else ac    
+        print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
         update_action(agent_ac,scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper)
+        print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
 
     @classmethod
     async def eval_async(cls,agent,num_episodes,log_dir,reduce_horizon_dim,ckpt_name,cfg,simulation_app):
@@ -245,10 +302,11 @@ class EvalUtils(ControlFlow):
         await cls._setup_async()
         cls._post_setup()
         await cls._reset_async()
-        cls._post_reset(_onDone_async=cls._reset_async)
+        # cls._post_reset(_onDone_async=cls._reset_async)
 
         
 def update_action(agent_ac,target,eef,gripper):
+    # TODO CLIP in TRAIN + INFERENCE
     if agent_ac[0] <0.025:
         gripper.close()
     else:
@@ -259,9 +317,18 @@ def update_action(agent_ac,target,eef,gripper):
     
     print("old pos: ", target_world_pos)
     print("delta pos: ",agent_ac[1:1+3])
-    tgt_pos=target_world_pos+np.array(agent_ac[1:1+3])
-    tgt_ori=quat_mul(normalize_quat(np.array(rpy2quat(agent_ac[4:4+3]))),normalize_quat(target_world_ori))
-    target.set_world_pose(position=tgt_pos,orientation=tgt_ori)
+    delta_pos=np.array(agent_ac[1:1+3])
+    # delta_pos=np.clip(delta_pos,-0.01,0.01)
+    # print("clipped delta pos: ",delta_pos)
+
+    tgt_pos=target_world_pos+delta_pos
+
+
+    delta_ori=np.array(agent_ac[4:4+3])
+    # delta_ori=np.clip(delta_ori,-0.05,0.05)
+
+    tgt_ori=quat_mul(normalize_quat(np.array(rpy2quat(delta_ori))),normalize_quat(target_world_ori))
+    target.set_world_pose(position=tgt_pos,orientation=None) # tgt_ori
     print("applied pos: ",tgt_pos)
     _gripper_status="CLOSING" if agent_ac[0] <0.025 else "opening"
     print(f"gripper is {_gripper_status}")
