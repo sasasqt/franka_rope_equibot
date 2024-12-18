@@ -60,9 +60,9 @@ def main(cfg):
     valid_dataset = get_dataset(cfg, "train", valid=True)
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset,
-        batch_size=batch_size,
+        batch_size=256,
         num_workers=num_workers,
-        shuffle=False,
+        shuffle=True,
         drop_last=False, # was True
         pin_memory=True,
     )
@@ -112,17 +112,23 @@ def main(cfg):
                 ]:
                     os.remove(fn)
             agent.save_snapshot(save_path)
-        
-            for batch in tqdm(valid_loader, leave=False, desc="validations"):                   
+
+            diff=0.0
+            count=0
+            for valid_batch in tqdm(valid_loader, leave=False, desc="validations"):
+                count+=1
                 obs = dict(
-                    pc=batch["pc"].permute(1, 0, 2, 3).numpy(), # (obs_horizon, B, N, 3)
-                    state=batch["eef_pos"].permute(1, 0, 2, 3).numpy()
+                    pc=valid_batch["pc"].permute(1, 0, 2, 3).numpy(), # (obs_horizon, B, N, 3)
+                    state=valid_batch["eef_pos"].permute(1, 0, 2, 3).numpy()
                     ) #pc and eef_pos                    
                 pred_ac=agent.act(
                     obs
                 )
-                diff=nn.functional.mse_loss(torch.from_numpy(pred_ac),batch["action"])
-                wandb.log({"valid_loss":diff},step=global_step)
+                diff+=nn.functional.mse_loss(torch.from_numpy(pred_ac),valid_batch["action"])
+                if count >= 10:
+                    break
+            diff/=count
+            wandb.log({"valid_loss":diff},step=global_step)
 
 if __name__ == "__main__":
     main()
