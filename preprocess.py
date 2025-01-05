@@ -3,11 +3,9 @@ import numpy as np
 import os
 from math import sqrt
 import math
+import hydra
 
-input_dir = r"C:\Users\Shadow\project\franka_rope\demos\02_train"
-output_dir = r"C:\Users\Shadow\project\franka_data\abspos_train_straight_right"
-if not os.path.exists(output_dir):
-    os.mkdir(output_dir)
+
 # len(data) = 1
 # data[0].keys()=Isaac Sim Data
 # len(data[0]['Isaac Sim Data']) = saved steps
@@ -25,7 +23,6 @@ if not os.path.exists(output_dir):
 # recording["eef_pos"]=[]
 
 
-gravity_dir = [0, 0, -1]  # z is up in isaac sim
 
 
 def normalize_quat(q):
@@ -84,113 +81,146 @@ def quat_mul(q1, q2):
 
     return [w, x, y, z]
 
+@hydra.main(config_path="equibot/policies/configs", config_name="franka_base")
+def main(cfg):
+    input_dir = cfg.franka_rope.preprocess.input_dir
+    output_dir = cfg.franka_rope.preprocess.output_dir
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
+    rel=cfg.franka_rope.preprocess.rel
 
-for ep, filename in enumerate(os.listdir(input_dir)):
-    if not filename.endswith(".json"):
-        continue
+    gravity_dir = [0, 0, -1]  # z is up in isaac sim
 
-    file = os.path.join(input_dir, filename)
-
-    data = []
-    with open(file, "r") as f:
-        for line in f:
-            data.append(json.loads(line))
-
-    # to mimic saved npz with keys pc, rgb?, action, eef_pos
-    for i, _fut in enumerate(data[0]["Isaac Sim Data"]):
-        fut = _fut["data"]
-        if i == 0:
-            curr = fut
-            if (
-                curr["Right"]["applied_joint_positions"][-1] < 0.025
-            ):  # 0/-0.3 is closed, ~0.5 is opened
-                gripper_action = 0
-                gripper_pose = 0
-            else:
-                gripper_action = 1
-                gripper_pose = 1
-
+    for ep, filename in enumerate(os.listdir(input_dir)):
+        if not filename.endswith(".json"):
             continue
 
-        gripper_pose = gripper_action
-        franka_joints = np.array(
-            curr["Right"]["Right_joint_positions"]
-        )  # not exposed to the algorithm
-        right_target_world_pos = np.array(
-            curr["Right"]["Right_target_world_position"]
-        )  # as-is
-        right_target_world_rot = np.array(
-            curr["Right"]["Right_target_world_orientation"]
-        )  # need to be convert to rotation matrix with 3rd col pointing downwards
-        rope_pos = np.array(curr["Rope"]["Rope_world_position"])  # as pc
-        rope_rot = np.array(
-            curr["Rope"]["Rope_world_orientation"]
-        )  # cannot be integrated in?
+        file = os.path.join(input_dir, filename)
 
-        if (
-            curr["Right"]["applied_joint_positions"][-1] < 0.025
-        ):  # 0/-0.3 is closed, ~0.05 is opened
-            gripper_action = 0
-        else:
-            gripper_action = 1
+        data = []
+        with open(file, "r") as f:
+            for line in f:
+                data.append(json.loads(line))
 
-        # should be like (3460, 3)
-        pc = np.array(rope_pos)
-        # recording["pc"].append(pc)
-        delta_pos = (
-            np.array(fut["Right"]["Right_target_world_position"])
-            - right_target_world_pos
-        )
-        delta_rot = np.array(
-            quat_mul(
-                normalize_quat(fut["Right"]["Right_target_world_orientation"]),
-                quat_conj(normalize_quat(right_target_world_rot)),
+        # to mimic saved npz with keys pc, rgb?, action, eef_pos
+        for i, _fut in enumerate(data[0]["Isaac Sim Data"]):
+            fut = _fut["data"]
+            if i == 0:
+                curr = fut
+                if (
+                    curr["Right"]["applied_joint_positions"][-1] < 0.025
+                ):  # 0/-0.3 is closed, ~0.5 is opened
+                    gripper_action = 0
+                    gripper_pose = 0
+                else:
+                    gripper_action = 1
+                    gripper_pose = 1
+
+                continue
+
+            gripper_pose = gripper_action
+            franka_joints = np.array(
+                curr["Right"]["Right_joint_positions"]
+            )  # not exposed to the algorithm
+            right_target_world_pos = np.array(
+                curr["Right"]["Right_target_world_position"]
+            )  # as-is
+            right_target_world_rot = np.array(
+                curr["Right"]["Right_target_world_orientation"]
+            )  # need to be convert to rotation matrix with 3rd col pointing downwards
+            rope_pos = np.array(curr["Rope"]["Rope_world_position"])  # as pc
+            rope_rot = np.array(
+                curr["Rope"]["Rope_world_orientation"]
+            )  # cannot be integrated in?
+
+            if (
+                curr["Right"]["applied_joint_positions"][-1] < 0.025
+            ):  # 0/-0.3 is closed, ~0.05 is opened
+                gripper_action = 0
+            else:
+                gripper_action = 1
+
+            # should be like (3460, 3)
+            pc = np.array(rope_pos)
+            if rel:
+                # recording["pc"].append(pc)
+                delta_pos = (
+                    np.array(fut["Right"]["Right_target_world_position"])
+                    - right_target_world_pos
+                )
+                delta_rot = np.array(
+                    quat_mul(
+                        normalize_quat(fut["Right"]["Right_target_world_orientation"]),
+                        quat_conj(normalize_quat(right_target_world_rot)),
+                    )
+                )
+
+                # should be like (2, 7)
+                action = np.array(
+                    [
+                        gripper_pose,
+                        delta_pos[0],
+                        delta_pos[1],
+                        delta_pos[2],
+                        quat2rpy(delta_rot)[0],
+                        quat2rpy(delta_rot)[1],
+                        quat2rpy(delta_rot)[2],
+                    ]
+                )
+            if not rel:
+                # should be like (2, 7)
+                abs_pos=fut["Right"]["Right_target_world_position"]
+                abs_rot=fut["Right"]["Right_target_world_orientation"]
+                action = np.array(
+                    [
+                        gripper_pose,
+                        abs_pos[0],
+                        abs_pos[1],
+                        abs_pos[2],
+                        quat2rpy(abs_rot)[0],
+                        quat2rpy(abs_rot)[1],
+                        quat2rpy(abs_rot)[2],
+                    ]
+                )
+
+            # recording["action"].append(action)
+            #  state/eef_pos needs to be like [eef_pos, dir1, dir2, gravity_dir, gripper_pose]
+            # dir1, dir2: first and third column of end effector’s rotation matrix (orientation)
+            col1, col3 = q2cols(right_target_world_rot)
+            # should be like (2, 13)
+            eef_pos = np.array(
+                (
+                    right_target_world_pos[0],
+                    right_target_world_pos[1],
+                    right_target_world_pos[2],
+                    col1[0],
+                    col1[1],
+                    col1[2],
+                    col3[0],
+                    col3[1],
+                    col3[2],
+                    gravity_dir[0],
+                    gravity_dir[1],
+                    gravity_dir[2],
+                    gripper_pose,
+                )
             )
-        )
+            # recording["eef_pos"].append(eef_pos)
 
-        # should be like (2, 7)
-        action = np.array(
-            [
-                gripper_pose,
-                delta_pos[0],
-                delta_pos[1],
-                delta_pos[2],
-                quat2rpy(delta_rot)[0],
-                quat2rpy(delta_rot)[1],
-                quat2rpy(delta_rot)[2],
-            ]
-        )
-        # recording["action"].append(action)
-        #  state/eef_pos needs to be like [eef_pos, dir1, dir2, gravity_dir, gripper_pose]
-        # dir1, dir2: first and third column of end effector’s rotation matrix (orientation)
-        col1, col3 = q2cols(right_target_world_rot)
-        # should be like (2, 13)
-        eef_pos = np.array(
-            (
-                right_target_world_pos[0],
-                right_target_world_pos[1],
-                right_target_world_pos[2],
-                col1[0],
-                col1[1],
-                col1[2],
-                col3[0],
-                col3[1],
-                col3[2],
-                gravity_dir[0],
-                gravity_dir[1],
-                gravity_dir[2],
-                gripper_pose,
+            gripper_pose = gripper_action
+            curr = fut
+
+            np.savez(
+                # :02d is expected from the dataset py
+                os.path.join(output_dir + rf"\01_ep{ep:06d}_view0_t{i:02d}.npz"),
+                pc=np.array(pc),
+                action=np.array(action[np.newaxis, :]),
+                eef_pos=np.array(eef_pos[np.newaxis, :]),
             )
-        )
-        # recording["eef_pos"].append(eef_pos)
 
-        gripper_pose = gripper_action
-        curr = fut
 
-        np.savez(
-            # :02d is expected from the dataset py
-            os.path.join(output_dir + rf"\01_ep{ep:06d}_view0_t{i:02d}.npz"),
-            pc=np.array(pc),
-            action=np.array(action[np.newaxis, :]),
-            eef_pos=np.array(eef_pos[np.newaxis, :]),
-        )
+
+
+
+if __name__ == "__main__":
+    main()

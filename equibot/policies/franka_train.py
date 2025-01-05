@@ -60,7 +60,7 @@ def main(cfg):
     valid_dataset = get_dataset(cfg, "train", valid=True)
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset,
-        batch_size=256,
+        batch_size=batch_size,
         num_workers=num_workers,
         shuffle=True,
         drop_last=False, # was True
@@ -125,8 +125,8 @@ def main(cfg):
                     obs
                 )
                 diff+=nn.functional.mse_loss(torch.from_numpy(pred_ac),valid_batch["action"])
-                if count >= 10:
-                    break
+                # if count >= 10:
+                #     break
             diff/=count
             wandb.log({"valid_loss":diff},step=global_step)
 

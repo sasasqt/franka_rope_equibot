@@ -65,7 +65,7 @@ class EvalUtils(ControlFlow):
         else:
             extra_repeat=0
             data_logger=cls.data_logger=cls.sample._data_logger
-            data_logger.load(log_path=eval(cls.cfg.from_demo))
+            data_logger.load(log_path=cls.cfg.from_demo)
             demo_length=data_logger.get_num_of_data_frames()
             start_time=cls.start_time=cls.cfg.start_time or int(0.25*demo_length)
 
@@ -278,7 +278,7 @@ class EvalUtils(ControlFlow):
             return
         agent_ac = ac[cls.count% ac_horizon] if len(ac.shape) > 1 else ac    
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
-        update_action(agent_ac,scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper)
+        update_action(agent_ac,scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper,eval(str(cls.cfg.rel).title()))
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
 
     @classmethod
@@ -305,7 +305,7 @@ class EvalUtils(ControlFlow):
         # cls._post_reset(_onDone_async=cls._reset_async)
 
         
-def update_action(agent_ac,target,eef,gripper):
+def update_action(agent_ac,target,eef,gripper,rel):
     # TODO CLIP in TRAIN + INFERENCE
     if agent_ac[0] <0.025:
         gripper.close()
@@ -316,18 +316,24 @@ def update_action(agent_ac,target,eef,gripper):
     target_world_ori=np.array(target.get_world_pose()[1].tolist())
     
     print("old pos: ", target_world_pos)
-    print("delta pos: ",agent_ac[1:1+3])
-    delta_pos=np.array(agent_ac[1:1+3])
+    print("agent pos: ",agent_ac[1:1+3])
+    agent_pos=np.array(agent_ac[1:1+3])
     # delta_pos=np.clip(delta_pos,-0.01,0.01)
     # print("clipped delta pos: ",delta_pos)
 
-    tgt_pos=target_world_pos+delta_pos
+    if rel:
+        tgt_pos=target_world_pos+agent_pos
+    else:
+        tgt_pos=agent_pos
 
 
-    delta_ori=np.array(agent_ac[4:4+3])
+    agent_ori=np.array(agent_ac[4:4+3])
     # delta_ori=np.clip(delta_ori,-0.05,0.05)
 
-    tgt_ori=quat_mul(normalize_quat(np.array(rpy2quat(delta_ori))),normalize_quat(target_world_ori))
+    if rel:
+        tgt_ori=quat_mul(normalize_quat(np.array(rpy2quat(agent_ori))),normalize_quat(target_world_ori))
+    else:
+        tgt_ori=agent_ori
     target.set_world_pose(position=tgt_pos,orientation=None) # tgt_ori
     print("applied pos: ",tgt_pos)
     _gripper_status="CLOSING" if agent_ac[0] <0.025 else "opening"
