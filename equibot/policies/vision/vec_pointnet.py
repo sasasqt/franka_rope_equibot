@@ -23,6 +23,7 @@ class VecPointNet(nn.Module):
         c_dim=128,
         num_layers=4,
         knn=16,
+        num_points=1024,
     ):
         super().__init__()
 
@@ -30,6 +31,7 @@ class VecPointNet(nn.Module):
         self.c_dim = c_dim
         self.num_layers = num_layers
         self.knn = knn
+        self.num_points=num_points
 
         self.pool = meanpool
 
@@ -42,7 +44,7 @@ class VecPointNet(nn.Module):
             self.layers.append(VecLNA(h_dim, h_dim, **vnla_cfg))
             self.global_layers.append(VecLNA(h_dim * 2, h_dim, **vnla_cfg))
         self.conv_out = VecLinear(h_dim * self.num_layers, c_dim, mode="so3")
-
+        self.final_conv=VecLinear(self.num_points, h_dim, mode="so3")
         self.fc_inv = VecLinear(c_dim, 3, mode="so3")
 
     def get_graph_feature(self, x: torch.Tensor, k: int, knn_idx=None, cross=False):
@@ -79,8 +81,8 @@ class VecPointNet(nn.Module):
         x = x.unsqueeze(1)  # [B, 1, 3, N]
 
         x, knn_idx = self.get_graph_feature(x, self.knn, cross=True)
-        x, _ = self.conv_in(x)
-        x = self.pool(x)
+        x, _ = self.conv_in(x) # torch.Size([4096, 8, 3, 35, 8])
+        x = self.pool(x) # torch.Size([4096, 8, 3, 35])
 
         y = x
         feat_list = []
@@ -90,7 +92,10 @@ class VecPointNet(nn.Module):
             y = torch.cat([y, y_global.expand_as(y)], dim=1)
             y, _ = self.global_layers[i](y)
             feat_list.append(y)
-        x = torch.cat(feat_list, dim=1)
-        x, _ = self.conv_out(x)
+        x = torch.cat(feat_list, dim=1) # torch.Size([4096, 32, 3, 35])
 
-        return x.mean(-1), x
+        x, _ = self.conv_out(x) # torch.Size([4096, 8, 3, 35])
+        x_mean=x.mean(-1)
+        x,_=self.final_conv(torch.movedim(x, [1, 3], [3, 1]))
+        x=torch.movedim(x, [1, 3], [3, 1])
+        return x_mean, x

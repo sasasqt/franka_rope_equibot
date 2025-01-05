@@ -14,12 +14,13 @@ def meanpool(x, dim=-1, keepdim=False):
 
 
 class PointNetEncoder(nn.Module):
-    def __init__(self, h_dim=128, c_dim=128, num_layers=4, **kwargs):
+    def __init__(self, num_points,h_dim=128, c_dim=128, num_layers=4, **kwargs):
         super().__init__()
 
         self.h_dim = h_dim
         self.c_dim = c_dim
         self.num_layers = num_layers
+        self.num_points=num_points
 
         self.pool = meanpool
 
@@ -32,6 +33,7 @@ class PointNetEncoder(nn.Module):
             self.layers.append(nn.Conv1d(h_dim, h_dim, kernel_size=1))
             self.global_layers.append(nn.Conv1d(h_dim * 2, h_dim, kernel_size=1))
         self.conv_out = nn.Conv1d(h_dim * self.num_layers, c_dim, kernel_size=1)
+        self.final_conv=nn.Conv1d(self.num_points, h_dim, kernel_size=1)
 
     def forward(self, x, ret_perpoint_feat=False):
 
@@ -44,12 +46,13 @@ class PointNetEncoder(nn.Module):
             y = self.act(self.global_layers[i](y))
             feat_list.append(y)
         x = torch.cat(feat_list, dim=1)
-        x = self.conv_out(x)
-
+        x = self.conv_out(x) # torch.Size([4096, 32, 35])
         x_global = x.max(-1).values
 
+        x=self.final_conv(torch.movedim(x, [1, 2], [2, 1]))
+        x=torch.movedim(x, [1, 2], [2, 1])
         ret = {"global": x_global}
         if ret_perpoint_feat:
-            ret["per_point"] = x.transpose(1, 2)
+            ret["per_point"] = x
 
         return ret

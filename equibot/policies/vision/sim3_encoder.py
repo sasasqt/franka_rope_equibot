@@ -31,6 +31,7 @@ class SIM3Vec4Latent(nn.Module):
         backbone_args,
         mode="so3",
         normalization_method=None,
+        **kwargs
     ):
         super().__init__()
         assert mode == "so3", NotImplementedError("TODO, add se3")

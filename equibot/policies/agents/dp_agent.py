@@ -27,6 +27,7 @@ class DPAgent(object):
         self.device = cfg.device
         self.num_eef = cfg.env.num_eef
         self.dof = cfg.env.dof
+        self.per_point=eval(str(cfg.env.per_point).title())
         self.num_points = cfg.data.dataset.num_points
         self.obs_mode = cfg.model.obs_mode
         self.ac_mode = cfg.model.ac_mode
@@ -34,7 +35,6 @@ class DPAgent(object):
         self.pred_horizon = cfg.model.pred_horizon
         self.ac_horizon = cfg.model.ac_horizon
         self.shuffle_pc = cfg.data.dataset.shuffle_pc
-
         self.pc_normalizer = None
         self.state_normalizer = None
         self.ac_normalizer = None
@@ -164,7 +164,7 @@ class DPAgent(object):
         )
         pc = batch["pc"]
         # rgb = batch["rgb"]
-        state = batch["eef_pos"]
+        state = batch["eef_pos"] # torch.Size([1024, 4, 13])
         gt_action = batch["action"]
 
         if self.state_normalizer is None or self.ac_normalizer is None:
@@ -183,11 +183,17 @@ class DPAgent(object):
             assert self.obs_mode != "rgb"
             flattened_pc = pc.reshape(batch_size * self.obs_horizon, *pc_shape[-2:])
             if self.cfg.model.use_torch_compile:
-                z = self.actor.encoder_handle(flattened_pc.permute(0, 2, 1))["global"]
+                feat_dict=self.actor.encoder_handle(flattened_pc.permute(0, 2, 1),ret_perpoint_feat=self.per_point)
             else:
-                z = self.actor.encoder(flattened_pc.permute(0, 2, 1))["global"]
+                feat_dict=self.actor.encoder(flattened_pc.permute(0, 2, 1),ret_perpoint_feat=self.per_point)
 
-            z = z.reshape(batch_size, self.obs_horizon, -1)
+            z = feat_dict["global"] # torch.Size([4096, 32]) ?
+            z = z.reshape(batch_size, self.obs_horizon, -1) # torch.Size([1024, 4, 32])
+            # print(feat_dict["per_point"].shape,"??") # torch.Size([3180, 35, 32])
+
+            if self.per_point:
+                pass
+                # TODO
 
             # [2024-10-24 09:18:32,608][root][INFO] - torch.Size([1536, 2, 32])
             # [2024-10-24 09:18:32,607][root][INFO] - torch.Size([1536, 2, 26])                                                                                                                                                                                                   | 0/1 [00:00<?, ?it/s]

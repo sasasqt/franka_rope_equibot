@@ -14,6 +14,7 @@ env:
   num_eef: 2
   dof: 7
   eef_dim: 13
+  per_point: True
   vectorize: false
   args:
     num_eef: ${env.num_eef}
@@ -98,6 +99,7 @@ model:
       h_dim: ${model.hidden_dim}
       c_dim: ${model.encoder.c_dim}
       num_layers: 4
+      num_points: ${data.dataset.num_points}
       knn: 8
   obs_mode: ${env.args.obs_mode}
   ac_mode: ${env.args.ac_mode}

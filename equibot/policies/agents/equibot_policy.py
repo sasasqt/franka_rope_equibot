@@ -52,6 +52,7 @@ class EquiBotPolicy(nn.Module):
         self.num_eef = cfg.env.num_eef
         self.eef_dim = cfg.env.eef_dim
         self.dof = cfg.env.dof
+        self.per_point=eval(str(cfg.env.per_point).title())
         if cfg.model.obs_mode == "state":
             self.obs_dim = self.num_eef * (self.eef_dim // 3)
         elif cfg.model.obs_mode == "rgb":
@@ -61,9 +62,13 @@ class EquiBotPolicy(nn.Module):
         self.action_dim = (2 if self.dof > 4 else 1) * self.num_eef
 
         num_scalar_dims = (0 if self.dof == 3 else 1) * self.num_eef
+        if self.per_point:
+            cond_dim=self.obs_dim * self.obs_horizon+self.obs_horizon*cfg.model.encoder.backbone_args.h_dim**2
+        else:
+            cond_dim=self.obs_dim * self.obs_horizon
         self.noise_pred_net = VecConditionalUnet1D(
             input_dim=self.action_dim,
-            cond_dim=self.obs_dim * self.obs_horizon,
+            cond_dim=cond_dim,
             scalar_cond_dim=(0 if self.dof == 3 else self.num_eef * self.obs_horizon),
             scalar_input_dim=num_scalar_dims,
             diffusion_step_embed_dim=self.obs_dim * self.obs_horizon,
@@ -202,7 +207,7 @@ class EquiBotPolicy(nn.Module):
             else:
                 z = z_pos
         else:
-            feat_dict = ema_nets["encoder"](pc, target_norm=self.pc_scale)
+            feat_dict = ema_nets["encoder"](pc,  ret_perpoint_feat=self.per_point, target_norm=self.pc_scale)
             center = (
                 feat_dict["center"].reshape(B, Ho, 1, 3)[:, [-1]].repeat(1, Ho, 1, 1)
             )
@@ -216,6 +221,12 @@ class EquiBotPolicy(nn.Module):
                 z = torch.cat([z, z_pos, z_dir], dim=-2)
             else:
                 z = torch.cat([z, z_pos], dim=-2)
+            if self.per_point:
+                _per_point=feat_dict["per_point_so3"] #  torch.Size([4096, 8, 3, 8])
+                _hidden_dim=_per_point.shape[-1]
+                _per_point=_per_point.reshape(B, Ho, -1, 3) # torch.Size([1024, 4, 64, 3])
+                z = torch.cat([z, _per_point], dim=-2)
+                
         obs_cond_vec, obs_cond_scalar = z.reshape(B, -1, 3), (
             z_scalar.reshape(B, -1) if z_scalar is not None else None
         )

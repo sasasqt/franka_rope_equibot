@@ -87,7 +87,7 @@ class EquiBotAgent(DPAgent):
             else:
                 z = z_pos
         else:
-            feat_dict = self.actor.encoder_handle(pc, target_norm=self.pc_scale)
+            feat_dict = self.actor.encoder_handle(pc, ret_perpoint_feat=self.per_point, target_norm=self.pc_scale)
 
             center = (
                 feat_dict["center"].reshape(B, Ho, 1, 3)[:, [-1]].repeat(1, Ho, 1, 1)
@@ -96,13 +96,20 @@ class EquiBotAgent(DPAgent):
             z_pos, z_dir, z_scalar = self.actor._convert_state_to_vec(state)
             z_pos = self.state_normalizer.normalize(z_pos)
             z_pos = (z_pos - center) / scale
-            z = feat_dict["so3"]
-            z = z.reshape(B, Ho, -1, 3)
+            z = feat_dict["so3"] # torch.Size([4096, 8, 3])
+            z = z.reshape(B, Ho, -1, 3) # torch.Size([1024, 4, 8, 3])
             if self.dof > 4:
-                z = torch.cat([z, z_pos, z_dir], dim=-2)
+                z = torch.cat([z, z_pos, z_dir], dim=-2) # torch.Size([1024, 4, 12, 3])
             else:
                 z = torch.cat([z, z_pos], dim=-2)
-        obs_cond_vec, obs_cond_scalar = z.reshape(B, -1, 3), (
+
+            if self.per_point:
+                _per_point=feat_dict["per_point_so3"] #  torch.Size([4096, 8, 3, 8])
+                _hidden_dim=_per_point.shape[-1]
+                _per_point=_per_point.reshape(B, Ho, -1, 3) # torch.Size([1024, 4, 64, 3])
+                z = torch.cat([z, _per_point], dim=-2)
+
+        obs_cond_vec, obs_cond_scalar = z.reshape(B, -1, 3), ( # torch.Size([1024, 48/304, 3]) torch.Size([1024, 4])
             z_scalar.reshape(B, -1) if z_scalar is not None else None
         )
 
