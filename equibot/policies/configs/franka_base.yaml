@@ -36,7 +36,7 @@ data:
   dataset:
     num_training_steps: ???
     path: null
-    num_points: 35
+    num_points: 35 # should match with _ropeLength
     num_augment: 0
     same_aug_per_sample: true
     aug_keep_original: true
@@ -101,13 +101,14 @@ model:
       num_layers: 4
       num_points: ${data.dataset.num_points}
       knn: 8
+      per_point: ${env.per_point}
   obs_mode: ${env.args.obs_mode}
   ac_mode: ${env.args.ac_mode}
   use_torch_compile: False # was false
 
 training:
   batch_size: 1024 # 15gb # for og dp on rtx a4500 20gb vram 480p dataset, was 32 originally
-  num_epochs: 400
+  num_epochs: 500
   lr: 3e-5
   weight_decay: 1e-6
   num_eval_episodes: 12
@@ -138,7 +139,7 @@ franka_rope:
   _ropeLength: 0.8
   _rope_damping: 0.6
   _rope_stiffness: 0.1
-  from_demo: r"C:\Users\Shadow\project\franka_rope\demos\test_straighten_right\output_data_2024-12-02_15-38-13.json"
+  from_demo: null
   start_time: 350
   manually_close: False
   seed: 42

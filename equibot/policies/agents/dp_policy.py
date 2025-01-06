@@ -46,7 +46,8 @@ class DPPolicy(nn.Module):
                 h_dim=hidden_dim,
                 c_dim=hidden_dim,
                 num_layers=cfg.model.encoder.backbone_args.num_layers,
-                num_points=cfg.data.dataset.num_points
+                num_points=cfg.data.dataset.num_points,
+                per_point=eval(str(cfg.env.per_point).title())
             )
         elif self.obs_mode == "rgb":
             self.encoder = replace_bn_with_gn(get_resnet("resnet18"))

@@ -59,7 +59,7 @@ class EvalUtils(ControlFlow):
         if cls.cfg.from_demo is None:
             extra_repeat=cls.obs_horizon-1
             # await cls._sample._world.play_async()
-            await asyncio.sleep(5)
+            await asyncio.sleep(3) # let the rope settle
             # await cls._sample._world.pause_async()
 
         else:
@@ -89,8 +89,7 @@ class EvalUtils(ControlFlow):
 
         cls.obs_history=[]
         cls.done=False
-        cls.count=-20
-        # await cls._sample._world.play_async()
+        cls.count=max(-20,-cls.start_time) if cls.cfg.from_demo is not None else -1 # see issue 1 and issue 2
         # await cls._sample._on_follow_target_event_async(True)
         # await asyncio.sleep(5)
         # await cls._sample._world.pause_async()
@@ -207,9 +206,10 @@ class EvalUtils(ControlFlow):
         done=cls.done
 
         print(cls.count)
-        # during the initial alignment, the hand/gripper will rotate to match with the orientation of the targert cube
-        if cls.cfg.from_demo is not None and cls.count < 0:
-            data_frame = cls.data_logger.get_data_frame(data_frame_index=cls.start_time+1)
+        # ISSUE 1: need at least 2 dt to populate simulation physics when gripper is holding the rope
+        # ISSUE 2: during the initial alignment, the hand/gripper need to rotate to match the orientation of the taget cube
+        if cls.cfg.from_demo is not None and cls.count < 0 and cls.count>=-2:
+            data_frame = cls.data_logger.get_data_frame(data_frame_index=cls.start_time+1+cls.count)
             for idx,_str in enumerate(["Left","Right"]):  
                 world.scene.get_object(target_name).set_world_pose(
                     position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
@@ -219,6 +219,9 @@ class EvalUtils(ControlFlow):
                     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
                     orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
                 )
+            return
+
+        if cls.count < 0:
             return
         
         # Make obs
@@ -238,7 +241,7 @@ class EvalUtils(ControlFlow):
             # assert isinstance(agent_obs["pc"][0][0], np.ndarray)
             pc=np.array(rope.get_world_pose()[0]), # [np.array(pc) for pc in rope.get_world_pose()[0]],
             # state= eef_pos in saved npz
-            state=np.array([[right_target_world_rot[0],right_target_world_rot[1],right_target_world_rot[2],col1[0],col1[1],col1[2],col3[0],col3[1],col3[2],gravity_dir[0],gravity_dir[1],gravity_dir[2],gripper_pose]])
+            state=np.array([[right_target_world_pos[0],right_target_world_pos[1],right_target_world_pos[2],col1[0],col1[1],col1[2],col3[0],col3[1],col3[2],gravity_dir[0],gravity_dir[1],gravity_dir[2],gripper_pose]])
         )
 
         obs_history.append(obs)
@@ -278,7 +281,7 @@ class EvalUtils(ControlFlow):
             return
         agent_ac = ac[cls.count% ac_horizon] if len(ac.shape) > 1 else ac    
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
-        update_action(agent_ac,scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper,eval(str(cls.cfg.rel).title()))
+        update_action(agent_ac,scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper,eval(str(cls.cfg.rel).title()),cls._sample._eps)
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
 
     @classmethod
@@ -305,7 +308,7 @@ class EvalUtils(ControlFlow):
         # cls._post_reset(_onDone_async=cls._reset_async)
 
         
-def update_action(agent_ac,target,eef,gripper,rel):
+def update_action(agent_ac,target,eef,gripper,rel,eps):
     # TODO CLIP in TRAIN + INFERENCE
     if agent_ac[0] <0.025:
         gripper.close()
@@ -326,6 +329,8 @@ def update_action(agent_ac,target,eef,gripper,rel):
     else:
         tgt_pos=agent_pos
 
+    if tgt_pos[2]<=eps:
+        tgt_pos[2]=eps
 
     agent_ori=np.array(agent_ac[4:4+3])
     # delta_ori=np.clip(delta_ori,-0.05,0.05)
