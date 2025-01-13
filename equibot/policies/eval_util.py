@@ -46,7 +46,6 @@ class EvalUtils(ControlFlow):
             pass
         await super().reset_async()
         await cls._sample._world.play_async()
-        await cls._sample._on_follow_target_event_async(True)
 
         sample=cls.sample
         world=cls.world
@@ -62,13 +61,16 @@ class EvalUtils(ControlFlow):
         if cls.cfg.translation is not None:
         # rotate world first after play(), otherwise the franka will compensate the rotation somehow in their code
         # rotate in simulation not in usd
-            sample._world_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(list(cls.cfg.translation))) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
+            sample._world_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(list(cls.cfg.translation))) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
 
         if cls.cfg.rotation is not None:
-            sample._world_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(list(cls.cfg.rotation)))
+            sample._world_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(list(cls.cfg.rotation)))
 
         if cls.cfg.scale is not None:
             sample._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(cls.cfg.scale)))
+
+
+        await cls._sample._on_follow_target_event_async(True)
 
 
         if cls.cfg.from_demo is None:
@@ -219,6 +221,11 @@ class EvalUtils(ControlFlow):
         reduce_horizon_dim=cls.reduce_horizon_dim
         gravity_dir=cls.gravity_dir
         done=cls.done
+
+        if cls.count>=600:
+            cls._sample._on_save_data_event()
+            asyncio.ensure_future(cls._sample._world.pause_async())
+            # cls.simulation_app.close()
 
         print(cls.count)
         # ISSUE 1: need at least 2 dt to populate simulation physics when gripper is holding the rope

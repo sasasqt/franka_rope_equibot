@@ -133,10 +133,10 @@ wandb:
 franka_rope:
   physics_dt: 1.0/30.0
   rendering_dt: 1.0/30.0
-  _randomize: True
+  _randomize: False
   _randomize_on_reset: False
-  translation: null # [0,0,30] or null
-  rotation: null # [-0.2,-0.2,0] or null
+  translation: null # [-0.5,-0.5,0] or null
+  rotation: null # [0,0,30] or null
   scale: null # [1.1,1.15,1.2]  or null # [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation
   _rope_y_pos: null # null or 0.7
   extra_scenes: null #null #[fixed_cylinder] # list, possible values: fixed_cylinder, visual_line
