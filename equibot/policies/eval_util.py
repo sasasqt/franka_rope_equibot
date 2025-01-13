@@ -9,6 +9,8 @@ from math import sqrt
 import logging
 from functools import partial
 
+from pxr import Gf
+
 # TODO dont block the ui: put the inference code in a new process, and cross processes communication
 # TODO the objective metrics?
 
@@ -55,6 +57,19 @@ class EvalUtils(ControlFlow):
         robot_name=cls.robot_name
         target_name=cls.target_name
         cls.gravity_dir=[0,0,-1]
+
+
+        if cls.cfg.translation is not None:
+        # rotate world first after play(), otherwise the franka will compensate the rotation somehow in their code
+        # rotate in simulation not in usd
+            sample._world_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(list(cls.cfg.translation))) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
+
+        if cls.cfg.rotation is not None:
+            sample._world_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(list(cls.cfg.rotation)))
+
+        if cls.cfg.scale is not None:
+            sample._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(cls.cfg.scale)))
+
 
         if cls.cfg.from_demo is None:
             extra_repeat=cls.obs_horizon-1
@@ -281,7 +296,7 @@ class EvalUtils(ControlFlow):
             return
         agent_ac = ac[cls.count% ac_horizon] if len(ac.shape) > 1 else ac    
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
-        update_action(agent_ac,scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper,eval(str(cls.cfg.rel).title()),cls._sample._eps)
+        update_action(agent_ac,scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper,eval(str(cls.cfg.rel).title()),cls._sample._eps,cls.cfg.update_ori)
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
 
     @classmethod
@@ -308,7 +323,7 @@ class EvalUtils(ControlFlow):
         # cls._post_reset(_onDone_async=cls._reset_async)
 
         
-def update_action(agent_ac,target,eef,gripper,rel,eps):
+def update_action(agent_ac,target,eef,gripper,rel,eps,update_ori=True):
     # TODO CLIP in TRAIN + INFERENCE
     if agent_ac[0] <0.025:
         gripper.close()
@@ -330,6 +345,7 @@ def update_action(agent_ac,target,eef,gripper,rel,eps):
         tgt_pos=agent_pos
 
     if tgt_pos[2]<=eps:
+        print("z pos went below groundplane !!!")
         tgt_pos[2]=eps
 
     agent_ori=np.array(agent_ac[4:4+3])
@@ -339,7 +355,10 @@ def update_action(agent_ac,target,eef,gripper,rel,eps):
         tgt_ori=quat_mul(normalize_quat(np.array(rpy2quat(agent_ori))),normalize_quat(target_world_ori))
     else:
         tgt_ori=agent_ori
-    target.set_world_pose(position=tgt_pos,orientation=None) # tgt_ori
+    
+    if not update_ori:
+        tgt_ori=None
+    target.set_world_pose(position=tgt_pos,orientation=tgt_ori) # tgt_ori
     print("applied pos: ",tgt_pos)
     _gripper_status="CLOSING" if agent_ac[0] <0.025 else "opening"
     print(f"gripper is {_gripper_status}")

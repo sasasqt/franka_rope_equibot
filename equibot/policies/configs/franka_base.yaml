@@ -14,7 +14,7 @@ env:
   num_eef: 2
   dof: 7
   eef_dim: 13
-  per_point: True
+  per_point: False
   vectorize: false
   args:
     num_eef: ${env.num_eef}
@@ -36,7 +36,7 @@ data:
   dataset:
     num_training_steps: ???
     path: null
-    num_points: 35 # should match with _ropeLength
+    num_points: 35 # should match with _ropeLength 0.4:17 0.8: 35 1.0:44?
     num_augment: 0
     same_aug_per_sample: true
     aug_keep_original: true
@@ -84,7 +84,7 @@ data:
 model:
   hidden_dim: 32
   noise_scheduler:
-    _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler
+    _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler # diffusers.schedulers.scheduling_ddpm.DDPMScheduler # diffusers.schedulers.scheduling_ddim.DDIMScheduler
     num_train_timesteps: 100
     beta_schedule: squaredcos_cap_v2
     clip_sample: true
@@ -135,6 +135,10 @@ franka_rope:
   rendering_dt: 1.0/30.0
   _randomize: True
   _randomize_on_reset: False
+  translation: null # [0,0,30] or null
+  rotation: null # [-0.2,-0.2,0] or null
+  scale: null # [1.1,1.15,1.2]  or null # [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation
+  _rope_y_pos: null # null or 0.7
   extra_scenes: null #null #[fixed_cylinder] # list, possible values: fixed_cylinder, visual_line
   _ropeLength: 0.8
   _rope_damping: 0.6
@@ -144,6 +148,7 @@ franka_rope:
   manually_close: False
   seed: 42
   rel: True
+  update_ori: True
   preprocess:
     input_dir: r"C:\Users\Shadow\project\franka_rope\demos\02_train"
     output_dir: r"C:\Users\Shadow\project\franka_data\tmp"
