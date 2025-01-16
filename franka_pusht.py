@@ -154,16 +154,10 @@ class FrankaRope(BaseSample):
 
 
     def _add_target_t_shape(self):
-        from omni.isaac.core.objects import FixedCuboid
+        from omni.isaac.core.objects import VisualCuboid
         from pxr import UsdPhysics
 
         stage=self._world.stage
-        self._target_tshape_str="/World/Extras/TargetTShape"
-        self._target_tshape_xform=_target_tshape_xform =stage.DefinePrim(self._target_tshape_str, 'Xform')
-        usd_target_tshape_xform = UsdGeom.Xform(_target_tshape_xform)
-        usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0,0,0]))
-        usd_target_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
-        usd_target_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
 
         vbar_str=find_unique_string_name(
                     initial_name=f"/World/Extras/TargetTShape/VerticalBar", is_unique_fn=lambda x: not is_prim_path_valid(x)
@@ -173,21 +167,31 @@ class FrankaRope(BaseSample):
                     initial_name=f"/World/Extras/TargetTShape/HorizontalBar", is_unique_fn=lambda x: not is_prim_path_valid(x)
                 )
 
-        self._target_vbar = FixedCuboid(
+        self._target_vbar = VisualCuboid(
             prim_path=vbar_str,
             position=[0.0,0.0,-0.03],
             color=np.array([1.0, 0.0, 0.0]),
             scale=[0.15,0.05,0.05]
         )
 
-        self._target_hbar = FixedCuboid(
+        self._target_hbar = VisualCuboid(
             prim_path=hbar_str,
             position=[0.1,0.0,-0.03],
             color=np.array([1.0, 0.0, 0.0]),
             scale=[0.05,0.15,0.05]
         )
 
-        # IRXR Unity does not support pure visuals for now, the workaround is to disable conlision with ground plane
+        self._target_tshape_str="/World/Extras/TargetTShape"
+        self._target_tshape_xform=_target_tshape_xform =stage.DefinePrim(self._target_tshape_str, 'Xform')
+        usd_target_tshape_xform = UsdGeom.Xform(_target_tshape_xform)
+        # usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0.0,0]))
+        # usd_target_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
+        # usd_target_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
+        usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0.1,0]))
+        usd_target_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,-30]))
+        usd_target_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
+        
+
         # collisionAPI = UsdPhysics.CollisionAPI.Apply(self._target_tshape_xform)
         # collisionAPI.GetCollisionEnabledAttr().Set(False)
 
@@ -276,8 +280,8 @@ class FrankaRope(BaseSample):
         # self._robot_articulation_solver.reset()
 
     async def setup_post_reset(self):
-        rope=self._rope
-        rope.post_reset()
+        # rope=self._rope
+        # rope.post_reset()
         self._align_targets()
         for idx,_str in enumerate(["Left","Right"]):    
             robot=self._robot[_str]
