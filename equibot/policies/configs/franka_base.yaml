@@ -135,6 +135,7 @@ franka_rope:
   rendering_dt: 1.0/30.0
   _randomize: False
   _randomize_on_reset: False
+  test_pc_permutation: False
   translation: null # [-0.5,-0.5,0] or null
   rotation: null # [0,0,30] or null
   scale: null # [1.1,1.15,1.2]  or null # [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation

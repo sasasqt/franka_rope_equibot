@@ -259,9 +259,12 @@ class EvalUtils(ControlFlow):
 
         gripper_state="CLOSED" if gripper_pose==0 else "opened"
         print(f"gripper is {gripper_state}")
+        pc=np.array(rope.get_world_pose()[0]) # [np.array(pc) for pc in rope.get_world_pose()[0]],
+        if eval(str(cls.cfg.test_pc_permutation).title()) is True:
+            pc=pc[::-1]
         obs = dict(
             # assert isinstance(agent_obs["pc"][0][0], np.ndarray)
-            pc=np.array(rope.get_world_pose()[0]), # [np.array(pc) for pc in rope.get_world_pose()[0]],
+            pc=pc,
             # state= eef_pos in saved npz
             state=np.array([[right_target_world_pos[0],right_target_world_pos[1],right_target_world_pos[2],col1[0],col1[1],col1[2],col3[0],col3[1],col3[2],gravity_dir[0],gravity_dir[1],gravity_dir[2],gripper_pose]])
         )
@@ -361,7 +364,7 @@ def update_action(agent_ac,target,eef,gripper,rel,eps,update_ori=True):
     if rel:
         tgt_ori=quat_mul(normalize_quat(np.array(rpy2quat(agent_ori))),normalize_quat(target_world_ori))
     else:
-        tgt_ori=agent_ori
+        tgt_ori=normalize_quat(np.array(rpy2quat(agent_ori)))
     
     if not update_ori:
         tgt_ori=None

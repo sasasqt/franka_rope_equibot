@@ -6,3 +6,7 @@ main.exp
 main.lib
 main.obj
 outputs/*
+.vs/slnx.sqlite
+.vs/VSWorkspaceState.json
+.vs/equibot_for_franka_rope/v17/DocumentLayout.json
+.vs/equibot_for_franka_rope/v17/.wsuo
