@@ -187,8 +187,15 @@ class FrankaRope(BaseSample):
         # usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0.0,0]))
         # usd_target_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
         # usd_target_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
-        usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0.1,0]))
-        usd_target_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,-30]))
+        if self.pusht_pos is None:
+            usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0,0]))
+        else:
+            usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f(self.pusht_pos))
+    
+        if self.pusht_ori is None:
+            usd_target_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
+        else:
+            usd_target_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f(self.pusht_ori))  
         usd_target_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
         
 
@@ -246,10 +253,13 @@ class FrankaRope(BaseSample):
         self._rope_damping=0.6
         self._rope_stiffness=0.1
         self._rope_y_pos=None
-        random.seed(42)
+        self.pusht_pos=None
+        self.pusht_ori=None
+        set_seed(42)
 
         if cfg is not None:
             print(cfg)
+            self._cfg=cfg
             self.physics_dt=eval(cfg.physics_dt)
             self.rendering_dt=eval(cfg.rendering_dt)
             self._randomize=eval(str(cfg._randomize).title())
@@ -260,6 +270,9 @@ class FrankaRope(BaseSample):
             self._rope_damping=float(cfg._rope_damping)
             self._rope_stiffness=float(cfg._rope_stiffness)
             self._rope_y_pos=float(cfg._rope_y_pos) if cfg._rope_y_pos is not None else None
+            
+            self.pusht_pos=list(cfg.pusht_pos)
+            self.pusht_ori=list(cfg.pusht_ori)
             random.seed(int(cfg.seed))
 
         self._init_vars()
@@ -560,10 +573,10 @@ class FrankaRope(BaseSample):
 
     async def _on_replay_recording_event_async(self, data_file,callback_fn=None):
         world=self._world
-        if not self._PhysicsScene.GetPrim().IsActive():
-            self._PhysicsScene.GetPrim().SetActive(True)
-            await world.reset_async()
-            await world.pause_async()
+        # if not self._PhysicsScene.GetPrim().IsActive():
+        #     self._PhysicsScene.GetPrim().SetActive(True)
+        #     await world.reset_async()
+        #     await world.pause_async()
     
         if world.physics_callback_exists("sim_step"):
             world.remove_physics_callback("sim_step")
@@ -571,7 +584,25 @@ class FrankaRope(BaseSample):
             world.remove_physics_callback("replay_recording")
         data_logger= self._data_logger
         data_logger.load(log_path=data_file)
+
         await world.play_async()
+        # disable rigidbodyapi only AFTER play, or visual cubes stay put
+        # TODO BUG?
+        for prim in world.stage.Traverse():
+            if str(prim.GetPath()).startswith("/World/Extras"):
+                # Apply RigidBodyAPI
+                if UsdPhysics.RigidBodyAPI.CanApply(prim) and prim.GetTypeName().lower() in ["cube"]:
+                    RigidBodyAPI=UsdPhysics.RigidBodyAPI.Apply(prim)
+                    RigidBodyAPI.GetRigidBodyEnabledAttr().Set(False)
+        if self._cfg is not None:
+            if self._cfg.translation is not None:
+            # rotate world first after play(), otherwise the franka will compensate the rotation somehow in their code
+            # rotate in simulation not in usd
+                self._world_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(list(self._cfg.translation))) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
+            if self._cfg.rotation is not None:
+                self._world_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(list(self._cfg.rotation)))
+            if self._cfg.scale is not None:
+                self._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(self._cfg.scale)))
         world.add_physics_callback("replay_recording", partial(self._on_replay_t_shape_recording_step,time_offset=world.current_time_step_index))
         if (callback_fn is not None):
             callback_fn()
@@ -736,6 +767,8 @@ class FrankaRope(BaseSample):
                 position=np.array(data_frame.data["T"]["vbar_world_position"]),
                 orientation=np.array(data_frame.data["T"]["vbar_world_orientation"]),
             )
+            if world.current_time_step_index-time_offset<40:
+                print(vbar.get_world_pose()[0])
             hbar.set_world_pose(
                 position=np.array(data_frame.data["T"]["hbar_world_position"]),
                 orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
@@ -743,18 +776,20 @@ class FrankaRope(BaseSample):
             
             
         else:
-            asyncio.ensure_future(world.pause_async())
-            # if not self._PhysicsScene.GetPrim().IsActive():
-            #     self._PhysicsScene.GetPrim().SetActive(True)
-            #     async def _reset_async(world):
-            #         await world.reset_async()
-            #         await world.pause_async()
-            #     asyncio.ensure_future(_reset_async(world))
-            # else:
-            #     asyncio.ensure_future(world.pause_async())
+            pass
+            # TODO find a better to to handle world xform transformation
             # asyncio.ensure_future(world.pause_async())
-            if world.physics_callback_exists("replay_recording"):
-                world.remove_physics_callback("replay_recording")
+            # # if not self._PhysicsScene.GetPrim().IsActive():
+            # #     self._PhysicsScene.GetPrim().SetActive(True)
+            # #     async def _reset_async(world):
+            # #         await world.reset_async()
+            # #         await world.pause_async()
+            # #     asyncio.ensure_future(_reset_async(world))
+            # # else:
+            # #     asyncio.ensure_future(world.pause_async())
+            # # asyncio.ensure_future(world.pause_async())
+            # if world.physics_callback_exists("replay_recording"):
+            #     world.remove_physics_callback("replay_recording")
         return
     
     def _on_replay_rope_recording_step(self, step_size, time_offset=0):
@@ -834,15 +869,6 @@ class FrankaRope(BaseSample):
                 #         "Rope_world_position": rope.get_world_pose()[0], #rope.get_world_position(),
                 #         "Rope_world_orientation": rope.get_world_pose()[1],
                 #     }
-                _dict["T"]={
-                    "vbar_world_position": self._vbar.get_world_pose()[0].tolist(),
-                    "vbar_world_orientation": self._vbar.get_world_pose()[1].tolist(),
-                    "vbar_scale": self._vbar.get_local_scale().tolist(),
-                    "hbar_world_position": self._hbar.get_world_pose()[0].tolist(),
-                    "hbar_world_orientation": self._hbar.get_world_pose()[1].tolist(),
-                    "hbar_scale": self._vbar.get_local_scale().tolist(), 
-                }
-
 
                 dict=_dict["T"]={
                     "vbar_world_position": self._vbar.get_world_pose()[0].tolist(),
@@ -2367,3 +2393,34 @@ class FollowTarget(tasks.FollowTarget):
         franka.set_solver_position_iteration_count(4)
         franka.set_solver_velocity_iteration_count(0)
         return franka
+    
+import torch
+import os
+
+def set_seed(seed, torch_deterministic=False):
+    """set seed across modules"""
+    if seed == -1 and torch_deterministic:
+        seed = 42
+    elif seed == -1:
+        seed = np.random.randint(0, 10000)
+    print("Setting seed: {}".format(seed))
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # wp.rand_init(seed)
+
+    if torch_deterministic:
+        # refer to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        torch.use_deterministic_algorithms(True)
+    else:
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = False
+
+    return seed

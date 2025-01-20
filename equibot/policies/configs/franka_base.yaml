@@ -36,7 +36,7 @@ data:
   dataset:
     num_training_steps: ???
     path: null
-    num_points: 35 # should match with _ropeLength 0.4:17 0.8: 35 1.0:44?
+    num_points: 35 # should match with _ropeLength 0.4:17 0.8: 35 1.0:44? 40:pusht
     num_augment: 0
     same_aug_per_sample: true
     aug_keep_original: true
@@ -135,6 +135,8 @@ franka_rope:
   rendering_dt: 1.0/30.0
   _randomize: False
   _randomize_on_reset: False
+  pusht_pos: [0.1,0,0] # [0,0,0] or [0,0,-30]
+  pusht_ori: [0,0,0] # [0,0,0] or [0,0,-30]
   test_pc_permutation: False
   translation: null # [-0.5,-0.5,0] or null
   rotation: null # [0,0,30] or null
@@ -149,8 +151,11 @@ franka_rope:
   manually_close: False
   seed: 42
   rel: True
+  rpy: False
   update_ori: True
   preprocess:
     input_dir: r"C:\Users\Shadow\project\franka_rope\demos\02_train"
     output_dir: r"C:\Users\Shadow\project\franka_data\tmp"
     rel: ${franka_rope.rel}
+    rpy: ${franka_rope.rpy}
+    

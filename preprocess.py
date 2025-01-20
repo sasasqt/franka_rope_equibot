@@ -4,6 +4,10 @@ import os
 from math import sqrt
 import math
 import hydra
+from isaacsim import SimulationApp
+simulation_app = SimulationApp({"headless": True})
+
+from omni.isaac.utils._isaac_utils import math as mu
 
 
 # len(data) = 1
@@ -23,15 +27,43 @@ import hydra
 # recording["eef_pos"]=[]
 
 
-
+def _l2_norm(q):
+    return sqrt(sum(map(lambda x: float(x)**2, q)))
 
 def normalize_quat(q):
-    norm = sqrt(
-        float(q[0]) ** 2 + float(q[1]) ** 2 + float(q[2]) ** 2 + float(q[3]) ** 2
-    )
+    norm = _l2_norm(q)
     q[0], q[1], q[2], q[3] = q[0] / norm, q[1] / norm, q[2] / norm, q[3] / norm
     return q
 
+def q2aa(q):
+    # Z is UP in isaacsim, but Y is up in dynamic control, physx and unity!
+    q = normalize_quat(q)
+    w = q[0]
+    v = np.array([q[1], q[2], q[3]])
+    angle = 2 * np.arccos(w)
+    sin_half_angle = np.sqrt(1 - w**2)
+    if angle > np.pi:
+        # angle = 2 * np.pi - angle
+        # axis = -v / sin_half_angle
+        # do not introduce discontinuity
+        # [0. 0. 1.] 3.141592653589793
+        # [-0.0029799   0.00955669 -0.99994989] 3.1302814058467474
+ 
+        axis = v / sin_half_angle
+    else:
+        if sin_half_angle < 1e-15:
+            axis = np.array([0.0, 0.0, 1.0])
+        else:
+            axis = v / sin_half_angle
+    return axis, angle
+
+def aa2q(axis, angle):
+    axis = axis / np.linalg.norm(axis)
+    half_angle = angle / 2
+    w = np.cos(half_angle)
+    xyz = axis * np.sin(half_angle)
+    # wxyz
+    return np.array([w, xyz[0], xyz[1], xyz[2]])
 
 def quat2rpy(q):
     q = normalize_quat(q)
@@ -69,7 +101,7 @@ def quat_conj(q):
     q[1], q[2], q[3] = -q[1], -q[2], -q[3]
     return q
 
-
+# this somehow does not match the result computed using mu.mul BUG?
 def quat_mul(q1, q2):
     w1, x1, y1, z1 = q1[0], q1[1], q1[2], q1[3]
     w2, x2, y2, z2 = q2[0], q2[1], q2[2], q2[3]
@@ -149,11 +181,20 @@ def main(cfg):
                     - right_target_world_pos
                 )
                 delta_rot = np.array(
-                    quat_mul(
-                        normalize_quat(fut["Right"]["Right_target_world_orientation"]),
-                        quat_conj(normalize_quat(right_target_world_rot)),
+                    mu.mul(
+                        ((fut["Right"]["Right_target_world_orientation"])),
+                        mu.inverse((right_target_world_rot)), # quat_conj should close to mu.inverse(normalize_quat(right_target_world_rot))
                     )
                 )
+
+                reconstructed=mu.mul(delta_rot,right_target_world_rot) # should close to fut["Right"]["Right_target_world_orientation"]                
+                axis,angle=q2aa(delta_rot) # aa2q(axis,angle) should close to delta_rot
+                axis/=_l2_norm(axis)
+                aa=axis*angle
+                # t_angle=_l2_norm(aa)
+                # t_axis=aa/t_angle
+                # t_ori=mu.mul((np.array(aa2q(t_axis,t_angle))),(right_target_world_rot)) # should close to fut["Right"]["Right_target_world_orientation"]
+
 
                 # should be like (2, 7)
                 action = np.array(
@@ -162,24 +203,27 @@ def main(cfg):
                         delta_pos[0],
                         delta_pos[1],
                         delta_pos[2],
-                        quat2rpy(delta_rot)[0],
-                        quat2rpy(delta_rot)[1],
-                        quat2rpy(delta_rot)[2],
+                        aa[0],
+                        aa[1],
+                        aa[2],
                     ]
                 )
             if not rel:
                 # should be like (2, 7)
                 abs_pos=fut["Right"]["Right_target_world_position"]
                 abs_rot=fut["Right"]["Right_target_world_orientation"]
+                axis,angle=q2aa(abs_rot)
+                axis/=_l2_norm(axis)
+                aa=axis*angle
                 action = np.array(
                     [
                         gripper_pose,
                         abs_pos[0],
                         abs_pos[1],
                         abs_pos[2],
-                        quat2rpy(abs_rot)[0],
-                        quat2rpy(abs_rot)[1],
-                        quat2rpy(abs_rot)[2],
+                        aa[0],
+                        aa[1],
+                        aa[2],
                     ]
                 )
 

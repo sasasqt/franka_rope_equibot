@@ -1,5 +1,5 @@
 import omni.kit.app
-from franka_rope import ControlFlow
+from franka_pusht import ControlFlow
 
 from omni.isaac.core.utils.types import ArticulationAction
 
@@ -11,6 +11,7 @@ import logging
 from functools import partial
 
 from omni.isaac.utils._isaac_utils import math as mu
+from itertools import product
 
 from pxr import Gf
 
@@ -32,7 +33,7 @@ class EvalUtils(ControlFlow):
         cls.world=world=sample._world
         cls.task=sample._task["Right"]
         cls.scene=world.scene
-        cls.rope=sample._rope
+        # cls.rope=sample._rope
         cls.robot=sample._robot["Right"]
         cls.robot_name = sample._robot_name["Right"]
         cls.target_name = sample._target_name["Right"]
@@ -54,7 +55,9 @@ class EvalUtils(ControlFlow):
         world=cls.world
         task=cls.task
         scene=cls.scene
-        rope=cls.rope
+        # rope=cls.rope
+        hbar=sample._hbar
+        vbar=sample._vbar
         robot=cls.robot
         robot_name=cls.robot_name
         target_name=cls.target_name
@@ -72,7 +75,7 @@ class EvalUtils(ControlFlow):
         if cls.cfg.scale is not None:
             sample._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(cls.cfg.scale)))
 
-
+        await asyncio.sleep(2)
         await cls._sample._on_follow_target_event_async(True)
 
 
@@ -134,10 +137,20 @@ class EvalUtils(ControlFlow):
                         orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                     )
 
-                rope.set_world_pose(
-                    positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
-                    orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
+
+                vbar.set_world_pose(
+                    position=np.array(data_frame.data["T"]["vbar_world_position"]),
+                    orientation=np.array(data_frame.data["T"]["vbar_world_orientation"]),
                 )
+                hbar.set_world_pose(
+                    position=np.array(data_frame.data["T"]["hbar_world_position"]),
+                    orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
+                )
+            
+                # rope.set_world_pose(
+                #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
+                #     orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
+                # )
 
 
             right_target_world_pos=scene.get_object(target_name).get_world_pose()[0]
@@ -148,9 +161,43 @@ class EvalUtils(ControlFlow):
                 gripper_pose=0
             else:
                 gripper_pose=1
+
+            _dict={
+                "vbar_world_position": vbar.get_world_pose()[0].tolist(),
+                "vbar_world_orientation": vbar.get_world_pose()[1].tolist(),
+                "vbar_world_scale": vbar.get_world_scale().tolist(),
+                "hbar_world_position": hbar.get_world_pose()[0].tolist(),
+                "hbar_world_orientation": hbar.get_world_pose()[1].tolist(),
+                "hbar_world_scale": hbar.get_world_scale().tolist(), 
+            }
+
+            _pc=[]
+            values = [1, -1]
+            dominant_values=np.linspace(-1, 1, num=5).tolist()
+            combinations = list(product(values, repeat=2))
+            combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
+            for component in ["v","h"]:
+                xyz=np.array(_dict[f"{component}bar_world_scale"])/2
+                dominant_direction=np.argmax(xyz)
+                for i,comb in enumerate(combinations):
+                    tmp=comb[dominant_direction]
+                    comb[dominant_direction]=comb[0]
+                    comb[0]=tmp
+                    center=np.array(_dict[f"{component}bar_world_position"])
+                    p=np.array(comb)*xyz
+                    quat_p=np.concatenate(([0.0],p))
+                    ori=np.array(_dict[f"{component}bar_world_orientation"])
+                    quat_p=mu.mul(mu.inverse(ori),quat_p)
+                    quat_p=mu.mul(quat_p,(ori))
+                    p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
+                    _pc.append((center+p).tolist())
+
+            pc=np.array(_pc)
+            
             obs = dict(
                 # assert isinstance(agent_obs["pc"][0][0], np.ndarray)
-                pc=np.array(rope.get_world_pose()[0]), # [np.array(pc) for pc in rope.get_world_pose()[0]],
+                pc=pc,
+                # pc=np.array(rope.get_world_pose()[0]), # [np.array(pc) for pc in rope.get_world_pose()[0]],
                 # state= eef_pos in saved npz
                 state=np.array([[right_target_world_pos[0],right_target_world_pos[1],right_target_world_pos[2],col1[0],col1[1],col1[2],col3[0],col3[1],col3[2],gravity_dir[0],gravity_dir[1],gravity_dir[2],gripper_pose]])
             ) #pc and eef_pose
@@ -177,10 +224,18 @@ class EvalUtils(ControlFlow):
                     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                 )
 
-                rope.set_world_pose(
-                    positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
-                    orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
-                )
+            vbar.set_world_pose(
+                position=np.array(data_frame.data["T"]["vbar_world_position"]),
+                orientation=np.array(data_frame.data["T"]["vbar_world_orientation"]),
+            )
+            hbar.set_world_pose(
+                position=np.array(data_frame.data["T"]["hbar_world_position"]),
+                orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
+            )
+                # rope.set_world_pose(
+                #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
+                #     orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
+                # )
 
         # data_frame = data_logger.get_data_frame(data_frame_index=start_time-cls.obs_horizon+1+extra_repeat+i)
         # for idx,_str in enumerate(["Left","Right"]):  
@@ -211,12 +266,15 @@ class EvalUtils(ControlFlow):
         world=cls.world
         task=cls.task
         scene=cls.scene
-        rope=cls.rope
+        hbar=sample._hbar
+        vbar=sample._vbar
+        # rope=cls.rope
         robot=cls.robot
         robot_name=cls.robot_name
         target_name=cls.target_name
         obs_history = cls.obs_history
-    
+
+
         agent=cls.agent
         obs_horizon=cls.obs_horizon
         ac_horizon=cls.ac_horizon
@@ -240,10 +298,20 @@ class EvalUtils(ControlFlow):
                     position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                 )
-                rope.set_world_pose(
-                    positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
-                    orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
+
+                vbar.set_world_pose(
+                    position=np.array(data_frame.data["T"]["vbar_world_position"]),
+                    orientation=np.array(data_frame.data["T"]["vbar_world_orientation"]),
                 )
+                hbar.set_world_pose(
+                    position=np.array(data_frame.data["T"]["hbar_world_position"]),
+                    orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
+                )
+
+                # rope.set_world_pose(
+                #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
+                #     orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
+                # )
             return
 
         if cls.count < 0:
@@ -262,11 +330,44 @@ class EvalUtils(ControlFlow):
 
         gripper_state="CLOSED" if gripper_pose==0 else "opened"
         print(f"gripper is {gripper_state}")
-        pc=np.array(rope.get_world_pose()[0]) # [np.array(pc) for pc in rope.get_world_pose()[0]],
+
+
+        _dict={
+            "vbar_world_position": vbar.get_world_pose()[0].tolist(),
+            "vbar_world_orientation": vbar.get_world_pose()[1].tolist(),
+            "vbar_world_scale": vbar.get_world_scale().tolist(),
+            "hbar_world_position": hbar.get_world_pose()[0].tolist(),
+            "hbar_world_orientation": hbar.get_world_pose()[1].tolist(),
+            "hbar_world_scale": hbar.get_world_scale().tolist(), 
+        }
+    
+        _pc=[]
+        values = [1, -1]
+        dominant_values=np.linspace(-1, 1, num=5).tolist()
+        combinations = list(product(values, repeat=2))
+        combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
+        for component in ["v","h"]:
+            xyz=np.array(_dict[f"{component}bar_world_scale"])/2
+            dominant_direction=np.argmax(xyz)
+            for i,comb in enumerate(combinations):
+                tmp=comb[dominant_direction]
+                comb[dominant_direction]=comb[0]
+                comb[0]=tmp
+                center=np.array(_dict[f"{component}bar_world_position"])
+                p=np.array(comb)*xyz
+                quat_p=np.concatenate(([0.0],p))
+                ori=np.array(_dict[f"{component}bar_world_orientation"])
+                quat_p=mu.mul(mu.inverse(ori),quat_p)
+                quat_p=mu.mul(quat_p,(ori))
+                p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
+                _pc.append((center+p).tolist())
+
+        pc=np.array(_pc)
+        # pc=np.array(rope.get_world_pose()[0]) # [np.array(pc) for pc in rope.get_world_pose()[0]],
         if eval(str(cls.cfg.test_pc_permutation).title()) is True:
             pc=pc[::-1]
         obs = dict(
-            # assert isinstance(agent_obs["pc"][0][0], np.ndarray)
+            # assert isinstance(a"gent_obs["pc"][0][0], np.ndarray)
             pc=pc,
             # state= eef_pos in saved npz
             state=np.array([[right_target_world_pos[0],right_target_world_pos[1],right_target_world_pos[2],col1[0],col1[1],col1[2],col3[0],col3[1],col3[2],gravity_dir[0],gravity_dir[1],gravity_dir[2],gripper_pose]])
@@ -366,17 +467,19 @@ def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,update_ori=True):
     angle=_l2_norm(agent_ori)
     axis=agent_ori/angle
     angle*=np.pi
-
     if rel:
         if rpy:
+            agent_ori
+            print(agent_ori)
             if agent_ori[2]<0:
-                agent_ori[2]+=3.14
+                agent_ori[2]+=np.pi
                 agent_ori[2]*=-1
                 
             if agent_ori[2]>0:
-                agent_ori[2]-=3.14
+                agent_ori[2]-=np.pi
                 agent_ori[2]*=-1
-                
+            print(agent_ori)
+            print()
             tgt_ori=mu.mul(normalize_quat(np.array(rpy2quat(agent_ori))),normalize_quat(target_world_ori))
         else:
             tgt_ori=mu.mul(normalize_quat(np.array(aa2q(axis,angle))),normalize_quat(target_world_ori))
@@ -385,8 +488,11 @@ def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,update_ori=True):
             tgt_ori=normalize_quat(np.array(rpy2quat(agent_ori)))
         else:
             tgt_ori=normalize_quat(np.array(aa2q(axis,angle)))
-
     
+    print("agent ori:", agent_ori)
+    print("aa ",axis,angle)
+    print("tgt ori", tgt_ori)
+
     if not update_ori:
         tgt_ori=None
     target.set_world_pose(position=tgt_pos,orientation=tgt_ori) # tgt_ori
@@ -455,7 +561,7 @@ def normalize_quat(q):
     q[0], q[1], q[2], q[3] = q[0] / norm, q[1] / norm, q[2] / norm, q[3] / norm
     return q
 
-def q2aa(q):
+def q2aa( q):
     # Z is UP in isaacsim, but Y is up in dynamic control, physx and unity!
     q = normalize_quat(q)
     w = q[0]
@@ -484,3 +590,4 @@ def aa2q(axis, angle):
     xyz = axis * np.sin(half_angle)
     # wxyz
     return np.array([w, xyz[0], xyz[1], xyz[2]])
+
