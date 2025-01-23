@@ -152,6 +152,8 @@ franka_rope:
   seed: 42
   rel: True
   rpy: False
+  cap: null # delta pos per seconds, depends on fps, # 0.1
+  cup: null # min speed
   update_ori: True
   preprocess:
     input_dir: r"C:\Users\Shadow\project\franka_rope\demos\02_train"

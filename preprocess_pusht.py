@@ -203,6 +203,13 @@ def main(cfg):
                     np.array(fut["Right"]["Right_target_world_position"])
                     - right_target_world_pos
                 )
+                # BAD IDEA
+                # # cap fast movement 1) from human demo, 2) right after stationary
+                # if (_l2_norm(delta_pos)*30.0>=0.03): 
+                #     # print(delta_pos,_l2_norm(delta_pos),"???")
+                #     delta_pos=delta_pos*0.03/30.0/_l2_norm(delta_pos)
+                #     # print(delta_pos,_l2_norm(delta_pos),"???")
+
                 delta_rot = np.array(
                     mu.mul(
                         ((fut["Right"]["Right_target_world_orientation"])),
@@ -316,13 +323,13 @@ def main(cfg):
             gripper_pose = gripper_action
             curr = fut
 
-            # np.savez(
-            #     # :02d is expected from the dataset py
-            #     os.path.join(output_dir + rf"\01_ep{ep:06d}_view0_t{i:02d}.npz"),
-            #     pc=np.array(pc),
-            #     action=np.array(action[np.newaxis, :]),
-            #     eef_pos=np.array(eef_pos[np.newaxis, :]),
-            # )
+            np.savez(
+                # :02d is expected from the dataset py
+                os.path.join(output_dir + rf"\01_ep{ep:06d}_view0_t{i:02d}.npz"),
+                pc=np.array(pc),
+                action=np.array(action[np.newaxis, :]),
+                eef_pos=np.array(eef_pos[np.newaxis, :]),
+            )
 
 
 

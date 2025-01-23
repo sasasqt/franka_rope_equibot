@@ -331,6 +331,7 @@ class FrankaRope(BaseSample):
         self._PhysicsScene=PhysicsScene = world.stage.GetPrimAtPath("/PhysicsScene")
         physxSceneAPI = PhysxSchema.PhysxSceneAPI.Apply(PhysicsScene)
         physxSceneAPI.CreateGpuFoundLostAggregatePairsCapacityAttr().Set(10 * 1024)
+        # physxSceneAPI.CreateEnableEnhancedDeterminismAttr().Set(True)
    
         # tested on amd epyc 7543p w/ 8 threads + a4500 20gb vram: cpu solver is actually faster
         # api from usdrt\scenegraph\usd\physxSchema\physxSceneAPI.h
@@ -767,8 +768,8 @@ class FrankaRope(BaseSample):
                 position=np.array(data_frame.data["T"]["vbar_world_position"]),
                 orientation=np.array(data_frame.data["T"]["vbar_world_orientation"]),
             )
-            if world.current_time_step_index-time_offset<40:
-                print(vbar.get_world_pose()[0])
+            # if world.current_time_step_index-time_offset<40:
+            print(vbar.get_world_pose()[0],world.scene.get_object(target_name).get_world_pose()[0],world.scene.get_object(target_name).get_world_pose()[1],world.current_time_step_index-time_offset)
             hbar.set_world_pose(
                 position=np.array(data_frame.data["T"]["hbar_world_position"]),
                 orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
