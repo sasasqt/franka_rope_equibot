@@ -31,6 +31,7 @@ import wandb
 # singleton
 class EvalUtils(ControlFlow):
     _end=600
+
     @classmethod
     async def _setup_async(cls,callback_fn=None):
         await omni.kit.app.get_app().next_update_async()
@@ -40,6 +41,7 @@ class EvalUtils(ControlFlow):
 
     @classmethod
     def _post_setup(cls):
+        cls._end=int(cls.cfg.max_end) or cls._end
         cls.sample=sample=cls._sample
         cls.world=world=sample._world
         cls.task=sample._task["Right"]
