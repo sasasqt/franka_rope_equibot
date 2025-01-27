@@ -124,11 +124,11 @@ class FrankaRope(BaseSample):
         usd_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
         usd_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
 
-        vbar_str=find_unique_string_name(
+        self._shape_vbar_str=vbar_str=find_unique_string_name(
                     initial_name=f"/World/Extras/TShape/VerticalBar", is_unique_fn=lambda x: not is_prim_path_valid(x)
                 )
 
-        hbar_str=find_unique_string_name(
+        self._shape_hbar_str=hbar_str=find_unique_string_name(
                     initial_name=f"/World/Extras/TShape/HorizontalBar", is_unique_fn=lambda x: not is_prim_path_valid(x)
                 )
         
@@ -213,27 +213,27 @@ class FrankaRope(BaseSample):
         
     # NEW
     def _add_target_t_shape2(self):
-        from omni.isaac.core.objects import VisualCuboid
+        from omni.isaac.core.objects import VisualCuboid, DynamicCuboid
         from pxr import UsdPhysics
 
         stage=self._world.stage
 
-        vbar_str=find_unique_string_name(
+        self._target_vbar_str=vbar_str=find_unique_string_name(
                     initial_name=f"/World/Extras/TargetTShape/VerticalBar", is_unique_fn=lambda x: not is_prim_path_valid(x)
                 )
 
-        hbar_str=find_unique_string_name(
+        self._target_hbar_str=hbar_str=find_unique_string_name(
                     initial_name=f"/World/Extras/TargetTShape/HorizontalBar", is_unique_fn=lambda x: not is_prim_path_valid(x)
                 )
 
-        self._target_vbar = VisualCuboid(
+        self._target_vbar = DynamicCuboid(
             prim_path=vbar_str,
             position=[0.0,0.0,0.01],
             color=np.array([0.0, 0.0, 0.5]),
             scale=[0.15,0.05,0.05]
         )
 
-        self._target_hbar = VisualCuboid(
+        self._target_hbar = DynamicCuboid(
             prim_path=hbar_str,
             position=[0.1,0.0,0.01],
             color=np.array([0.0, 0.0, 0.5]),
@@ -246,10 +246,14 @@ class FrankaRope(BaseSample):
         # usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0.0,0]))
         # usd_target_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
         # usd_target_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
-                
+
+        fixed_joint = UsdPhysics.FixedJoint.Define(stage,_target_tshape_xform.GetPath().AppendChild("fixed_joint"))
+        fixed_joint.CreateBody0Rel().SetTargets([vbar_str])
+        fixed_joint.CreateBody1Rel().SetTargets([hbar_str])
+
         if self._randomize:
-            self.pusht_pos=[random.uniform(0, 0.2),random.uniform(-0, 0.2),0]
-            self.pusht_ori=[0,0,random.uniform(-90, 90)]
+            self.pusht_pos=[random.uniform(0.05, 0.15),random.uniform(-0.15, 0.15),0]
+            self.pusht_ori=[0,0,random.uniform(-70, 70)]
         if self.pusht_pos is None:
             usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0,0]))
         else:
@@ -265,11 +269,43 @@ class FrankaRope(BaseSample):
         # collisionAPI = UsdPhysics.CollisionAPI.Apply(self._target_tshape_xform)
         # collisionAPI.GetCollisionEnabledAttr().Set(False)
 
-        # collisionAPI = UsdPhysics.CollisionAPI.Apply(self._tgt_vbar.prim)
+        # collisionAPI = UsdPhysics.CollisionAPI.Apply(self._target_vbar.prim)
         # collisionAPI.GetCollisionEnabledAttr().Set(False)
 
-        # collisionAPI = UsdPhysics.CollisionAPI.Apply(self._tgt_hbar.prim)
+        # collisionAPI = UsdPhysics.CollisionAPI.Apply(self._target_hbar.prim)
         # collisionAPI.GetCollisionEnabledAttr().Set(False)
+
+
+        
+        self._target_collision_group_path=target_collision_group_path=find_unique_string_name(
+                initial_name="/World/target_collision_group", is_unique_fn=lambda x: not is_prim_path_valid(x)
+            )
+                
+        self._shape_collision_group_path=shape_collision_group_path=find_unique_string_name(
+                initial_name="/World/shape_collision_group", is_unique_fn=lambda x: not is_prim_path_valid(x)
+            )
+       
+        # create collision groups
+        target_collision_group=UsdPhysics.CollisionGroup.Define(stage, target_collision_group_path)
+        shape_collision_group=UsdPhysics.CollisionGroup.Define(stage, shape_collision_group_path)
+
+        _filtered_rel = shape_collision_group.CreateFilteredGroupsRel()
+        _filtered_rel.AddTarget(Sdf.Path(target_collision_group_path))
+
+        _filtered_rel = target_collision_group.CreateFilteredGroupsRel()
+        _filtered_rel.AddTarget(Sdf.Path(shape_collision_group_path))
+
+        collectionAPI = Usd.CollectionAPI.Apply(target_collision_group.GetPrim(), "colliders")
+        collectionAPI.CreateIncludesRel().AddTarget(Sdf.Path(self._target_hbar_str))
+        collectionAPI.CreateIncludesRel().AddTarget(Sdf.Path(self._target_vbar_str))
+        
+        collectionAPI = Usd.CollectionAPI.Apply(shape_collision_group.GetPrim(), "colliders")
+        collectionAPI.CreateIncludesRel().AddTarget(Sdf.Path(self._shape_hbar_str))
+        collectionAPI.CreateIncludesRel().AddTarget(Sdf.Path(self._shape_vbar_str))
+        
+
+
+
         
 
     def _add_sphere(self,pos,prim_path="/sphere"):
@@ -360,8 +396,8 @@ class FrankaRope(BaseSample):
         # rope=self._rope
         # rope.post_reset()
         if self._randomize_on_reset:
-            self.pusht_pos=[random.uniform(0, 0.2),random.uniform(-0, 0.2),0]
-            self.pusht_ori=[0,0,random.uniform(-90, 90)]
+            self.pusht_pos=[random.uniform(0.05, 0.15),random.uniform(-0.15, 0.15),0]
+            self.pusht_ori=[0,0,random.uniform(-70, 70)]
             self._target_tshape_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(self.pusht_pos)) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
             self._target_tshape_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(self.pusht_ori)) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
 
@@ -591,10 +627,15 @@ class FrankaRope(BaseSample):
             robot_path[_str]=scene.get_object(self._robot_name[_str]).prim_path
 
 
+        
+
+
         ground_plane_collision_group_path=find_unique_string_name(
                 initial_name="/World/ground_plane_collision_group", is_unique_fn=lambda x: not is_prim_path_valid(x)
             )
-       
+        
+        target_collision_group_path=self._target_collision_group_path
+                
         frankas_collision_group_path=find_unique_string_name(
                 initial_name="/World/frankas_collision_group", is_unique_fn=lambda x: not is_prim_path_valid(x)
             )
@@ -603,20 +644,20 @@ class FrankaRope(BaseSample):
         # create collision groups
         ground_plane_collision_group = UsdPhysics.CollisionGroup.Define(stage, ground_plane_collision_group_path)
         frankas_collision_group = UsdPhysics.CollisionGroup.Define(stage, frankas_collision_group_path)
-       
+
         # dont allow ground plane collides w/ frankas
         _filtered_rel = ground_plane_collision_group.CreateFilteredGroupsRel()
         _filtered_rel.AddTarget(Sdf.Path(frankas_collision_group_path))
 
-        # dont allow ground plane collides w/ targets
-        _filtered_rel.AddTarget(Sdf.Path(self._target_tshape_str))
+        # # dont allow ground plane collides w/ targets
+        # _filtered_rel.AddTarget(Sdf.Path(self._target_tshape_str))
         
         # ik does not consider usd obstacles
         # dont allow frankas collide w/ self, each other, and ground plane
         _filtered_rel = frankas_collision_group.CreateFilteredGroupsRel()
         _filtered_rel.AddTarget(Sdf.Path(ground_plane_collision_group_path))
         _filtered_rel.AddTarget(Sdf.Path(frankas_collision_group_path))
-
+        _filtered_rel.AddTarget(Sdf.Path(target_collision_group_path))
 
         # add ground plane to the ground plane group
         collectionAPI = Usd.CollectionAPI.Apply(ground_plane_collision_group.GetPrim(), "colliders")
@@ -627,6 +668,9 @@ class FrankaRope(BaseSample):
         collectionAPI = Usd.CollectionAPI.Apply(frankas_collision_group.GetPrim(), "colliders")
         for _str in ["Left","Right"]:
             collectionAPI.CreateIncludesRel().AddTarget(Sdf.Path(robot_path[_str]))
+
+        
+
 
         #rope_group.add_path()
         #non_rope_group.add_path()
@@ -674,7 +718,7 @@ class FrankaRope(BaseSample):
                 self._world_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(list(self._cfg.rotation)))
             if self._cfg.scale is not None:
                 self._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(self._cfg.scale)))
-        world.add_physics_callback("replay_recording", partial(self._on_replay_t_shape_recording_step,time_offset=world.current_time_step_index))
+        world.add_physics_callback("replay_recording", partial(self._on_replay_t_shape_recording_step2,time_offset=world.current_time_step_index))
         if (callback_fn is not None):
             callback_fn()
 
@@ -863,6 +907,75 @@ class FrankaRope(BaseSample):
             #     world.remove_physics_callback("replay_recording")
         return
     
+
+
+    def _on_replay_t_shape_recording_step2(self, step_size, time_offset=0):
+        world=self._world
+        data_logger=self._data_logger
+        vbar=self._vbar
+        hbar=self._hbar
+        target_vbar=self._target_vbar
+        target_hbar=self._target_hbar
+        
+        if world.current_time_step_index-time_offset < data_logger.get_num_of_data_frames():
+            if self._PhysicsScene.GetPrim().IsActive():
+                # disable the PhysicsScene to for fps
+                self._PhysicsScene.GetPrim().SetActive(False)
+            for idx,_str in enumerate(["Left","Right"]):  
+                robot_name = self._robot_name[_str]
+                target_name = self._target_name[_str]
+                data_frame = data_logger.get_data_frame(data_frame_index=world.current_time_step_index-time_offset)
+                if idx == 0:
+                    world.scene.get_object(robot_name).set_joint_positions(
+                        np.array(data_frame.data[_str][f"{_str}_joint_positions"])
+                    )
+                else:
+                    world.scene.get_object(robot_name).apply_action(ArticulationAction(joint_positions=np.array(data_frame.data[_str]["applied_joint_positions"])))
+                
+                world.scene.get_object(target_name).set_world_pose(
+                    position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
+                    orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
+                )
+            vbar.set_world_pose(
+                position=np.array(data_frame.data["T"]["vbar_world_position"]),
+                orientation=np.array(data_frame.data["T"]["vbar_world_orientation"]),
+            )
+            # if world.current_time_step_index-time_offset<40:
+            print(vbar.get_world_pose()[0],world.scene.get_object(target_name).get_world_pose()[0],world.scene.get_object(target_name).get_world_pose()[1],world.current_time_step_index-time_offset)
+            hbar.set_world_pose(
+                position=np.array(data_frame.data["T"]["hbar_world_position"]),
+                orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
+            )
+            
+            target_vbar.set_world_pose(
+                position=np.array(data_frame.data["Target_T"]["vbar_world_position"]),
+                orientation=np.array(data_frame.data["Target_T"]["vbar_world_orientation"]),
+            )
+            target_hbar.set_world_pose(
+                position=np.array(data_frame.data["Target_T"]["hbar_world_position"]),
+                orientation=np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),
+            )
+            
+            
+            
+        else:
+            pass
+            # TODO find a better to to handle world xform transformation
+            # asyncio.ensure_future(world.pause_async())
+            # # if not self._PhysicsScene.GetPrim().IsActive():
+            # #     self._PhysicsScene.GetPrim().SetActive(True)
+            # #     async def _reset_async(world):
+            # #         await world.reset_async()
+            # #         await world.pause_async()
+            # #     asyncio.ensure_future(_reset_async(world))
+            # # else:
+            # #     asyncio.ensure_future(world.pause_async())
+            # # asyncio.ensure_future(world.pause_async())
+            # if world.physics_callback_exists("replay_recording"):
+            #     world.remove_physics_callback("replay_recording")
+        return
+    
+    
     def _on_replay_rope_recording_step(self, step_size, time_offset=0):
         world=self._world
         data_logger=self._data_logger
@@ -1004,12 +1117,12 @@ class FrankaRope(BaseSample):
                         p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
                         pc.append((center+p).tolist())
                         # if i==0: self._add_sphere(center+p,prim_path=f"/tgt{component}sphere{i}")
-                _dict["T"]["Target_pc"]=pc
+                _dict["Target_T"]["Target_pc"]=pc
 
 
                 if extras_fn is not None:
                     _dict["extras"]=extras_fn()
-                _dict["Datetime"]={"now":datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}
+                # _dict["Datetime"]={"now":datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}
                 return _dict
 
             data_logger.add_data_frame_logging_func(frame_logging_func)
