@@ -22,12 +22,15 @@ nest_asyncio.apply()
 
 from omni.isaac.core.utils.extensions import enable_extension
 enable_extension("omni.isaac.examples")
-enable_extension("omni.videoencoding")
-enable_extension("omni.kit.capture.viewport")
+enable_extension("omni.videoencoding") # need to have g_video_encoding_api in this before importing capture
+enable_extension("omni.kit.viewport.utility")
+# enable_extension("omni.kit.renderer.capture") # this capture the entire omniverse kit.exe window
+# enable_extension("omni.kit.capture.viewport") # this caused the timeline to pause after the last frame captured
 from franka_rope import IsaacUIUtils, VRUIUtils
 from omni.isaac.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
 
-from .eval_util import *
+from .eval_util import * # from .eval_push_util import *
+
 
 # IsaacUIUtils.setUp()
 # VRUIUtils.setUp()
@@ -35,6 +38,8 @@ from .eval_util import *
 import hydra
 import os
 from glob import glob
+import omegaconf
+import wandb
 
 async def eval_async(ckpt_paths,agent,cfg):
     for ckpt_path in ckpt_paths:
@@ -59,6 +64,20 @@ def main(cfg):
     # tracer = VizTracer(tracer_entries=99999999,output_file="my_trace.json")
     # tracer.start()
     # TODO BUG Windows fatal exception: access violation
+
+    if cfg.use_wandb:
+        wandb_config = omegaconf.OmegaConf.to_container(
+            cfg, resolve=True, throw_on_missing=False
+        )
+        wandb.init(
+            entity=cfg.wandb.entity,
+            project=cfg.wandb.project,
+            tags=["eval"],
+            name=cfg.prefix,
+            settings=wandb.Settings(code_dir="."),
+            config=wandb_config,
+        )
+    
     agent = get_agent(cfg.agent.agent_name)(cfg)
     # tracer.stop()
     # tracer.save()

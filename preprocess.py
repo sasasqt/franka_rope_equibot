@@ -88,6 +88,30 @@ def quat2rpy(q):
 
     return roll, pitch, yaw
 
+def rpy2quat(rpy):
+    # return euler_angles_to_quat(rpy)
+    roll, pitch, yaw=rpy[0],rpy[1],rpy[2]
+
+    # Compute half angles
+    half_roll = roll / 2.0
+    half_pitch = pitch / 2.0
+    half_yaw = yaw / 2.0
+
+    # Compute trigonometric terms
+    cr = math.cos(half_roll)
+    sr = math.sin(half_roll)
+    cp = math.cos(half_pitch)
+    sp = math.sin(half_pitch)
+    cy = math.cos(half_yaw)
+    sy = math.sin(half_yaw)
+
+    # Compute quaternion components
+    w = cr * cp * cy + sr * sp * sy
+    x = sr * cp * cy - cr * sp * sy
+    y = cr * sp * cy + sr * cp * sy
+    z = cr * cp * sy - sr * sp * cy
+
+    return [w, x, y, z]
 
 def q2cols(q):
     q = normalize_quat(q)
@@ -119,7 +143,8 @@ def main(cfg):
     output_dir = cfg.franka_rope.preprocess.output_dir
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
-    rel=cfg.franka_rope.preprocess.rel
+    rel=eval(str(cfg.franka_rope.preprocess.rel).title())
+    rpy=eval(str(cfg.franka_rope.preprocess.rpy).title())
 
     gravity_dir = [0, 0, -1]  # z is up in isaac sim
 
@@ -160,10 +185,13 @@ def main(cfg):
             right_target_world_rot = np.array(
                 curr["Right"]["Right_target_world_orientation"]
             )  # need to be convert to rotation matrix with 3rd col pointing downwards
-            rope_pos = np.array(curr["Rope"]["Rope_world_position"])  # as pc
-            rope_rot = np.array(
-                curr["Rope"]["Rope_world_orientation"]
-            )  # cannot be integrated in?
+
+            t_pc = np.array(curr["T"]["pc"])  # as pc
+            # TODO IMPL
+            # rope_pos = np.array(curr["Rope"]["Rope_world_position"])  # as pc
+            # rope_rot = np.array(
+            #     curr["Rope"]["Rope_world_orientation"]
+            # )  # cannot be integrated in?
 
             if (
                 curr["Right"]["applied_joint_positions"][-1] < 0.025
@@ -173,13 +201,21 @@ def main(cfg):
                 gripper_action = 1
 
             # should be like (3460, 3)
-            pc = np.array(rope_pos)
+            pc = np.array(t_pc)
+            # pc = np.array(rope_pos) # TODO IMPL
             if rel:
                 # recording["pc"].append(pc)
                 delta_pos = (
                     np.array(fut["Right"]["Right_target_world_position"])
                     - right_target_world_pos
                 )
+                # BAD IDEA
+                # # cap fast movement 1) from human demo, 2) right after stationary
+                # if (_l2_norm(delta_pos)*30.0>=0.03): 
+                #     # print(delta_pos,_l2_norm(delta_pos),"???")
+                #     delta_pos=delta_pos*0.03/30.0/_l2_norm(delta_pos)
+                #     # print(delta_pos,_l2_norm(delta_pos),"???")
+
                 delta_rot = np.array(
                     mu.mul(
                         ((fut["Right"]["Right_target_world_orientation"])),
@@ -187,45 +223,85 @@ def main(cfg):
                     )
                 )
 
-                reconstructed=mu.mul(delta_rot,right_target_world_rot) # should close to fut["Right"]["Right_target_world_orientation"]                
-                axis,angle=q2aa(delta_rot) # aa2q(axis,angle) should close to delta_rot
-                axis/=_l2_norm(axis)
-                aa=axis*angle
-                # t_angle=_l2_norm(aa)
-                # t_axis=aa/t_angle
-                # t_ori=mu.mul((np.array(aa2q(t_axis,t_angle))),(right_target_world_rot)) # should close to fut["Right"]["Right_target_world_orientation"]
+                if rpy:
+                    ori=list(quat2rpy(delta_rot)) # [0.00042632472221359693, -0.002514371491837601, -3.139069198502559]
+                    # handle discontinuity induced by mu.mul
+                    if ori[2]<-2:
+                        ori[2]+=np.pi
+                        ori[2]*=-1
+                        
+                    if ori[2]>2:
+                        ori[2]-=np.pi
+                        ori[2]*=-1
+                    # print(ori)
+                    # print()
 
+                    action = np.array(
+                        [
+                            gripper_pose,
+                            delta_pos[0],
+                            delta_pos[1],
+                            delta_pos[2],
+                            ori[0], # rpy2quat(quat2rpy(delta_rot)) should be close to delta_rot
+                            ori[1],
+                            ori[2],
+                        ]
+                    )
+                else:
+                    reconstructed=mu.mul(delta_rot,right_target_world_rot) # should close to fut["Right"]["Right_target_world_orientation"]                
+                    axis,angle=q2aa(delta_rot) # aa2q(axis,angle) should close to delta_rot, angle ~ 3.1x
+                    angle/=np.pi
+                    axis/=_l2_norm(axis)
+                    aa=axis*angle
+                    # t_angle=_l2_norm(aa)
+                    # t_axis=aa/t_angle
+                    # t_ori=mu.mul((np.array(aa2q(t_axis,t_angle))),(right_target_world_rot)) # should close to fut["Right"]["Right_target_world_orientation"]
 
-                # should be like (2, 7)
-                action = np.array(
-                    [
-                        gripper_pose,
-                        delta_pos[0],
-                        delta_pos[1],
-                        delta_pos[2],
-                        aa[0],
-                        aa[1],
-                        aa[2],
-                    ]
-                )
+                    # should be like (2, 7)
+                    action = np.array(
+                        [
+                            gripper_pose,
+                            delta_pos[0],
+                            delta_pos[1],
+                            delta_pos[2],
+                            aa[0],
+                            aa[1],
+                            aa[2],
+                        ]
+                    )
             if not rel:
                 # should be like (2, 7)
                 abs_pos=fut["Right"]["Right_target_world_position"]
                 abs_rot=fut["Right"]["Right_target_world_orientation"]
-                axis,angle=q2aa(abs_rot)
-                axis/=_l2_norm(axis)
-                aa=axis*angle
-                action = np.array(
-                    [
-                        gripper_pose,
-                        abs_pos[0],
-                        abs_pos[1],
-                        abs_pos[2],
-                        aa[0],
-                        aa[1],
-                        aa[2],
-                    ]
-                )
+
+                if rpy:
+                    action = np.array(
+                        [
+                            gripper_pose,
+                            abs_pos[0],
+                            abs_pos[1],
+                            abs_pos[2],
+                            abs_rot[0], # rpy2quat(quat2rpy(abs_rot)) should be close to abs_rot
+                            abs_rot[1],
+                            abs_rot[2],
+                        ]
+                    )
+                else:         
+                    axis,angle=q2aa(abs_rot) # angle ~3.1x
+                    angle/=np.pi
+                    axis/=_l2_norm(axis)
+                    aa=axis*angle
+                    action = np.array(
+                        [
+                            gripper_pose,
+                            abs_pos[0],
+                            abs_pos[1],
+                            abs_pos[2],
+                            aa[0],
+                            aa[1],
+                            aa[2],
+                        ]
+                    )
 
             # recording["action"].append(action)
             #  state/eef_pos needs to be like [eef_pos, dir1, dir2, gravity_dir, gripper_pose]

@@ -140,6 +140,29 @@ def quat_mul(q1, q2):
 
 @hydra.main(config_path="equibot/policies/configs", config_name="franka_base")
 def main(cfg):
+
+    # NEW
+    tgt_pc=np.array([[0.15260505303740501, 0.03901616483926773, -6.50063157081604e-07],
+        [0.17697889357805252, 0.08267295360565186, -6.50063157081604e-07], 
+        [0.11986245773732662, 0.057296548038721085, -6.50063157081604e-07], 
+        [0.14423630386590958, 0.10095333773642778, -6.50063157081604e-07], 
+        [0.08711986057460308, 0.07557693310081959, -6.50063157081604e-07],
+        [0.11149370949715376, 0.11923372745513916, -6.50063157081604e-07], 
+        [0.05437726527452469, 0.09385731909424067, -6.50063157081604e-07], 
+        [0.07875111326575279, 0.1375141143798828, -6.50063157081604e-07],
+        [0.021634675562381744, 0.11213770695030689, -6.50063157081604e-07], 
+        [0.04600851610302925, 0.15579449757933617, -6.48200511932373e-07], 
+        [0.20179031416773796, 0.1261659488081932, 1.9371509552001953e-07], 
+        [0.24535439535975456, 0.10162677988409996, 1.9371509552001953e-07], 
+        [0.18338593607768416, 0.09349288791418076, 1.9371509552001953e-07],
+        [0.2269500158727169, 0.06895371899008751, 1.9371509552001953e-07], 
+        [0.16498155891895294, 0.060819825157523155, 1.9371509552001953e-07], 
+        [0.20854564011096954, 0.03628065716475248, 1.955777406692505e-07], 
+        [0.14657718315720558, 0.028146762400865555, 1.9371509552001953e-07],
+        [0.19014126295223832, 0.0036075934767723083, 1.955777406692505e-07],
+        [0.12817280367016792, -0.004526302218437195, 1.955777406692505e-07], 
+        [0.17173688486218452, -0.02906547486782074, 1.955777406692505e-07]])
+    
     input_dir = cfg.franka_rope.preprocess.input_dir
     output_dir = cfg.franka_rope.preprocess.output_dir
     if not os.path.exists(output_dir):
@@ -148,7 +171,6 @@ def main(cfg):
     rpy=eval(str(cfg.franka_rope.preprocess.rpy).title())
 
     gravity_dir = [0, 0, -1]  # z is up in isaac sim
-
     for ep, filename in enumerate(os.listdir(input_dir)):
         if not filename.endswith(".json"):
             continue
@@ -159,9 +181,10 @@ def main(cfg):
         with open(file, "r") as f:
             for line in f:
                 data.append(json.loads(line))
-
         # to mimic saved npz with keys pc, rgb?, action, eef_pos
         for i, _fut in enumerate(data[0]["Isaac Sim Data"]):
+            if not i % 3 == 0:
+                continue
             fut = _fut["data"]
             if i == 0:
                 curr = fut
@@ -197,6 +220,9 @@ def main(cfg):
 
             # should be like (3460, 3)
             pc = np.array(t_pc)
+            # NEW
+            pc=np.concatenate((pc,tgt_pc),axis=0)
+
             if rel:
                 # recording["pc"].append(pc)
                 delta_pos = (
@@ -322,10 +348,10 @@ def main(cfg):
 
             gripper_pose = gripper_action
             curr = fut
-
+            _i=i//3
             np.savez(
                 # :02d is expected from the dataset py
-                os.path.join(output_dir + rf"\01_ep{ep:06d}_view0_t{i:02d}.npz"),
+                os.path.join(output_dir + rf"\01_ep{ep:06d}_view0_t{_i:02d}.npz"),
                 pc=np.array(pc),
                 action=np.array(action[np.newaxis, :]),
                 eef_pos=np.array(eef_pos[np.newaxis, :]),

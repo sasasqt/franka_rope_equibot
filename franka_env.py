@@ -34,8 +34,8 @@ from glob import glob
 
 @hydra.main(config_path="equibot/policies/configs", config_name="franka_base")
 def main(cfg):
-    IsaacUIUtils.setUp(cfg.franka_rope)
-    # VRUIUtils.setUp()
+    # IsaacUIUtils.setUp(cfg.franka_rope)
+    VRUIUtils.setUp()
     while simulation_app.is_running():
         simulation_app.update()
     simulation_app.close()

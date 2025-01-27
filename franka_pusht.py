@@ -169,14 +169,14 @@ class FrankaRope(BaseSample):
 
         self._target_vbar = VisualCuboid(
             prim_path=vbar_str,
-            position=[0.0,0.0,-0.03],
+            position=[0.0,0.0,0.01],
             color=np.array([1.0, 0.0, 0.0]),
             scale=[0.15,0.05,0.05]
         )
 
-        self._target_hbar = VisualCuboid(
+        self._hbar = VisualCuboid(
             prim_path=hbar_str,
-            position=[0.1,0.0,-0.03],
+            position=[0.1,0.0,0.01],
             color=np.array([1.0, 0.0, 0.0]),
             scale=[0.05,0.15,0.05]
         )
@@ -187,6 +187,7 @@ class FrankaRope(BaseSample):
         # usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0.0,0]))
         # usd_target_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
         # usd_target_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
+
         if self.pusht_pos is None:
             usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0,0]))
         else:
@@ -208,6 +209,69 @@ class FrankaRope(BaseSample):
         # collisionAPI = UsdPhysics.CollisionAPI.Apply(self._tgt_hbar.prim)
         # collisionAPI.GetCollisionEnabledAttr().Set(False)
         
+
+        
+    # NEW
+    def _add_target_t_shape2(self):
+        from omni.isaac.core.objects import VisualCuboid
+        from pxr import UsdPhysics
+
+        stage=self._world.stage
+
+        vbar_str=find_unique_string_name(
+                    initial_name=f"/World/Extras/TargetTShape/VerticalBar", is_unique_fn=lambda x: not is_prim_path_valid(x)
+                )
+
+        hbar_str=find_unique_string_name(
+                    initial_name=f"/World/Extras/TargetTShape/HorizontalBar", is_unique_fn=lambda x: not is_prim_path_valid(x)
+                )
+
+        self._target_vbar = VisualCuboid(
+            prim_path=vbar_str,
+            position=[0.0,0.0,0.01],
+            color=np.array([0.0, 0.0, 0.5]),
+            scale=[0.15,0.05,0.05]
+        )
+
+        self._target_hbar = VisualCuboid(
+            prim_path=hbar_str,
+            position=[0.1,0.0,0.01],
+            color=np.array([0.0, 0.0, 0.5]),
+            scale=[0.05,0.15,0.05]
+        )
+
+        self._target_tshape_str="/World/Extras/TargetTShape"
+        self._target_tshape_xform=_target_tshape_xform =stage.DefinePrim(self._target_tshape_str, 'Xform')
+        usd_target_tshape_xform = UsdGeom.Xform(_target_tshape_xform)
+        # usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0.0,0]))
+        # usd_target_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
+        # usd_target_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
+                
+        if self._randomize:
+            self.pusht_pos=[random.uniform(0, 0.2),random.uniform(-0, 0.2),0]
+            self.pusht_ori=[0,0,random.uniform(-90, 90)]
+        if self.pusht_pos is None:
+            usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0,0]))
+        else:
+            usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f(self.pusht_pos))
+    
+        if self.pusht_ori is None:
+            usd_target_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
+        else:
+            usd_target_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f(self.pusht_ori))  
+        usd_target_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
+        
+
+        # collisionAPI = UsdPhysics.CollisionAPI.Apply(self._target_tshape_xform)
+        # collisionAPI.GetCollisionEnabledAttr().Set(False)
+
+        # collisionAPI = UsdPhysics.CollisionAPI.Apply(self._tgt_vbar.prim)
+        # collisionAPI.GetCollisionEnabledAttr().Set(False)
+
+        # collisionAPI = UsdPhysics.CollisionAPI.Apply(self._tgt_hbar.prim)
+        # collisionAPI.GetCollisionEnabledAttr().Set(False)
+        
+
     def _add_sphere(self,pos,prim_path="/sphere"):
         from omni.isaac.core.objects import VisualSphere
         sphere=VisualSphere(
@@ -295,6 +359,12 @@ class FrankaRope(BaseSample):
     async def setup_post_reset(self):
         # rope=self._rope
         # rope.post_reset()
+        if self._randomize_on_reset:
+            self.pusht_pos=[random.uniform(0, 0.2),random.uniform(-0, 0.2),0]
+            self.pusht_ori=[0,0,random.uniform(-90, 90)]
+            self._target_tshape_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(self.pusht_pos)) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
+            self._target_tshape_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(self.pusht_ori)) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
+
         self._align_targets()
         for idx,_str in enumerate(["Left","Right"]):    
             robot=self._robot[_str]
@@ -396,7 +466,7 @@ class FrankaRope(BaseSample):
         # rope.createRope()
 
         self._add_t_shape()
-        self._add_target_t_shape()
+        self._add_target_t_shape2()
         if self.extra_scenes is not None:
             for extra in self.extra_scenes:
                 self.extras[extra](self)
@@ -900,8 +970,42 @@ class FrankaRope(BaseSample):
                         quat_p=mu.mul(quat_p,(ori))
                         p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
                         pc.append((center+p).tolist())
-                        # self._add_sphere(center+p,prim_path=f"/{component}sphere{i}")
+                        # if i==0: self._add_sphere(center+p,prim_path=f"/{component}sphere{i}")
                 _dict["T"]["pc"]=pc
+
+
+                dict=_dict["Target_T"]={
+                    "vbar_world_position": self._target_vbar.get_world_pose()[0].tolist(),
+                    "vbar_world_orientation": self._target_vbar.get_world_pose()[1].tolist(),
+                    "vbar_world_scale": self._target_vbar.get_world_scale().tolist(),
+                    "hbar_world_position": self._target_hbar.get_world_pose()[0].tolist(),
+                    "hbar_world_orientation": self._target_hbar.get_world_pose()[1].tolist(),
+                    "hbar_world_scale": self._target_hbar.get_world_scale().tolist(), 
+                }
+                pc=[]
+                from itertools import product
+                values = [1, -1]
+                dominant_values=np.linspace(-1, 1, num=5).tolist()
+                combinations = list(product(values, repeat=2))
+                combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
+                for component in ["v","h"]:
+                    xyz=np.array(dict[f"{component}bar_world_scale"])/2
+                    dominant_direction=np.argmax(xyz)
+                    for i,comb in enumerate(combinations):
+                        tmp=comb[dominant_direction]
+                        comb[dominant_direction]=comb[0]
+                        comb[0]=tmp
+                        center=np.array(dict[f"{component}bar_world_position"])
+                        p=np.array(comb)*xyz
+                        quat_p=np.concatenate(([0.0],p))
+                        ori=np.array(dict[f"{component}bar_world_orientation"])
+                        quat_p=mu.mul(mu.inverse(ori),quat_p)
+                        quat_p=mu.mul(quat_p,(ori))
+                        p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
+                        pc.append((center+p).tolist())
+                        # if i==0: self._add_sphere(center+p,prim_path=f"/tgt{component}sphere{i}")
+                _dict["T"]["Target_pc"]=pc
+
 
                 if extras_fn is not None:
                     _dict["extras"]=extras_fn()
