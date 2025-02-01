@@ -260,8 +260,10 @@ class EvalUtils(ControlFlow):
                     tgt_pc.append((center+p).tolist())
 
             tgt_pc=np.array(tgt_pc)
-            pc=np.concatenate((pc,tgt_pc),axis=0)
- 
+            if eval(str(cls.cfg.flow).title()):
+                pc=np.concatenate((pc,tgt_pc-pc),axis=1) # [ 1.57756746e-01  9.57879238e-03  5.00003956e-02 -7.45579600e-04 -6.01215288e-04 -4.09781933e-07]
+            else:
+                pc=np.concatenate((pc,tgt_pc),axis=0) 
             obs = dict(
                 # assert isinstance(agent_obs["pc"][0][0], np.ndarray)
                 pc=pc,
@@ -585,8 +587,10 @@ class EvalUtils(ControlFlow):
                 tgt_pc.append((center+p).tolist())
                 # cls._sample._add_sphere(center+p,prim_path=f"/tgt{component}sphere{i}")
         tgt_pc=np.array(tgt_pc)
-        pc=np.concatenate((pc,tgt_pc),axis=0)
-    
+        if eval(str(cls.cfg.flow).title()):
+            pc=np.concatenate((pc,tgt_pc-pc),axis=1) # [ 1.57756746e-01  9.57879238e-03  5.00003956e-02 -7.45579600e-04 -6.01215288e-04 -4.09781933e-07]
+        else:
+            pc=np.concatenate((pc,tgt_pc),axis=0)     
         # pc=np.array(rope.get_world_pose()[0]) # [np.array(pc) for pc in rope.get_world_pose()[0]],
         if eval(str(cls.cfg.test_pc_permutation).title()) is True:
             pc=pc[::-1]
