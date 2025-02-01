@@ -30,6 +30,7 @@ class EquiBotPolicy(nn.Module):
         self.ac_mode = cfg.model.ac_mode
         self.use_torch_compile = cfg.model.use_torch_compile
         self.device = device
+        self.flow_scale=1.0
 
         # |o|o|                             observations: 2
         # | |a|a|a|a|a|a|a|a|               actions executed: 8
@@ -53,6 +54,7 @@ class EquiBotPolicy(nn.Module):
         self.eef_dim = cfg.env.eef_dim
         self.dof = cfg.env.dof
         self.per_point=eval(str(cfg.env.per_point).title())
+        self.flow=eval(str(cfg.franka_rope.flow).title())
         if cfg.model.obs_mode == "state":
             self.obs_dim = self.num_eef * (self.eef_dim // 3)
         elif cfg.model.obs_mode == "rgb":
@@ -190,9 +192,17 @@ class EquiBotPolicy(nn.Module):
         pc = obs["pc"]
         state = obs["state"]
 
-        pc = self.pc_normalizer.normalize(pc)
-
         pc_shape = pc.shape
+
+        if not self.flow:
+            pc = self.pc_normalizer.normalize(pc)
+        else:
+            _pc=self.pc_normalizer.normalize(pc.view(-1, 6)[:,::2])
+            _flow=self.flow_normalizer.normalize(pc.view(-1, 6)[:,1::2])
+            pc=torch.cat((_pc, _flow), dim=-1) #  torch.Size([81920, 6])
+
+            pc=pc.reshape(pc_shape) # torch.Size([1024, 2, 40, 6])
+            
         batch_size = B = pc.shape[0]
         Ho = self.obs_horizon
         Hp = self.pred_horizon
@@ -207,7 +217,9 @@ class EquiBotPolicy(nn.Module):
             else:
                 z = z_pos
         else:
-            feat_dict = ema_nets["encoder"](pc,  ret_perpoint_feat=self.per_point, target_norm=self.pc_scale)
+            # print(pc.shape,"????")
+            feat_dict = ema_nets["encoder"](pc,  ret_perpoint_feat=self.per_point, flow=self.flow, target_norm=self.pc_scale, flow_norm=self.flow_scale)
+            # print(feat_dict)
             center = (
                 feat_dict["center"].reshape(B, Ho, 1, 3)[:, [-1]].repeat(1, Ho, 1, 1)
             )

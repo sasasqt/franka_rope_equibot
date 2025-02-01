@@ -115,7 +115,7 @@ def main(cfg):
 
             diff=0.0
             count=0
-            
+
             for valid_batch in tqdm(valid_loader, leave=False, desc="validations"):
                 count+=1
                 obs = dict(

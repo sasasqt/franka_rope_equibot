@@ -227,6 +227,39 @@ class EvalUtils(ControlFlow):
                 [0.19014126295223832, 0.0036075934767723083, 1.955777406692505e-07],
                 [0.12817280367016792, -0.004526302218437195, 1.955777406692505e-07], 
                 [0.17173688486218452, -0.02906547486782074, 1.955777406692505e-07]])
+            
+
+            _dict={
+                "vbar_world_position": cls._sample._target_vbar.get_world_pose()[0].tolist(),
+                "vbar_world_orientation": cls._sample._target_vbar.get_world_pose()[1].tolist(),
+                "vbar_world_scale": cls._sample._target_vbar.get_world_scale().tolist(),
+                "hbar_world_position": cls._sample._target_hbar.get_world_pose()[0].tolist(),
+                "hbar_world_orientation": cls._sample._target_hbar.get_world_pose()[1].tolist(),
+                "hbar_world_scale": cls._sample._target_hbar.get_world_scale().tolist(), 
+            }
+            tgt_pc=[]
+
+            values = [1, -1]
+            dominant_values=np.linspace(-1, 1, num=5).tolist()
+            combinations = list(product(values, repeat=2))
+            combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
+            for component in ["v","h"]:
+                xyz=np.array(_dict[f"{component}bar_world_scale"])/2
+                dominant_direction=np.argmax(xyz)
+                for i,comb in enumerate(combinations):
+                    tmp=comb[dominant_direction]
+                    comb[dominant_direction]=comb[0]
+                    comb[0]=tmp
+                    center=np.array(_dict[f"{component}bar_world_position"])
+                    p=np.array(comb)*xyz
+                    quat_p=np.concatenate(([0.0],p))
+                    ori=np.array(_dict[f"{component}bar_world_orientation"])
+                    quat_p=mu.mul(mu.inverse(ori),quat_p)
+                    quat_p=mu.mul(quat_p,(ori))
+                    p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
+                    tgt_pc.append((center+p).tolist())
+
+            tgt_pc=np.array(tgt_pc)
             pc=np.concatenate((pc,tgt_pc),axis=0)
  
             obs = dict(
@@ -519,6 +552,39 @@ class EvalUtils(ControlFlow):
             [0.19014126295223832, 0.0036075934767723083, 1.955777406692505e-07],
             [0.12817280367016792, -0.004526302218437195, 1.955777406692505e-07], 
             [0.17173688486218452, -0.02906547486782074, 1.955777406692505e-07]])
+        
+        
+        _dict={
+            "vbar_world_position": cls._sample._target_vbar.get_world_pose()[0].tolist(),
+            "vbar_world_orientation": cls._sample._target_vbar.get_world_pose()[1].tolist(),
+            "vbar_world_scale": cls._sample._target_vbar.get_world_scale().tolist(),
+            "hbar_world_position": cls._sample._target_hbar.get_world_pose()[0].tolist(),
+            "hbar_world_orientation": cls._sample._target_hbar.get_world_pose()[1].tolist(),
+            "hbar_world_scale": cls._sample._target_hbar.get_world_scale().tolist(), 
+        }
+        tgt_pc=[]
+
+        values = [1, -1]
+        dominant_values=np.linspace(-1, 1, num=5).tolist()
+        combinations = list(product(values, repeat=2))
+        combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
+        for component in ["v","h"]:
+            xyz=np.array(_dict[f"{component}bar_world_scale"])/2
+            dominant_direction=np.argmax(xyz)
+            for i,comb in enumerate(combinations):
+                tmp=comb[dominant_direction]
+                comb[dominant_direction]=comb[0]
+                comb[0]=tmp
+                center=np.array(_dict[f"{component}bar_world_position"])
+                p=np.array(comb)*xyz
+                quat_p=np.concatenate(([0.0],p))
+                ori=np.array(_dict[f"{component}bar_world_orientation"])
+                quat_p=mu.mul(mu.inverse(ori),quat_p)
+                quat_p=mu.mul(quat_p,(ori))
+                p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
+                tgt_pc.append((center+p).tolist())
+                # cls._sample._add_sphere(center+p,prim_path=f"/tgt{component}sphere{i}")
+        tgt_pc=np.array(tgt_pc)
         pc=np.concatenate((pc,tgt_pc),axis=0)
     
         # pc=np.array(rope.get_world_pose()[0]) # [np.array(pc) for pc in rope.get_world_pose()[0]],

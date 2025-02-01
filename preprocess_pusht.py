@@ -169,6 +169,7 @@ def main(cfg):
         os.mkdir(output_dir)
     rel=eval(str(cfg.franka_rope.preprocess.rel).title())
     rpy=eval(str(cfg.franka_rope.preprocess.rpy).title())
+    flow=eval(str(cfg.franka_rope.preprocess.flow).title())
 
     gravity_dir = [0, 0, -1]  # z is up in isaac sim
     for ep, filename in enumerate(os.listdir(input_dir)):
@@ -221,7 +222,11 @@ def main(cfg):
             # should be like (3460, 3)
             pc = np.array(t_pc)
             # NEW
-            pc=np.concatenate((pc,tgt_pc),axis=0)
+            tgt_pc=np.array(curr["Target_T"]["Target_pc"])
+            if flow:
+                pc=np.concatenate((pc,tgt_pc-pc),axis=1) # [ 1.57756746e-01  9.57879238e-03  5.00003956e-02 -7.45579600e-04 -6.01215288e-04 -4.09781933e-07]
+            else:
+                pc=np.concatenate((pc,tgt_pc),axis=0)
 
             if rel:
                 # recording["pc"].append(pc)

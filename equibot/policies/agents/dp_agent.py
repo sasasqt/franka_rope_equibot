@@ -28,6 +28,7 @@ class DPAgent(object):
         self.num_eef = cfg.env.num_eef
         self.dof = cfg.env.dof
         self.per_point=eval(str(cfg.env.per_point).title())
+        self.flow=eval(str(cfg.franka_rope.flow).title())
         self.num_points = cfg.data.dataset.num_points
         self.obs_mode = cfg.model.obs_mode
         self.ac_mode = cfg.model.ac_mode
@@ -36,6 +37,7 @@ class DPAgent(object):
         self.ac_horizon = cfg.model.ac_horizon
         self.shuffle_pc = cfg.data.dataset.shuffle_pc
         self.pc_normalizer = None
+        self.flow_normalizer=None
         self.state_normalizer = None
         self.ac_normalizer = None
 
@@ -45,10 +47,20 @@ class DPAgent(object):
 
     def _init_normalizers(self, batch):
         if self.obs_mode.startswith("pc") and self.pc_normalizer is None:
-            flattened_pc = batch["pc"].view(-1, 3)
+            if not self.flow:
+                flattened_pc = batch["pc"].view(-1, 3)
+            else:
+                flattened_pc = batch["pc"].view(-1, 6)[:,::2]
+                flattened_flow=batch["pc"].view(-1, 6)[:,1::2]
+                self.flow_normalizer= Normalizer(flattened_flow)
+                self.actor.flow_normalizer = self.flow_normalizer
             self.pc_normalizer = Normalizer(flattened_pc)
             self.actor.pc_normalizer = self.pc_normalizer
+
             print(f"PC normalization stats: {self.pc_normalizer.stats}")
+            if self.flow:
+                print(f"FLOW normalization stats: {self.flow_normalizer.stats}")
+
         if self.state_normalizer is None:
             state = batch["eef_pos"]
             flattened_state = state.view(-1, state.shape[-1])
@@ -95,15 +107,19 @@ class DPAgent(object):
             for i in range(batch_size):
                 ac_dict.append(None)
         forward_idxs = list(np.arange(batch_size))
+        _cnt=3
+        if self.flow:
+            _cnt=6
+
         for pcs in obs["pc"]:
             xyzs.append([])
             for batch_idx, xyz in enumerate(pcs):
                 if not batch_idx in forward_idxs:
-                    xyzs[-1].append(np.zeros((self.num_points, 3)))
+                    xyzs[-1].append(np.zeros((self.num_points, _cnt)))
                 elif xyz.shape[0] == 0:
                     # no points in point cloud, return no-op action
                     forward_idxs.remove(batch_idx)
-                    xyzs[-1].append(np.zeros((self.num_points, 3)))
+                    xyzs[-1].append(np.zeros((self.num_points, _cnt)))
                 elif self.shuffle_pc:
                     choice = np.random.choice(
                         xyz.shape[0], self.num_points, replace=True
@@ -167,21 +183,29 @@ class DPAgent(object):
         state = batch["eef_pos"] # torch.Size([1024, 4, 13])
         gt_action = batch["action"]
 
+        pc_shape = pc.shape # torch.Size([1024, 2, 40, 6 or 3])
+
         if self.state_normalizer is None or self.ac_normalizer is None:
             self._init_normalizers(batch)
         if self.obs_mode.startswith("pc"):
-            pc = self.pc_normalizer.normalize(pc)
+            if not self.flow:
+                pc = self.pc_normalizer.normalize(pc)
+            else:
+                _pc=self.pc_normalizer.normalize(pc.view(-1, 6)[:,::2])
+                _flow=self.flow_normalizer.normalize(pc.view(-1, 6)[:,1::2])
+                pc=torch.cat((_pc, _flow), dim=-1) #  torch.Size([81920, 6])
+                pc=pc.reshape(pc_shape) # torch.Size([1024, 2, 40, 6])
         state = self.state_normalizer.normalize(state)
         gt_action = self.ac_normalizer.normalize(gt_action)
 
-        pc_shape = pc.shape
+        pc_shape = pc.shape # torch.Size([1024, 2, 40, 6 or 3])
         batch_size = pc.shape[0]
 
         if self.obs_mode == "state":
             z = state
         else:
             assert self.obs_mode != "rgb"
-            flattened_pc = pc.reshape(batch_size * self.obs_horizon, *pc_shape[-2:])
+            flattened_pc = pc.reshape(batch_size * self.obs_horizon, *pc_shape[-2:]) # torch.Size([2048, 40, 6 or 3])
             if self.cfg.model.use_torch_compile:
                 feat_dict=self.actor.encoder_handle(flattened_pc.permute(0, 2, 1),ret_perpoint_feat=self.per_point)
             else:
@@ -279,6 +303,7 @@ class DPAgent(object):
             actor=self.actor.state_dict(),
             ema_model=self.actor.ema.averaged_model.state_dict(),
             pc_normalizer=None if self.pc_normalizer is None else self.pc_normalizer.state_dict(), # AttributeError: 'NoneType' object has no attribute 'state_dict'
+            flow_normalizer=None if self.flow_normalizer is None else self.flow_normalizer.state_dict(), # AttributeError: 'NoneType' object has no attribute 'state_dict'
             state_normalizer=self.state_normalizer.state_dict(),
             ac_normalizer=self.ac_normalizer.state_dict(),
         )
@@ -295,6 +320,9 @@ class DPAgent(object):
         if self.obs_mode.startswith("pc"):
             self.pc_normalizer = Normalizer(state_dict["pc_normalizer"])
             self.actor.pc_normalizer = self.pc_normalizer
+            if self.flow:
+                self.flow_normalizer = Normalizer(state_dict["flow_normalizer"])
+                self.actor.flow_normalizer = self.flow_normalizer
         if hasattr(self, "encoder_handle"):
             del self.encoder_handle
             del self.noise_pred_net_handle

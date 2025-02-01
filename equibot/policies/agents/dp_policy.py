@@ -17,6 +17,8 @@ class DPPolicy(nn.Module):
         self.hidden_dim = hidden_dim = cfg.model.hidden_dim
         self.obs_mode = cfg.model.obs_mode
         self.device = device
+        self.per_point=eval(str(cfg.env.per_point).title()),
+        self.flow=eval(str(cfg.franka_rope.flow).title())
 
         # |o|o|                             observations: 2
         # | |a|a|a|a|a|a|a|a|               actions executed: 8
@@ -47,7 +49,8 @@ class DPPolicy(nn.Module):
                 c_dim=hidden_dim,
                 num_layers=cfg.model.encoder.backbone_args.num_layers,
                 num_points=cfg.data.dataset.num_points,
-                per_point=eval(str(cfg.env.per_point).title())
+                per_point=self.per_point,
+                flow=self.flow,
             )
         elif self.obs_mode == "rgb":
             self.encoder = replace_bn_with_gn(get_resnet("resnet18"))
@@ -87,11 +90,18 @@ class DPPolicy(nn.Module):
         pc = obs["pc"]
         state = obs["state"]
 
+        pc_shape = pc.shape
+
         if self.obs_mode.startswith("pc"):
-            pc = self.pc_normalizer.normalize(pc)
+            if not self.flow:
+                pc = self.pc_normalizer.normalize(pc)
+            else:
+                _pc=self.pc_normalizer.normalize(pc.view(-1, 6)[:,::2])
+                _flow=self.flow_normalizer.normalize(pc.view(-1, 6)[:,1::2])
+                pc=torch.cat((_pc, _flow), dim=-1) #  torch.Size([81920, 6])
+                pc=pc.reshape(pc_shape) # torch.Size([1024, 2, 40, 6])
         state = self.state_normalizer.normalize(state)
 
-        pc_shape = pc.shape
         batch_size = pc.shape[0]
 
         ema_nets = self.ema.averaged_model

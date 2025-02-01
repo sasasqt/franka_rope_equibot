@@ -43,18 +43,24 @@ class SIM3Vec4Latent(nn.Module):
         self.backbone = BACKBONE_DICT[backbone_type](**backbone_args)
         self.fc_inv = VecLinear(c_dim, c_dim, mode=mode)
 
-    def forward(self, pcl, ret_perpoint_feat=False, target_norm=1.0):
-        B, T, N, _ = pcl.shape
-        pcl = pcl.view(B * T, -1, 3).transpose(1, 2)  # [BT, 3, N]
-
-        centroid = pcl.mean(-1, keepdim=True)  # B,3,1
-        input_pcl = pcl - centroid
-
-        z_scale = input_pcl.norm(dim=1).mean(-1) / target_norm  # B
+    def forward(self, pcl, ret_perpoint_feat=False,flow=False, target_norm=1.0,flow_norm=1.0):
+        B, T, N, H = pcl.shape
+        _pcl = pcl.view(B * T, -1, H).transpose(1, 2)  # [BT, 3 or 6, N]
+        xyz=_pcl[:,:3,:] # [BT, 3, N]
+        centroid = xyz.mean(-1, keepdim=True)  # B,3,1
+        input_xyz = xyz - centroid
+        z_scale = input_xyz.norm(dim=1).mean(-1) / target_norm  # B
         z_center = centroid.permute(0, 2, 1)
 
-        input_pcl = input_pcl / z_scale[:, None, None]
+        input_xyz = input_xyz / z_scale[:, None, None]
 
+        if flow:
+            input_flow=_pcl[:,3:,:]
+            z_scale = input_flow.norm(dim=1).mean(-1) / target_norm / flow_norm  # B
+            input_flow = input_flow / z_scale[:, None, None]
+            input_pcl=torch.cat((input_xyz,input_flow), dim=1)
+        else:
+            input_pcl = input_xyz
         x, x_perpoint = self.backbone(input_pcl)  # B,C,3
 
         z_so3 = x

@@ -20,7 +20,8 @@ class VecPointNet(nn.Module):
     def __init__(
         self,
         num_points,
-        per_point,
+        per_point=False,
+        flow=False,
         h_dim=128,
         c_dim=128,
         num_layers=4,
@@ -34,7 +35,8 @@ class VecPointNet(nn.Module):
         self.knn = knn
         self.num_points=num_points
         self.per_point=per_point
-
+        self.flow=flow
+        
         self.pool = meanpool
 
         act_func = nn.LeakyReLU(negative_slope=0.0, inplace=False)
@@ -43,8 +45,12 @@ class VecPointNet(nn.Module):
         self.conv_in = VecLNA(3, h_dim, **vnla_cfg)
         self.layers, self.global_layers = nn.ModuleList(), nn.ModuleList()
         for i in range(self.num_layers):
-            self.layers.append(VecLNA(h_dim, h_dim, **vnla_cfg))
-            self.global_layers.append(VecLNA(h_dim * 2, h_dim, **vnla_cfg))
+            if i==0 and self.flow:
+                self.layers.append(VecLNA(h_dim+1, h_dim, **vnla_cfg))
+                self.global_layers.append(VecLNA(h_dim * 2, h_dim, **vnla_cfg))
+            else:
+                self.layers.append(VecLNA(h_dim, h_dim, **vnla_cfg))
+                self.global_layers.append(VecLNA(h_dim * 2, h_dim, **vnla_cfg))
         self.conv_out = VecLinear(h_dim * self.num_layers, c_dim, mode="so3")
         if self.per_point is True:
             self.final_conv=VecLinear(self.num_points, h_dim, mode="so3")
@@ -81,12 +87,18 @@ class VecPointNet(nn.Module):
         return y, knn_idx  # B,C*2,3,N,K
 
     def forward(self, x):
+        _x=x # [2048,3 or 6, 40]
+        x=x[:,:3,:]
         x = x.unsqueeze(1)  # [B, 1, 3, N]
 
-        x, knn_idx = self.get_graph_feature(x, self.knn, cross=True)
+        x, knn_idx = self.get_graph_feature(x, self.knn, cross=True) # knn idx [2048, 40, 8]
         x, _ = self.conv_in(x) # torch.Size([4096, 8, 3, 35, 8])
         x = self.pool(x) # torch.Size([4096, 8, 3, 35])
 
+        if self.flow:
+            flow=_x[:,3:,:] #  # [2048,3, 40]
+            flow = flow.unsqueeze(1)  # [2048, 1, 3, 40]
+            x=torch.cat((x,flow),dim=1)
         y = x
         feat_list = []
         for i in range(self.num_layers):

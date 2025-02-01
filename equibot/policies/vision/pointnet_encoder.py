@@ -14,7 +14,7 @@ def meanpool(x, dim=-1, keepdim=False):
 
 
 class PointNetEncoder(nn.Module):
-    def __init__(self, num_points, per_point,h_dim=128, c_dim=128, num_layers=4, **kwargs):
+    def __init__(self, num_points, per_point,h_dim=128, c_dim=128, num_layers=4,flow=False, **kwargs):
         super().__init__()
 
         self.h_dim = h_dim
@@ -27,8 +27,10 @@ class PointNetEncoder(nn.Module):
 
         act_func = nn.LeakyReLU(negative_slope=0.0, inplace=False)
         self.act = act_func
-
-        self.conv_in = nn.Conv1d(3, h_dim, kernel_size=1)
+        _cnt=3
+        if flow:
+            _cnt=6
+        self.conv_in = nn.Conv1d(_cnt, h_dim, kernel_size=1)
         self.layers, self.global_layers = nn.ModuleList(), nn.ModuleList()
         for i in range(self.num_layers):
             self.layers.append(nn.Conv1d(h_dim, h_dim, kernel_size=1))
@@ -38,7 +40,7 @@ class PointNetEncoder(nn.Module):
             self.final_conv=nn.Conv1d(self.num_points, h_dim, kernel_size=1)
 
     def forward(self, x, ret_perpoint_feat=False):
-
+        # x # ([2048, 6 or 3, 40])
         y = self.act(self.conv_in(x))
         feat_list = []
         for i in range(self.num_layers):

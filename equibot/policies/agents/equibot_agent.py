@@ -14,6 +14,7 @@ class EquiBotAgent(DPAgent):
         self.actor = EquiBotPolicy(self.cfg, device=self.cfg.device).to(self.cfg.device)
         self.actor.ema.averaged_model.to(self.cfg.device)
         self.pc_scale = None
+        self.flow_scale=None
 
     def _init_normalizers(self, batch):
         if self.ac_normalizer is None:
@@ -34,6 +35,7 @@ class EquiBotAgent(DPAgent):
                     "max": ac_normalizer.stats["max"].tile((self.num_eef,)),
                 }
             )
+
             print(f"Action normalization stats: {self.ac_normalizer.stats}")
         if self.state_normalizer is None:
             # dof layout: maybe gripper open/close, xyz, maybe rot
@@ -50,15 +52,28 @@ class EquiBotAgent(DPAgent):
         if self.pc_normalizer is None:
             self.pc_normalizer = self.state_normalizer
             self.actor.pc_normalizer = self.pc_normalizer
+            if self.flow:
+                self.flow_normalizer = self.state_normalizer
+                self.actor.flow_normalizer = self.pc_normalizer
 
         # compute action scale relative to point cloud scale
-        pc = batch["pc"].reshape(-1, self.num_points, 3)
-        centroid = pc.mean(1, keepdim=True)
-        centered_pc = pc - centroid
-        pc_scale = centered_pc.norm(dim=-1).mean()
+        _cnt=3
+        if self.flow:
+            _cnt=6
+        pc = batch["pc"].reshape(-1, self.num_points, _cnt)
+        xyz=pc[:,:,:3]
+        centroid = xyz.mean(1, keepdim=True)
+        centered_xyz = xyz - centroid
+        pc_scale = centered_xyz.norm(dim=-1).mean()
         ac_scale = ac_normalizer.stats["max"].max()
         self.pc_scale = pc_scale / ac_scale
         self.actor.pc_scale = self.pc_scale
+
+        if self.flow:
+            flow=pc[:,:,3:]
+            flow_scale=flow.norm(dim=-1).mean()
+            self.flow_scale=flow_scale / self.pc_scale
+            self.actor.flow_scale=self.flow_scale
 
     def update(self, batch, vis=False):
         self.train()
@@ -71,10 +86,17 @@ class EquiBotAgent(DPAgent):
 
         if self.pc_scale is None:
             self._init_normalizers(batch)
-        pc = self.pc_normalizer.normalize(pc)
-        gt_action = self.ac_normalizer.normalize(gt_action)
 
         pc_shape = pc.shape
+        if not self.flow:
+            pc = self.pc_normalizer.normalize(pc)
+        else:
+            _pc=self.pc_normalizer.normalize(pc.view(-1, 6)[:,::2])
+            _flow=self.flow_normalizer.normalize(pc.view(-1, 6)[:,1::2])
+            pc=torch.cat((_pc, _flow), dim=-1) #  torch.Size([81920, 6])
+            pc=pc.reshape(pc_shape) # torch.Size([1024, 2, 40, 6])
+        gt_action = self.ac_normalizer.normalize(gt_action)
+
         batch_size = B = pc.shape[0]
         Ho = self.obs_horizon
         Hp = self.pred_horizon
@@ -87,7 +109,7 @@ class EquiBotAgent(DPAgent):
             else:
                 z = z_pos
         else:
-            feat_dict = self.actor.encoder_handle(pc, ret_perpoint_feat=self.per_point, target_norm=self.pc_scale)
+            feat_dict = self.actor.encoder_handle(pc, ret_perpoint_feat=self.per_point,flow=self.flow, target_norm=self.pc_scale,flow_norm=self.flow_scale)
 
             center = (
                 feat_dict["center"].reshape(B, Ho, 1, 3)[:, [-1]].repeat(1, Ho, 1, 1)
@@ -274,9 +296,12 @@ class EquiBotAgent(DPAgent):
             actor=self.actor.state_dict(),
             ema_model=self.actor.ema.averaged_model.state_dict(),
             pc_scale=self.pc_scale,
+            flow_scale=self.flow_scale,
             pc_normalizer=self.pc_normalizer.state_dict(),
             state_normalizer=self.state_normalizer.state_dict(),
             ac_normalizer=self.ac_normalizer.state_dict(),
+            flow_normalizer=None if self.flow_normalizer is None else self.flow_normalizer.state_dict(), # AttributeError: 'NoneType' object has no attribute 'state_dict'
+
         )
         torch.save(state_dict, save_path)
 
@@ -300,6 +325,9 @@ class EquiBotAgent(DPAgent):
         if self.obs_mode.startswith("pc"):
             self.pc_normalizer = self.state_normalizer
             self.actor.pc_normalizer = self.pc_normalizer
+            if self.flow:
+                self.flow_normalizer = self.state_normalizer
+                self.actor.flow_normalizer = self.flow_normalizer
         del self.actor.encoder_handle
         del self.actor.noise_pred_net_handle
         self.actor.load_state_dict(self.fix_checkpoint_keys(state_dict["actor"]))
@@ -309,3 +337,5 @@ class EquiBotAgent(DPAgent):
         )
         self.pc_scale = state_dict["pc_scale"]
         self.actor.pc_scale = self.pc_scale
+        self.flow_scale = state_dict["flow_scale"]
+        self.actor.flow_scale = self.flow_scale

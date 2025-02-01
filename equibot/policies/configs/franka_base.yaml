@@ -102,6 +102,7 @@ model:
       num_points: ${data.dataset.num_points}
       knn: 8
       per_point: ${env.per_point}
+      flow: ${franka_rope.flow}
   obs_mode: ${env.args.obs_mode}
   ac_mode: ${env.args.ac_mode}
   use_torch_compile: False # was false
@@ -153,6 +154,7 @@ franka_rope:
   seed: 42
   rel: True
   rpy: False
+  flow: False
   cap: null # delta pos per seconds, depends on fps, # 0.1
   cup: null # min speed
   update_ori: True
@@ -161,4 +163,5 @@ franka_rope:
     output_dir: r"C:\Users\Shadow\project\franka_data\tmp"
     rel: ${franka_rope.rel}
     rpy: ${franka_rope.rpy}
+    flow: ${franka_rope.flow}
     
