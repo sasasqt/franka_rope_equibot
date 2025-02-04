@@ -46,7 +46,7 @@ class VecPointNet(nn.Module):
         self.layers, self.global_layers = nn.ModuleList(), nn.ModuleList()
         for i in range(self.num_layers):
             if i==0 and self.flow:
-                self.layers.append(VecLNA(h_dim+1, h_dim, **vnla_cfg))
+                self.layers.append(VecLNA(h_dim*2, h_dim, **vnla_cfg))
                 self.global_layers.append(VecLNA(h_dim * 2, h_dim, **vnla_cfg))
             else:
                 self.layers.append(VecLNA(h_dim, h_dim, **vnla_cfg))
@@ -98,7 +98,7 @@ class VecPointNet(nn.Module):
         if self.flow:
             flow=_x[:,3:,:] #  # [2048,3, 40]
             flow = flow.unsqueeze(1)  # [2048, 1, 3, 40]
-            x=torch.cat((x,flow),dim=1)
+            x=torch.cat((x,flow.expand_as(x)),dim=1)
         y = x
         feat_list = []
         for i in range(self.num_layers):
