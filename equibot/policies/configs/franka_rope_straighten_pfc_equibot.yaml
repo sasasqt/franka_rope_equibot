@@ -1,0 +1,12 @@
+defaults:
+  - franka_rope_straighten_dp
+
+agent:
+  agent_name: pfc_equibot
+
+model:
+  hidden_dim: 4 # was 32
+  encoder:
+    backbone_type: ponita_fc
+training:
+  batch_size: 192 # 256 >20GB; 192: ~19GB
