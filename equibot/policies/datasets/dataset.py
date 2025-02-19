@@ -57,7 +57,7 @@ class BaseDataset(Dataset):
             
             ep_list = list(sorted(set([key_fn(fn) for fn in self.file_names])))
             if cfg["num_demos"] < len(ep_list):
-                print("[dataset.py] Filtering demos to {cfg['num_demos']} demos")
+                print(f"[dataset.py] Filtering demos to {cfg['num_demos']} demos")
                 filtered_ep_list = ep_list[: cfg["num_demos"]]
                 self.file_names = [
                     f for f in self.file_names if key_fn(f) in filtered_ep_list

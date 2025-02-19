@@ -7,6 +7,8 @@ from torch import Tensor
 
 import math
 
+from pytorch3d.ops.knn import knn_points
+
 class GridGenerator(nn.Module):
     def __init__(
         self,
@@ -288,10 +290,38 @@ class PonitaFC(nn.Module):
 
         self.register_buffer("_mask_default", torch.ones(1, 1))
 
+    def get_graph_feature(self, x: torch.Tensor, k: int=8):
+        # x: B,N,3 return B, N, k, 3
+
+        B, N, d = x.shape
+        _, knn_idx, neighbors = knn_points(
+            x, x, K=k, return_nn=True
+        ) 
+        # print(knn_idx.shape) # B,N,k
+        # neighbors.shape # B, N, k, 3
+        return knn_idx,neighbors.view(-1,k,d)
+    
     def forward(
         self, x: Tensor, pos: Tensor, mask: Optional[Tensor] = None
     ) -> tuple[Tensor, Tensor]:
+
+        # case knn
+        # B, N, d = x.shape
+        # k=8
+        # knn_idx,x=self.get_graph_feature(x,k)
+
+        # # Expand knn_idx to match the last dimension of pos
+        # expanded_knn_idx = knn_idx.unsqueeze(-1).expand(-1, -1, -1, pos.size(-1))  # Shape: (B, N, k, 3)
+
+        # # Gather neighbors from pos based on knn_idx
+        # pos = torch.gather(pos.unsqueeze(1).expand(-1, N, -1, -1), dim=2, index=expanded_knn_idx)
+
+        # pos=pos.view(-1,k,d)
+        # # assert torch.allclose(x,pos) sanity check for case: the original x was the original pos
+
+
         rel_pos = pos[:, None, :, None] - pos[..., None, None, :]
+        # print(rel_pos.shape,'rel',pos[:, None, :, None].shape,pos[..., None, None, :].shape)
         invariant1 = (rel_pos * self.ori_grid[None, None, None]).sum(-1, keepdim=True)
         invariant2 = (rel_pos - rel_pos * invariant1).norm(dim=-1, keepdim=True)
         spatial_invariants = torch.cat((invariant1, invariant2), dim=-1)
@@ -344,6 +374,10 @@ class PonitaFC(nn.Module):
                 1
             )[..., None, None]
 
+        # case knn
+        # output_scaler=torch.einsum('bnc->bc',output_scaler.view(B,N,-1))/output_scaler.view(B,N,-1).size(1)
+        # output_vector=torch.einsum('bncd->bcd',output_vector.view(B,N,-1,d))/output_vector.view(B,N,-1,d).size(1)
+
         return output_scaler, output_vector # torch.Size([6, 7]) torch.Size([6, 5, 3])
 
 
@@ -351,12 +385,12 @@ def main():
     device = "cuda"
 
 
-    input = torch.randn(6, 24, 3, device=device) # B N 3
-    pos = torch.randn(6, 24, 3, device=device)
+    input = torch.randn(3, 2, 3, device=device) # B N 3
+    pos = torch.randn(3, 2, 3, device=device)
 
-    mask = torch.round(torch.randn(6, 24, device=device))
+    mask = torch.round(torch.randn(3, 2, device=device))
 
-    model = PonitaFC(3, 16, 7, 4, output_dim_vec=5, task_level="graph") # in, hid, out, #layers
+    model = PonitaFC(3, 16, 7, 2, output_dim_vec=2, task_level="graph") # in, hid, out, #layers
     model = model.to(device)
 
     scalar, vec = model(input, pos, mask=mask)
@@ -364,7 +398,9 @@ def main():
     loss = scalar.mean() + vec.mean()
     loss.backward()
 
-    print(scalar.shape, vec.shape)
+    print(scalar, vec)
+    new_pos=torch.flip(pos, dims=[1])
+    print(model(input, new_pos.view(3,2,3), mask=mask))
     # torch.Size([6, 7]) torch.Size([6, 5, 3])
 
 if __name__ == "__main__":

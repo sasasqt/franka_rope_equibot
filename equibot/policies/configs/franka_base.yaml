@@ -136,8 +136,8 @@ franka_rope:
   rendering_dt: 1.0/30.0
   _randomize: False
   _randomize_on_reset: False
-  pusht_pos: [0.1,0,0] # [0,0,0] or [0.1,0.1,0]
-  pusht_ori: [0,0,0] # [0,0,0] or [0,0,-30]
+  pusht_pos: [0.1,0.1,0] # [0,0,0] or [0.1,0.1,0]
+  pusht_ori: [0,0,-30] # [0,0,0] or [0,0,-30]
   test_pc_permutation: False
   translation: null # [-0.5,-0.5,0] or null
   rotation: null # [0,0,30] or null

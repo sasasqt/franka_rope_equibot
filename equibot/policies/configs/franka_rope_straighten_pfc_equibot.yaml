@@ -8,5 +8,9 @@ model:
   hidden_dim: 4 # was 32
   encoder:
     backbone_type: ponita_fc
+    backbone_args:
+      num_ori: 6 # 8?
+
+
 training:
-  batch_size: 192 # 256 >20GB; 192: ~19GB
+  batch_size: 512 # 768?
