@@ -39,7 +39,7 @@ class PointNetEncoder(nn.Module):
         if self.per_point is True:
             self.final_conv=nn.Conv1d(self.num_points, h_dim, kernel_size=1)
 
-    def forward(self, x, ret_perpoint_feat=False):
+    def forward(self, x, ret_perpoint_feat=False,**kwargs):
         # x # ([2048, 6 or 3, 40])
         y = self.act(self.conv_in(x))
         feat_list = []

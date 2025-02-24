@@ -306,18 +306,18 @@ class PonitaFC(nn.Module):
     ) -> tuple[Tensor, Tensor]:
 
         # case knn
-        # B, N, d = x.shape
-        # k=8
-        # knn_idx,x=self.get_graph_feature(x,k)
+        B, N, d = x.shape
+        k=8
+        knn_idx,x=self.get_graph_feature(x,k)
 
-        # # Expand knn_idx to match the last dimension of pos
-        # expanded_knn_idx = knn_idx.unsqueeze(-1).expand(-1, -1, -1, pos.size(-1))  # Shape: (B, N, k, 3)
+        # Expand knn_idx to match the last dimension of pos
+        expanded_knn_idx = knn_idx.unsqueeze(-1).expand(-1, -1, -1, pos.size(-1))  # Shape: (B, N, k, 3)
 
-        # # Gather neighbors from pos based on knn_idx
-        # pos = torch.gather(pos.unsqueeze(1).expand(-1, N, -1, -1), dim=2, index=expanded_knn_idx)
+        # Gather neighbors from pos based on knn_idx
+        pos = torch.gather(pos.unsqueeze(1).expand(-1, N, -1, -1), dim=2, index=expanded_knn_idx)
 
-        # pos=pos.view(-1,k,d)
-        # # assert torch.allclose(x,pos) sanity check for case: the original x was the original pos
+        pos=pos.view(-1,k,d)
+        # assert torch.allclose(x,pos) sanity check for case: the original x was the original pos
 
 
         rel_pos = pos[:, None, :, None] - pos[..., None, None, :]
@@ -375,8 +375,8 @@ class PonitaFC(nn.Module):
             )[..., None, None]
 
         # case knn
-        # output_scaler=torch.einsum('bnc->bc',output_scaler.view(B,N,-1))/output_scaler.view(B,N,-1).size(1)
-        # output_vector=torch.einsum('bncd->bcd',output_vector.view(B,N,-1,d))/output_vector.view(B,N,-1,d).size(1)
+        output_scaler=torch.einsum('bnc->bc',output_scaler.view(B,N,-1))/output_scaler.view(B,N,-1).size(1)
+        output_vector=torch.einsum('bncd->bcd',output_vector.view(B,N,-1,d))/output_vector.view(B,N,-1,d).size(1)
 
         return output_scaler, output_vector # torch.Size([6, 7]) torch.Size([6, 5, 3])
 

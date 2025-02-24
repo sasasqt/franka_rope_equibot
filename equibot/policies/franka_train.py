@@ -60,7 +60,7 @@ def main(cfg):
     valid_dataset = get_dataset(cfg, "train", valid=True)
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset,
-        batch_size=batch_size,
+        batch_size=64,
         num_workers=num_workers,
         shuffle=True,
         drop_last=False, # was True
@@ -118,6 +118,9 @@ def main(cfg):
 
             for valid_batch in tqdm(valid_loader, leave=False, desc="validations"):
                 count+=1
+                # pred_ac=agent.update( # for the new arch. where update is modified to handle 1-step horizon validation
+                #     valid_batch, train=False
+                # )
                 obs = dict(
                     pc=valid_batch["pc"].permute(1, 0, 2, 3).numpy(), # (obs_horizon, B, N, 3)
                     state=valid_batch["eef_pos"].permute(1, 0, 2, 3).numpy()

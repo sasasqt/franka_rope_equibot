@@ -10,6 +10,7 @@ import logging
 
 from equibot.policies.vision.vec_layers import VecLinear
 from equibot.policies.vision.vec_pointnet import VecPointNet
+from equibot.policies.utils.VN_transformer import VNInvariant, VNTransformer
 
 
 BACKBONE_DICT = {"vn_pointnet": VecPointNet}
@@ -66,7 +67,7 @@ class SIM3Vec4Latent(nn.Module):
         z_so3 = x
         z_inv_dual, _ = self.fc_inv(x[..., None])
         z_inv_dual = z_inv_dual.squeeze(-1)
-        z_inv = (z_inv_dual * z_so3).sum(-1)
+        z_inv = (z_inv_dual * z_so3).sum(-1) # c_dim, num_pts
 
         ret = {
             "inv": z_inv,
@@ -79,3 +80,135 @@ class SIM3Vec4Latent(nn.Module):
             ret["per_point_so3"] = x_perpoint  # [B, C, 3, N]
 
         return ret
+
+def test():
+    kwargs = {
+        "c_dim": 5,
+        "backbone_type": "vn_pointnet",
+        "backbone_args": {
+            "h_dim": 4,
+            "c_dim": 5,
+            "num_layers": 3,
+            "num_points": 8,
+            "knn": 3,
+            "per_point": False,
+            "flow": False
+        }
+    }
+
+    r = [
+            [0.28, -0.36, -0.89],
+            [0.78, 0.62, 0],
+            [0.55, -0.7, 0.45]
+        ]
+
+    r = torch.tensor(r)
+
+    net=SIM3Vec4Latent(**kwargs)
+    pc = torch.randn(7, 6,8, 3) # pc: [BS, obs_horizon, num_pts, 3]
+    out=net(pc)
+    inv=out["inv"]
+    so3=out["so3"]
+    scale=out["scale"]
+    center=out["center"]
+
+
+    out=net(pc@r)
+    inv2=out["inv"]
+    so3=out["so3"]
+    scale=out["scale"]
+    center=out["center"]
+
+    #assert torch.allclose(inv,inv2,1e-3),'not inv'
+
+    z= so3
+    print(so3.shape)
+    fc_z_inv=VecLinear(z.size(-2), z.size(-2))
+    z_inv_dual, _ = fc_z_inv(z[..., None])#.repeat(1, 1, 1, 3))
+    print(z_inv_dual.shape)
+    z_inv_dual = z_inv_dual.squeeze(-1)
+    print(z_inv_dual.shape)
+    print((z_inv_dual* z).shape)
+
+    z_inv = (z_inv_dual * z).sum(-1,keepdim=True).expand_as(z) # BS*obs_horizon, c_dim
+    print(z_inv.shape,"?")
+
+    action=torch.randn(7,16,12).view(7,16,-1,3)
+    print(action.shape)
+    action=action.view(action.size(0),-1,3)
+    print(action.shape)
+    ttt=VecLinear(64, 64)
+    ac_inv_dual,_=ttt(action[..., None])
+
+    print(ac_inv_dual.shape)
+    ac_inv_dual = ac_inv_dual.squeeze(-1)
+    print(ac_inv_dual.shape)
+    ac_inv=ac_inv_dual* action
+    print((ac_inv_dual* action).shape)
+
+    _min_c=min(z.view(7,-1,3).size(-2),action.size(-2))
+    _max_c=max(z.view(7,-1,3).size(-2),action.size(-2))
+    
+    final_resize=VecLinear(_min_c,_max_c)
+
+    if _min_c == action.size(-2):
+        resized_ac,_=final_resize(action)
+        rots=torch.einsum('bhi,bhj->bij',z,resized_ac)
+    else:
+        resized_z,_=final_resize(z.view(7,-1,3))
+        rots=torch.einsum('bhi,bhj->bij',resized_z,action)
+
+    print("---")
+    print(rots.shape)
+
+
+def test_vn_invariant():
+    layer = VNInvariant(64)
+
+    coors = torch.randn(1, 32, 64, 3)
+
+    r = [
+            [0.28, -0.36, -0.89],
+            [0.78, 0.62, 0],
+            [0.55, -0.7, 0.45]
+        ]
+
+    r = torch.tensor(r)
+    out1 = layer(coors)
+    print(out1.shape)
+    out2 = layer(coors @ r)
+
+    # assert torch.allclose(out1, out2, atol = 1)
+
+    print(out1)
+    print(out2)
+    print(out1-out2)
+
+
+def test_equivariance(l2_dist_attn):
+
+    model = VNTransformer(
+        dim = 64,
+        depth = 2,
+        dim_head = 64,
+        heads = 8,
+        l2_dist_attn = l2_dist_attn
+    )
+
+    coors = torch.randn(1, 32, 3)
+    mask  = torch.ones(1, 32).bool()
+
+    r = [
+            [0.28, -0.36, -0.89],
+            [0.78, 0.62, 0],
+            [0.55, -0.7, 0.45]
+        ]
+
+    R = torch.tensor(r)
+    out1 = model(coors @ R, mask = mask)
+    out2 = model(coors, mask = mask) @ R
+
+    assert torch.allclose(out1, out2, atol = 1e-6), 'is not equivariant'
+
+if __name__ == "__main__":
+    test()

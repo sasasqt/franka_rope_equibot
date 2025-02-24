@@ -62,5 +62,9 @@ def get_agent(agent_name):
     elif agent_name == "pfc_equibot":
         from equibot.policies.agents.pfc_equibot_agent import PfcEquiBotAgent
         return PfcEquiBotAgent
+    elif agent_name == "wtf":
+        from equibot.policies.agents.vn_pc_vn_obs_dp_inv2equi_agent import WTFAgent
+        return WTFAgent
+    
     else:
         raise ValueError(f"Agent with name [{agent_name}] not found.")
