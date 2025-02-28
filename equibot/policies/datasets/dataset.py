@@ -86,7 +86,11 @@ class BaseDataset(Dataset):
             self.use_four_digit_time = False
 
         # NOTE: pre-allocate memory for a single step data
-        self._init_cache()
+        keys_to_keep=["pc", "eef_pos", "action"]
+        if "keys_to_keep" in cfg:
+            keys_to_keep=cfg['keys_to_keep']
+        self.keys_to_keep=keys_to_keep
+        self._init_cache(keys_to_keep=keys_to_keep)
 
     def __len__(self):
         return len(self.file_names)
@@ -144,7 +148,8 @@ class BaseDataset(Dataset):
                     fn_state_t, ["pc", "rgb", "eef_pos"], aug_idx=aug_idx
                 )
             else:
-                keys = ["action", "eef_pos", "pc"]
+                #keys = ["action", "eef_pos", "pc"]
+                keys = self.keys_to_keep
                 if t > ep_t:
                     keys = ["action"]
                 data_t = self._process_data_from_file(fn_t, keys, aug_idx=aug_idx)
@@ -160,7 +165,8 @@ class BaseDataset(Dataset):
 
         assert len(ret["pc"]) == self.obs_horizon
         # assert len(ret["rgb"]) == self.obs_horizon
-        assert len(ret["eef_pos"]) == self.obs_horizon
+        if "eef_pos" in self.keys_to_keep:
+            assert len(ret["eef_pos"]) == self.obs_horizon
         assert len(ret["action"]) == self.pred_horizon
 
         if self.obs_horizon == 1 and self.pred_horizon == 1 and self.reduce_horizon_dim:

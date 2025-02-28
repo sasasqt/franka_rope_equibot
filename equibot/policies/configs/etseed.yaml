@@ -1,0 +1,124 @@
+prefix: default
+device: cuda
+mode: train
+log_dir: logs/${mode}
+eval_data_path: null
+use_wandb: true
+seed: 0
+
+
+pred_horizon: 16
+obs_horizon: 2
+action_horizon: 8
+T_a: ${pred_horizon}  # what is this???
+batch_size: 32
+num_epochs: 5000
+learning_rate: 1e-4
+weight_decay: 1e-6
+betas: [0.95, 0.999]
+eps: 1.0e-08
+equiv_frac: 0.1
+save_freq: 50
+
+env:
+  env_class: ???
+  num_eef: 1
+  dof: 7
+  eef_dim: 13
+
+model:
+  obs_horizon: ${obs_horizon}
+  ac_horizon: ${action_horizon}
+  pred_horizon: ${pred_horizon}
+
+data:
+  dataset_class: base_dataset
+  dataset:
+    num_training_steps: ???
+    path: null
+    num_points: 35 # should match with _ropeLength 0.4:17 0.8: 35 1.0:44? 40:pusht
+    num_augment: 0
+    same_aug_per_sample: true
+    aug_keep_original: true
+    aug_scale_low: 0.5
+    aug_scale_high: 1.5
+    aug_scale_aspect_limit: 1.0
+    aug_scale_rot: -1
+    aug_scale_pos: 0.1
+    aug_zero_z_offset: false
+    aug_center: [0., 0., 0.]
+    shuffle_pc: false # https://github.com/charlesq34/pointnet2/issues/143#issuecomment-523416620 # was true
+    num_workers: 12
+    dof: ${env.dof}
+    num_eef: ${env.num_eef}
+    eef_dim: ${env.eef_dim}
+    obs_horizon: ${model.obs_horizon}
+    pred_horizon: ${model.pred_horizon}
+    reduce_horizon_dim: false
+    min_demo_length: 15
+    keys_to_keep: ["pc", "action"]
+
+
+  valid_dataset:
+    num_training_steps: ???
+    path: null
+    num_points:  ${data.dataset.num_points}
+    num_augment:  ${data.dataset.num_augment}
+    same_aug_per_sample:  ${data.dataset.same_aug_per_sample}
+    aug_keep_original:  ${data.dataset.aug_keep_original}
+    aug_scale_low:  ${data.dataset.aug_scale_low}
+    aug_scale_high:  ${data.dataset.aug_scale_high}
+    aug_scale_aspect_limit:  ${data.dataset.aug_scale_aspect_limit}
+    aug_scale_rot:  ${data.dataset.aug_scale_rot}
+    aug_scale_pos:  ${data.dataset.aug_scale_pos}
+    aug_zero_z_offset:  ${data.dataset.aug_zero_z_offset}
+    aug_center:  ${data.dataset.aug_center}
+    shuffle_pc:  ${data.dataset.shuffle_pc} # https://github.com/charlesq34/pointnet2/issues/143#issuecomment-523416620 # was true
+    num_workers:  ${data.dataset.num_workers}
+    dof:  ${data.dataset.dof}
+    num_eef:  ${data.dataset.num_eef}
+    eef_dim:  ${data.dataset.eef_dim}
+    obs_horizon:  ${data.dataset.obs_horizon}
+    pred_horizon:  ${data.dataset.pred_horizon}
+    reduce_horizon_dim:  ${data.dataset.reduce_horizon_dim}
+    min_demo_length:  ${data.dataset.min_demo_length}
+    keys_to_keep: ["pc", "action"]
+
+wandb:
+  entity: ab36
+  project: equibot
+
+franka_rope:
+  physics_dt: 1.0/30.0
+  rendering_dt: 1.0/30.0
+  _randomize: False
+  _randomize_on_reset: False
+  pusht_pos: [0.1,0.1,0] # [0,0,0] or [0.1,0.1,0]
+  pusht_ori: [0,0,-30] # [0,0,0] or [0,0,-30]
+  test_pc_permutation: False
+  translation: null # [-0.5,-0.5,0] or null
+  rotation: null # [0,0,30] or null
+  scale: null # [1.1,1.15,1.2]  or null # [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation
+  _rope_y_pos: null # null or 0.7
+  extra_scenes: null #null #[fixed_cylinder] # list, possible values: fixed_cylinder, visual_line
+  _ropeLength: 0.8
+  _rope_damping: 0.6
+  _rope_stiffness: 0.1
+  from_demo: null
+  start_time: 350
+  manually_close: False
+  max_end: 360 # 600
+  seed: 42
+  rel: True
+  rpy: False
+  flow: False
+  cap: null # delta pos per seconds, depends on fps, # 0.1
+  cup: null # min speed
+  update_ori: True
+  preprocess:
+    input_dir: r"C:\Users\Shadow\project\franka_rope\demos\02_train"
+    output_dir: r"C:\Users\Shadow\project\franka_data\tmp"
+    rel: ${franka_rope.rel}
+    rpy: ${franka_rope.rpy}
+    flow: ${franka_rope.flow}
+    

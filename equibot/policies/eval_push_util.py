@@ -237,7 +237,7 @@ class EvalUtils(ControlFlow):
                 "hbar_world_orientation": cls._sample._target_hbar.get_world_pose()[1].tolist(),
                 "hbar_world_scale": cls._sample._target_hbar.get_world_scale().tolist(), 
             }
-            tgt_pc=[]
+            #tgt_pc=[]
 
             values = [1, -1]
             dominant_values=np.linspace(-1, 1, num=5).tolist()
@@ -257,7 +257,7 @@ class EvalUtils(ControlFlow):
                     quat_p=mu.mul(mu.inverse(ori),quat_p)
                     quat_p=mu.mul(quat_p,(ori))
                     p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
-                    tgt_pc.append((center+p).tolist())
+                    #tgt_pc.append((center+p).tolist())
 
             tgt_pc=np.array(tgt_pc)
             if eval(str(cls.cfg.flow).title()):
@@ -564,7 +564,7 @@ class EvalUtils(ControlFlow):
             "hbar_world_orientation": cls._sample._target_hbar.get_world_pose()[1].tolist(),
             "hbar_world_scale": cls._sample._target_hbar.get_world_scale().tolist(), 
         }
-        tgt_pc=[]
+        #tgt_pc=[]
 
         values = [1, -1]
         dominant_values=np.linspace(-1, 1, num=5).tolist()
@@ -584,7 +584,7 @@ class EvalUtils(ControlFlow):
                 quat_p=mu.mul(mu.inverse(ori),quat_p)
                 quat_p=mu.mul(quat_p,(ori))
                 p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
-                tgt_pc.append((center+p).tolist())
+                #tgt_pc.append((center+p).tolist())
                 # cls._sample._add_sphere(center+p,prim_path=f"/tgt{component}sphere{i}")
         tgt_pc=np.array(tgt_pc)
         if eval(str(cls.cfg.flow).title()):
