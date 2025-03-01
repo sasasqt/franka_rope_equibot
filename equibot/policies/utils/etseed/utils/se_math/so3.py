@@ -2,6 +2,7 @@
 import torch
 from . import sinc
 from .sinc import sinc1, sinc2, sinc3
+from kornia.geometry.liegroup import Se3, So3
 
 
 def cross_prod(x, y):
@@ -59,19 +60,21 @@ def RodriguesRotation(x):
 
 
 def exp(x):
-    w = x.view(-1, 3)
-    t = w.norm(p=2, dim=1).view(-1, 1, 1)
-    W = mat(w)
-    S = W.bmm(W)
-    I = torch.eye(3).to(w)
+    return So3.exp(x).matrix()
 
-    # Rodrigues' rotation formula.
-    # R = cos(t)*eye(3) + sinc1(t)*W + sinc2(t)*(w*w');
-    # R = eye(3) + sinc1(t)*W + sinc2(t)*S
+    # w = x.view(-1, 3)
+    # t = w.norm(p=2, dim=1).view(-1, 1, 1)
+    # W = mat(w)
+    # S = W.bmm(W)
+    # I = torch.eye(3).to(w)
 
-    R = I + sinc1(t) * W + sinc2(t) * S
+    # # Rodrigues' rotation formula.
+    # # R = cos(t)*eye(3) + sinc1(t)*W + sinc2(t)*(w*w');
+    # # R = eye(3) + sinc1(t)*W + sinc2(t)*S
 
-    return R.view(*(x.size()[0:-1]), 3, 3)
+    # R = I + sinc1(t) * W + sinc2(t) * S
+
+    # return R.view(*(x.size()[0:-1]), 3, 3)
 
 
 def inverse(g):
@@ -92,41 +95,44 @@ def btrace(X):
 
 
 def log(g):
-    eps = 1.0e-7
-    R = g.view(-1, 3, 3)
-    tr = btrace(R)
-    c = (tr - 1) / 2
-    t = torch.acos(c)
-    sc = sinc1(t)
-    idx0 = (torch.abs(sc) <= eps)
-    idx1 = (torch.abs(sc) > eps)
-    sc = sc.view(-1, 1, 1)
+    s = So3.from_matrix(g)
+    return s.log()
 
-    X = torch.zeros_like(R)
-    if idx1.any():
-        X[idx1] = (R[idx1] - R[idx1].transpose(1, 2)) / (2 * sc[idx1])
+    # eps = 1.0e-7
+    # R = g.view(-1, 3, 3)
+    # tr = btrace(R)
+    # c = (tr - 1) / 2
+    # t = torch.acos(c)
+    # sc = sinc1(t)
+    # idx0 = (torch.abs(sc) <= eps)
+    # idx1 = (torch.abs(sc) > eps)
+    # sc = sc.view(-1, 1, 1)
 
-    if idx0.any():
-        # t[idx0] == math.pi
-        t2 = t[idx0] ** 2
-        A = (R[idx0] + torch.eye(3).type_as(R).unsqueeze(0)) * t2.view(-1, 1, 1) / 2
-        aw1 = torch.sqrt(A[:, 0, 0])
-        aw2 = torch.sqrt(A[:, 1, 1])
-        aw3 = torch.sqrt(A[:, 2, 2])
-        sgn_3 = torch.sign(A[:, 0, 2])
-        sgn_3[sgn_3 == 0] = 1
-        sgn_23 = torch.sign(A[:, 1, 2])
-        sgn_23[sgn_23 == 0] = 1
-        sgn_2 = sgn_23 * sgn_3
-        w1 = aw1
-        w2 = aw2 * sgn_2
-        w3 = aw3 * sgn_3
-        w = torch.stack((w1, w2, w3), dim=-1)
-        W = mat(w)
-        X[idx0] = W
+    # X = torch.zeros_like(R)
+    # if idx1.any():
+    #     X[idx1] = (R[idx1] - R[idx1].transpose(1, 2)) / (2 * sc[idx1])
 
-    x = vec(X.view_as(g))
-    return x
+    # if idx0.any():
+    #     # t[idx0] == math.pi
+    #     t2 = t[idx0] ** 2
+    #     A = (R[idx0] + torch.eye(3).type_as(R).unsqueeze(0)) * t2.view(-1, 1, 1) / 2
+    #     aw1 = torch.sqrt(A[:, 0, 0])
+    #     aw2 = torch.sqrt(A[:, 1, 1])
+    #     aw3 = torch.sqrt(A[:, 2, 2])
+    #     sgn_3 = torch.sign(A[:, 0, 2])
+    #     sgn_3[sgn_3 == 0] = 1
+    #     sgn_23 = torch.sign(A[:, 1, 2])
+    #     sgn_23[sgn_23 == 0] = 1
+    #     sgn_2 = sgn_23 * sgn_3
+    #     w1 = aw1
+    #     w2 = aw2 * sgn_2
+    #     w3 = aw3 * sgn_3
+    #     w = torch.stack((w1, w2, w3), dim=-1)
+    #     W = mat(w)
+    #     X[idx0] = W
+
+    # x = vec(X.view_as(g))
+    # return x
 
 
 def transform(g, a):

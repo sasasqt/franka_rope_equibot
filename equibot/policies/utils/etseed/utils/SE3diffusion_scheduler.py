@@ -19,14 +19,14 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return torch.tensor(betas, dtype=torch.float32)
 
 class DiffusionScheduler(torch.nn.Module):
-    def __init__(self,device= torch.device("cuda")):
+    def __init__(self,num_steps=100,mode='squaredcos_cap_v2',device= torch.device("cuda")):
         super().__init__()
-        self.num_steps: int = 100 # 100
+        self.num_steps: int = num_steps # 100
         self.beta_1: float = 1e-4
         self.beta_T: float = 0.05
         self.sigma_r: float = 0.05 # 0.2 0.05 0.001 0.0005
         self.sigma_t: float = 0.03 # 0.1 0.03 0.001 0.0003
-        self.mode = 'squaredcos_cap_v2' # ['linear','cosine','squaredcos_cap_v2']
+        self.mode = mode # ['linear','cosine','squaredcos_cap_v2']
         self.S = 0.008 # 0.008
        
         device = device
@@ -47,7 +47,9 @@ class DiffusionScheduler(torch.nn.Module):
             self.betas = torch.FloatTensor(betas)
         elif self.mode == 'squaredcos_cap_v2':
             self.betas = betas_for_alpha_bar(self.num_steps)
-    
+        else:
+            raise RuntimeError(f"f{self.mode} is not yet implemented")
+        
         self.alphas = 1.0 - self.betas
         self.log_alphas = torch.log(self.alphas)
         self.alphas_cumsum = torch.cumsum(self.log_alphas, dim=0)

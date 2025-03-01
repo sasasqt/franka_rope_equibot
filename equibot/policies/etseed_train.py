@@ -33,7 +33,9 @@ def main(cfg):
         "betas": cfg.betas,
         "eps": cfg.eps,
         "equiv_frac": cfg.equiv_frac,
-        "save_freq": cfg.save_freq
+        "save_freq": cfg.save_freq,
+        "diffusion_steps": cfg.diffusion_steps,
+        "diffusion_mode": cfg.diffusion_mode,
     }
 
 
@@ -83,7 +85,8 @@ def main(cfg):
         # micromamba further complicates it by not introducing proper sys envs for cmakelists
     
     nets, optimizer, lr_scheduler = init_model_and_optimizer(device,config)
-    noise_scheduler = DiffusionScheduler(device=device)
+    noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"],mode=config["diffusion_mode"],device=device)
+    
     wandb.init(
         entity=cfg.wandb.entity,
         project=cfg.wandb.project,
@@ -102,18 +105,19 @@ def main(cfg):
             "diffusion_sigma_t": noise_scheduler.sigma_t
         }
     )
+    global_step=0
     with tqdm(range(config["num_epochs"]), desc='Epoch') as tglobal:
         for epoch_idx in tglobal:
             epoch_loss = []
             with tqdm(train_dataloader, desc='Batch', leave=False) as tepoch:
                 for nbatch in tepoch:
-                    loss_cpu = train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,config=config)
+                    loss_cpu = train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,config=config,global_step=global_step)
                     epoch_loss.append(loss_cpu)
                     tepoch.set_postfix(loss=loss_cpu)
             tglobal.set_postfix(loss=np.mean(epoch_loss))
             current_lr = optimizer.param_groups[0]['lr']
-            wandb.log({'learning_rate': current_lr})
-            wandb.log({'train_loss_avg': np.mean(epoch_loss), 'epoch': epoch_idx})
+            wandb.log({'learning_rate': current_lr},step=global_step)
+            wandb.log({'train_loss_avg': np.mean(epoch_loss), 'epoch': epoch_idx},step=global_step)
             
             if (epoch_idx + 1) % config["save_freq"] == 0:
                 checkpoint_path = os.path.join(checkpoint_dir, f'ckpt{epoch_idx:05d}.pth')
@@ -124,6 +128,7 @@ def main(cfg):
                     'loss': loss_cpu,
                     'lr_scheduler_state_dict': lr_scheduler.state_dict()
                 }, checkpoint_path)
+            global_step+=1
     print("Training Done!")
 
 
@@ -178,7 +183,7 @@ def prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config):
 
 
 # Train a single batch of data
-def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,config):
+def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,config,global_step):
     nxyz = nbatch['pc'][:, :, :, :3].to(device)
     tgt_nxyz = nbatch['pc'][:, :, :, 3:6].to(device)
     naction = nbatch['action'].to(device)
@@ -202,7 +207,9 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,c
     else:
         pred = nets["invariant_pred_net"](model_input)
     noise_pred = pred
-    loss, dist_r, dist_t = compute_loss(noise_pred, noise)
+    # noise_pred: [B*Ho,4,4]
+    # noise: [B,Ho,4,4]
+    loss, dist_r, dist_t = compute_loss(noise_pred, noise.view(noise.size(0)*noise.size(1),4,4))    
     if train_equiv:
         dist_equiv_r = dist_r
         dist_equiv_t = dist_t
@@ -214,15 +221,15 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,c
     optimizer.zero_grad()
     lr_scheduler.step()
     loss_cpu = loss.item()
-    wandb.log({"dist_R": dist_r})
-    wandb.log({"dist_T": dist_t})
-    wandb.log({"loss_cpu": loss_cpu})
+    wandb.log({"dist_R": dist_r},step=global_step)
+    wandb.log({"dist_T": dist_t},step=global_step)
+    wandb.log({"loss_cpu": loss_cpu},step=global_step)
     if train_equiv:
-        wandb.log({"dist_R_eq": dist_equiv_r})
-        wandb.log({"dist_T_eq": dist_equiv_t})
+        wandb.log({"dist_R_eq": dist_equiv_r},step=global_step)
+        wandb.log({"dist_T_eq": dist_equiv_t},step=global_step)
     else:
-        wandb.log({"dist_R_in": dist_invar_r})
-        wandb.log({"dist_T_in": dist_invar_t})
+        wandb.log({"dist_R_in": dist_invar_r},step=global_step)
+        wandb.log({"dist_T_in": dist_invar_t},step=global_step)
     return loss_cpu
 
 

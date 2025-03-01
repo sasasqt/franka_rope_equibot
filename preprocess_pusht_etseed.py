@@ -345,6 +345,10 @@ def main(cfg):
 
             curr = fut
             _i = i // 3
+            print(np.array(pc))
+            assert not (np.isnan(np.array(pc)).any())
+            assert not (np.isnan(np.array(action)).any())
+            
             np.savez(
                 # :02d is expected from the dataset py
                 os.path.join(output_dir + rf"\01_ep{ep:06d}_view0_t{_i:02d}.npz"),

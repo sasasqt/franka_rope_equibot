@@ -2,6 +2,7 @@
 import torch
 from .sinc import sinc1, sinc2, sinc3
 from . import so3
+from kornia.geometry.liegroup import Se3, So3
 
 
 def twist_prod(x, y):
@@ -55,29 +56,32 @@ def genmat():
 
 
 def exp(x):
-    x_ = x.view(-1, 6)
-    w, v = x_[:, 0:3], x_[:, 3:6]
-    t = w.norm(p=2, dim=1).view(-1, 1, 1)
-    W = so3.mat(w)
-    S = W.bmm(W)
-    I = torch.eye(3).to(w)
+    return Se3.exp(x).matrix()
 
-    # Rodrigues' rotation formula.
-    # R = cos(t)*eye(3) + sinc1(t)*W + sinc2(t)*(w*w');
-    #  = eye(3) + sinc1(t)*W + sinc2(t)*S
-    R = I + sinc1(t) * W + sinc2(t) * S
 
-    # V = sinc1(t)*eye(3) + sinc2(t)*W + sinc3(t)*(w*w')
-    #  = eye(3) + sinc2(t)*W + sinc3(t)*S
-    V = I + sinc2(t) * W + sinc3(t) * S
+    # x_ = x.view(-1, 6)
+    # w, v = x_[:, 0:3], x_[:, 3:6]
+    # t = w.norm(p=2, dim=1).view(-1, 1, 1)
+    # W = so3.mat(w)
+    # S = W.bmm(W)
+    # I = torch.eye(3).to(w)
 
-    p = V.bmm(v.contiguous().view(-1, 3, 1))
+    # # Rodrigues' rotation formula.
+    # # R = cos(t)*eye(3) + sinc1(t)*W + sinc2(t)*(w*w');
+    # #  = eye(3) + sinc1(t)*W + sinc2(t)*S
+    # R = I + sinc1(t) * W + sinc2(t) * S
 
-    z = torch.Tensor([0, 0, 0, 1]).view(1, 1, 4).repeat(x_.size(0), 1, 1).to(x)
-    Rp = torch.cat((R, p), dim=2)
-    g = torch.cat((Rp, z), dim=1)
+    # # V = sinc1(t)*eye(3) + sinc2(t)*W + sinc3(t)*(w*w')
+    # #  = eye(3) + sinc2(t)*W + sinc3(t)*S
+    # V = I + sinc2(t) * W + sinc3(t) * S
 
-    return g.view(*(x.size()[0:-1]), 4, 4)
+    # p = V.bmm(v.contiguous().view(-1, 3, 1))
+
+    # z = torch.Tensor([0, 0, 0, 1]).view(1, 1, 4).repeat(x_.size(0), 1, 1).to(x)
+    # Rp = torch.cat((R, p), dim=2)
+    # g = torch.cat((Rp, z), dim=1)
+
+    # return g.view(*(x.size()[0:-1]), 4, 4)
 
 
 def inverse(g):
@@ -95,16 +99,19 @@ def inverse(g):
 
 
 def log(g):
-    g_ = g.view(-1, 4, 4)
-    R = g_[:, 0:3, 0:3]
-    p = g_[:, 0:3, 3]
+    s = Se3.from_matrix(g)
+    return s.log()
 
-    w = so3.log(R)
-    H = so3.inv_vecs_Xg_ig(w)
-    v = H.bmm(p.contiguous().view(-1, 3, 1)).view(-1, 3)
+    # g_ = g.view(-1, 4, 4)
+    # R = g_[:, 0:3, 0:3]
+    # p = g_[:, 0:3, 3]
 
-    x = torch.cat((w, v), dim=1)
-    return x.view(*(g.size()[0:-2]), 6)
+    # w = so3.log(R)
+    # H = so3.inv_vecs_Xg_ig(w)
+    # v = H.bmm(p.contiguous().view(-1, 3, 1)).view(-1, 3)
+
+    # x = torch.cat((w, v), dim=1)
+    # return x.view(*(g.size()[0:-2]), 6)
 
 
 def transform(g, a):
