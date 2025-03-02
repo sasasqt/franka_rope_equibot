@@ -6,20 +6,23 @@ eval_data_path: null
 use_wandb: true
 seed: 0
 
+hydra:
+  run:
+    dir: ${log_dir}/${prefix}
 
 pred_horizon: 16
 obs_horizon: 2
 action_horizon: 8
 T_a: ${pred_horizon}  # what is this???
 batch_size: 16
-num_epochs: 5000
-learning_rate: 1e-5
+num_epochs: 500
+learning_rate: 1e-4
 weight_decay: 1e-6
 betas: [0.95, 0.999]
 eps: 1.0e-08
 equiv_frac: 0.1
-save_freq: 50
-diffusion_steps: 300
+save_freq: 10
+diffusion_steps: 100
 diffusion_mode: squaredcos_cap_v2
 
 env:
