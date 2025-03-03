@@ -178,10 +178,24 @@ def prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config):
     }
     return model_input
 
+# Prepare the output of the model
+def prepare_model_output(actions):
+    B = actions.shape[0]
+    Ho = actions.shape[1]
+    actions4by4 = torch.zeros((B, Ho, 4, 4), dtype=actions.dtype, device=actions.device)
+    indices = [(0, 0), (0, 1), (0, 3), (1, 0), (1, 1), (1, 3), (2, 0), (2, 1), (2, 3)]
+    for i, (row, col) in enumerate(indices):
+        actions4by4[:, :, row, col] = actions[:, :, i]
+    col1 = actions4by4[..., :3, 0]
+    col2 = actions4by4[..., :3, 1]
+    col3 = torch.cross(col1, col2, dim=-1)
+    actions4by4[..., :3, 2] = col3
+    return actions4by4
 
 
 # Train a single batch of data
-def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,config):
+def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,config,isTrain=True):
+    nets.train(isTrain)
     nxyz = nbatch['pc'][:, :, :, :3].to(device)
     tgt_nxyz = nbatch['pc'][:, :, :, 3:6].to(device)
     naction = nbatch['action'].to(device)
@@ -191,6 +205,31 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,c
     num_point = nxyz.shape[2]
     nxyz = nxyz.view(-1, num_point, 3)
     tgt_nxyz = tgt_nxyz.view(-1, num_point, 3)
+    if not isTrain:
+        H_t_noise = torch.eye(4)[None].expand(bz,config["action_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
+        # k = torch.zeros((bz,)).long().to(device)
+        # k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1) # k: torch.Size([B*Ho])                                                                                                                                                                                                                      | 0/7 [00:00<?, ?it/s]
+        for denoise_idx in range(noise_scheduler.num_steps - 1, -1, -1):
+            k = torch.zeros((bz,)).long().to(device)
+            k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1)
+            k[:] = denoise_idx
+            model_input = prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config)
+            
+            if (denoise_idx == 0): 
+                pred = nets["equivariant_pred_net"](model_input)
+            else: 
+                pred = nets["invariant_pred_net"](model_input)
+                
+            noise_pred = pred
+            H_t_noise, H_0 = noise_scheduler.denoise(
+                model_output = noise_pred,
+                timestep = k,
+                sample = H_t_noise,
+                device = device
+            )
+        actions=prepare_model_output(H_t_noise)
+        return actions
+    
     if torch.rand(1) < config["equiv_frac"]:
         train_equiv = True
         k = torch.zeros((bz,)).long().to(device)

@@ -5,6 +5,7 @@ log_dir: logs/${mode}
 eval_data_path: null
 use_wandb: true
 seed: 0
+name: equibot
 
 agent:
   agent_name: dp

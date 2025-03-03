@@ -29,7 +29,7 @@ enable_extension("omni.kit.viewport.utility")
 from franka_rope import IsaacUIUtils, VRUIUtils
 from omni.isaac.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
 
-from .eval_push_util import *
+
 
 # IsaacUIUtils.setUp()
 # VRUIUtils.setUp()
@@ -41,6 +41,10 @@ import omegaconf
 import wandb
 
 async def eval_async(ckpt_paths,agent,cfg):
+    if not "etseed" in str(cfg.name).lower():
+        from .eval_push_util import EvalUtils
+    else:
+        from .eval_push_etseed_util import EvalUtils
     for ckpt_path in ckpt_paths:
         ckpt_name = ckpt_path.split("/")[-1].split(".")[0]
         agent.load_snapshot(ckpt_path)
