@@ -17,6 +17,8 @@ import logging
 import omegaconf
 from equibot.policies.utils.misc import get_dataset
 
+import kornia
+
 @hydra.main(config_path="configs", config_name="etseed")
 def main(cfg):
     config = {
@@ -190,7 +192,14 @@ def prepare_model_output(actions):
     col2 = actions4by4[..., :3, 1]
     col3 = torch.cross(col1, col2, dim=-1)
     actions4by4[..., :3, 2] = col3
-    return actions4by4
+
+    translations = actions4by4[:, :, :3, 3]
+    rotations=actions4by4[:, :,:3, :3]
+    quaternions = kornia.geometry.conversions.rotation_matrix_to_quaternion(rotations)
+    zeros = torch.zeros(B, Ho, 1, device=actions.device)
+    stacked = torch.cat([zeros, translations, quaternions], dim=2)
+
+    return stacked
 
 
 # Train a single batch of data

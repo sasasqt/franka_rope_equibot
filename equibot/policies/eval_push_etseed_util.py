@@ -25,7 +25,9 @@ from pxr import Gf, UsdGeom
 import omni.usd
 
 from equibot.policies.etseed_train import init_model_and_optimizer, prepare_model_input, train_batch
+from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 
+import torch
 import wandb
 # TODO dont block the ui: put the inference code in a new process, and cross processes communication
 # TODO the objective metrics?
@@ -357,7 +359,12 @@ class EvalUtils(ControlFlow):
         #     world.scene.get_object(robot_name).set_joint_positions(
         #         np.array(data_frame.data[_str][f"{_str}_joint_positions"])
         #     )
-        cls.sample._pre_physics_callback=partial(cls._post_reset,_onDone_async=cls._reset_async)
+
+        nets, optimizer, lr_scheduler = init_model_and_optimizer(cls.device,cls.config)
+        noise_scheduler = DiffusionScheduler(num_steps=cls.config["diffusion_steps"],mode=cls.config["diffusion_mode"],device=cls.device)
+    
+
+        cls.sample._pre_physics_callback=partial(cls._post_reset,nets, optimizer, lr_scheduler,noise_scheduler,_onDone_async=cls._reset_async)
 
         cls._sample._on_logging_event(True)
         # await cls._sample._world.play_async()
@@ -445,7 +452,7 @@ class EvalUtils(ControlFlow):
         return capture_viewport_to_file(viewport, file_path=image1)
 
     @classmethod
-    def _post_reset(cls,step_size=None,_onDone_async=None):
+    def _post_reset(cls,nets, optimizer, lr_scheduler,noise_scheduler,step_size=None,_onDone_async=None):
         print("---")
         if step_size is None:
             pass # return
@@ -682,11 +689,18 @@ class EvalUtils(ControlFlow):
         # pc=np.array(rope.get_world_pose()[0]) # [np.array(pc) for pc in rope.get_world_pose()[0]],
         if eval(str(cls.cfg.test_pc_permutation).title()) is True:
             pc=pc[::-1]
+
+
+        mat4x4 = np.eye(4)     
+        action = np.array(
+            mat4x4
+        ) # TODO replace this 
+
         obs = dict(
             # assert isinstance(a"gent_obs["pc"][0][0], np.ndarray)
             pc=pc,
             # state= eef_pos in saved npz
-            state=np.array([[right_target_world_pos[0],right_target_world_pos[1],right_target_world_pos[2],col1[0],col1[1],col1[2],col3[0],col3[1],col3[2],gravity_dir[0],gravity_dir[1],gravity_dir[2],gripper_pose]])
+            action=action[np.newaxis, :],
         )
 
         obs_history.append(obs)
@@ -711,8 +725,7 @@ class EvalUtils(ControlFlow):
         # predict actions
         st = time.time()
         if cls.count % ac_horizon == 0:
-
-            ac = agent.act(agent_obs, return_dict=False)
+            ac = train_batch(nets, optimizer, lr_scheduler, noise_scheduler, agent_obs, cls.device,config=cls.config)
             if eval(str(cls.cfg.manually_close).title()) is True:
                 for i in range(len(ac)):
                     ac[i][0]=-0.3
@@ -747,6 +760,27 @@ class EvalUtils(ControlFlow):
             cls.ac_horizon = 1
             cls.pred_horizon = 1
         
+        cls.device = torch.device('cuda')
+        if not torch.cuda.is_available():
+            cls.device = torch.device('cpu') 
+        cls.config = {
+            "seed": cfg.seed,
+            "mode": cfg.mode,
+            "pred_horizon": cfg.pred_horizon,
+            "obs_horizon": cfg.obs_horizon,
+            "action_horizon": cfg.action_horizon,
+            "T_a": cfg.T_a,
+            "batch_size": cfg.batch_size,
+            "num_epochs": cfg.num_epochs,
+            "learning_rate": cfg.learning_rate,
+            "weight_decay": cfg.weight_decay,
+            "betas": cfg.betas,
+            "eps": cfg.eps,
+            "equiv_frac": cfg.equiv_frac,
+            "save_freq": cfg.save_freq,
+            "diffusion_steps": cfg.diffusion_steps,
+            "diffusion_mode": cfg.diffusion_mode,
+        }
         await cls._setup_async()
         cls._post_setup()
         await cls._reset_async()
@@ -916,4 +950,30 @@ def aa2q(axis, angle):
     xyz = axis * np.sin(half_angle)
     # wxyz
     return np.array([w, xyz[0], xyz[1], xyz[2]])
+
+
+
+
+def q2rmat(q):
+    q = normalize_quat(q)
+    w, x, y, z = q
+
+    w2 = w * w
+    x2 = x * x
+    y2 = y * y
+    z2 = z * z
+
+    r11 = w2 + x2 - y2 - z2
+    r12 = 2 * (x * y - w * z)
+    r13 = 2 * (x * z + w * y)
+
+    r21 = 2 * (x * y + w * z)
+    r22 = w2 - x2 + y2 - z2
+    r23 = 2 * (y * z - w * x)
+
+    r31 = 2 * (x * z - w * y)
+    r32 = 2 * (y * z + w * x)
+    r33 = w2 - x2 - y2 + z2
+
+    return np.array([[r11, r12, r13], [r21, r22, r23], [r31, r32, r33]])
 
