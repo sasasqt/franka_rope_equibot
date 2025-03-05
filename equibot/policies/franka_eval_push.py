@@ -16,6 +16,7 @@ from equibot.policies.utils.misc import get_agent
 # not my fault?!
 from isaacsim import SimulationApp
 simulation_app = SimulationApp({"headless": False})
+import asyncio
 
 import nest_asyncio
 nest_asyncio.apply()

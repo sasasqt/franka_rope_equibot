@@ -7,6 +7,9 @@ use_wandb: true
 seed: 0
 name: etseed
 
+agent:
+  agent_name: ${name}
+
 hydra:
   run:
     dir: ${log_dir}/${prefix}
@@ -25,6 +28,9 @@ equiv_frac: 0.1
 save_freq: 10
 diffusion_steps: 100
 diffusion_mode: squaredcos_cap_v2
+
+training:
+  ckpt: null
 
 env:
   env_class: ???

@@ -24,9 +24,10 @@ from datetime import datetime
 from pxr import Gf, UsdGeom
 import omni.usd
 
-from equibot.policies.etseed_train import init_model_and_optimizer, prepare_model_input, train_batch
+from equibot.policies.etseed_train import init_model_and_optimizer, prepare_model_input, train_batch, prepare_model_output
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 
+import kornia
 import torch
 import wandb
 # TODO dont block the ui: put the inference code in a new process, and cross processes communication
@@ -311,12 +312,20 @@ class EvalUtils(ControlFlow):
                 pc=np.concatenate((pc,tgt_pc-pc),axis=1) # [ 1.57756746e-01  9.57879238e-03  5.00003956e-02 -7.45579600e-04 -6.01215288e-04 -4.09781933e-07]
             else:
                 pc=np.concatenate((pc,tgt_pc),axis=0) 
+
+            mat4x4 = np.eye(4)     
+            action = np.array(
+                mat4x4
+            ) # TODO replace this 
+
+
             obs = dict(
                 # assert isinstance(agent_obs["pc"][0][0], np.ndarray)
                 pc=pc,
                 # pc=np.array(rope.get_world_pose()[0]), # [np.array(pc) for pc in rope.get_world_pose()[0]],
+                action=action,
                 # state= eef_pos in saved npz
-                state=np.array([[right_target_world_pos[0],right_target_world_pos[1],right_target_world_pos[2],col1[0],col1[1],col1[2],col3[0],col3[1],col3[2],gravity_dir[0],gravity_dir[1],gravity_dir[2],gripper_pose]])
+                # state=np.array([[right_target_world_pos[0],right_target_world_pos[1],right_target_world_pos[2],col1[0],col1[1],col1[2],col3[0],col3[1],col3[2],gravity_dir[0],gravity_dir[1],gravity_dir[2],gripper_pose]])
             ) #pc and eef_pose
 
             if cls.obs_horizon-extra_repeat-1-i<=0:
@@ -360,11 +369,13 @@ class EvalUtils(ControlFlow):
         #         np.array(data_frame.data[_str][f"{_str}_joint_positions"])
         #     )
 
-        nets, optimizer, lr_scheduler = init_model_and_optimizer(cls.device,cls.config)
-        noise_scheduler = DiffusionScheduler(num_steps=cls.config["diffusion_steps"],mode=cls.config["diffusion_mode"],device=cls.device)
-    
+        # nets, optimizer, lr_scheduler = init_model_and_optimizer(cls.device,cls.config)
+        # noise_scheduler = DiffusionScheduler(num_steps=cls.config["diffusion_steps"],mode=cls.config["diffusion_mode"],device=cls.device)
 
-        cls.sample._pre_physics_callback=partial(cls._post_reset,nets, optimizer, lr_scheduler,noise_scheduler,_onDone_async=cls._reset_async)
+        nets=cls.config['nets']
+        noise_scheduler=cls.config['noise_scheduler']
+
+        cls.sample._pre_physics_callback=partial(cls._post_reset,nets,noise_scheduler,_onDone_async=cls._reset_async)
 
         cls._sample._on_logging_event(True)
         # await cls._sample._world.play_async()
@@ -452,7 +463,7 @@ class EvalUtils(ControlFlow):
         return capture_viewport_to_file(viewport, file_path=image1)
 
     @classmethod
-    def _post_reset(cls,nets, optimizer, lr_scheduler,noise_scheduler,step_size=None,_onDone_async=None):
+    def _post_reset(cls,nets, noise_scheduler,step_size=None,_onDone_async=None):
         print("---")
         if step_size is None:
             pass # return
@@ -480,13 +491,9 @@ class EvalUtils(ControlFlow):
         obs_history = cls.obs_history
 
 
-        agent=cls.agent
         obs_horizon=cls.obs_horizon
         ac_horizon=cls.ac_horizon
-        pred_horizon=cls.pred_horizon
         reduce_horizon_dim=cls.reduce_horizon_dim
-        gravity_dir=cls.gravity_dir
-        done=cls.done
 
         if cls.count>cls._end:
             log_path=os.path.join(cls._output_folder, f"{cls._current_time}.json")
@@ -700,7 +707,7 @@ class EvalUtils(ControlFlow):
             # assert isinstance(a"gent_obs["pc"][0][0], np.ndarray)
             pc=pc,
             # state= eef_pos in saved npz
-            action=action[np.newaxis, :],
+            action=action,
         )
 
         obs_history.append(obs)
@@ -713,22 +720,37 @@ class EvalUtils(ControlFlow):
         else:
             agent_obs = dict()
             for k in obs.keys():
+                for o in obs_history[-obs_horizon:]:
+                    print(o.keys())
+
                 if k == "pc":
                     # point clouds can have different number of points
                     # so do not stack them
                     agent_obs[k] = [o[k] for o in obs_history[-obs_horizon:]]
                 else:
+                    for o in obs_history[-obs_horizon:]:
+                        print(o[k].shape)
+                    print("???")
                     agent_obs[k] = np.stack(
-                        [o[k] for o in obs_history[-obs_horizon:]]
+                        [o[k] for o in obs_history[-obs_horizon:]],axis=0
                     )
+        for key in agent_obs.keys():
+            agent_obs[key]=torch.from_numpy(np.array(agent_obs[key]))
+            agent_obs[key]=agent_obs[key][None,...]
+            print(agent_obs[key].shape)
 
         # predict actions
         st = time.time()
         if cls.count % ac_horizon == 0:
-            ac = train_batch(nets, optimizer, lr_scheduler, noise_scheduler, agent_obs, cls.device,config=cls.config)
-            if eval(str(cls.cfg.manually_close).title()) is True:
-                for i in range(len(ac)):
-                    ac[i][0]=-0.3
+            #print(agent_obs['pc'].shape)
+            #print(type(agent_obs['pc']))
+
+            #exit
+            ac = train_batch(nets=nets, noise_scheduler=noise_scheduler, nbatch=agent_obs, device=cls.device,config=cls.config, optimizer=None, lr_scheduler=None,isTrain=False)
+            print(ac.shape, "ac?") # b Ha 4 4
+            # if eval(str(cls.cfg.manually_close).title()) is True:
+            #     for i in range(len(ac)):
+            #         ac[i][0]=-0.3
             cls.ac=ac
 
         logging.info(f"Inference time: {time.time() - st:.3f}s")
@@ -737,50 +759,28 @@ class EvalUtils(ControlFlow):
         # take actions
         if len(obs["pc"]) == 0 or len(obs["pc"][0]) == 0:
             return
-        agent_ac = ac[cls.count% ac_horizon] if len(ac.shape) > 1 else ac    
+        agent_ac = ac[0][cls.count% ac_horizon] # if len(ac.shape) > 1 else ac    
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
-        update_action(agent_ac,scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper,eval(str(cls.cfg.rel).title()),eval(str(cls.cfg.rpy).title()),cls._sample._eps,cap=cls.cfg.cap,cup=cls.cfg.cup,update_ori=cls.cfg.update_ori)
+        update_action(agent_ac[None,None,...],scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper,eval(str(cls.cfg.rel).title()),eval(str(cls.cfg.rpy).title()),cls._sample._eps,cap=cls.cfg.cap,cup=cls.cfg.cup,update_ori=cls.cfg.update_ori)
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
 
     @classmethod
-    async def eval_async(cls,agent,num_episodes,log_dir,reduce_horizon_dim,ckpt_name,cfg,simulation_app):
-        cls.agent=agent
-        cls.num_episodes=num_episodes
+    async def eval_async(cls,log_dir,reduce_horizon_dim,cfg,config,simulation_app):
         cls.log_dir=log_dir
         cls.reduce_horizon_dim=reduce_horizon_dim
-        cls.ckpt_name=ckpt_name
+        cls.config=config
         cls.cfg=cfg
+        
         cls.simulation_app=simulation_app
-        if hasattr(agent, "obs_horizon") and hasattr(agent, "ac_horizon"):
-            cls.obs_horizon = agent.obs_horizon
-            cls.ac_horizon = agent.ac_horizon
-            cls.pred_horizon = agent.pred_horizon
-        else:
-            cls.obs_horizon = 1
-            cls.ac_horizon = 1
-            cls.pred_horizon = 1
+        cls.obs_horizon = config['obs_horizon']
+        cls.ac_horizon = config['action_horizon']
+        cls.pred_horizon = config['pred_horizon']
+        cls.T_a=config['T_a']
         
         cls.device = torch.device('cuda')
         if not torch.cuda.is_available():
             cls.device = torch.device('cpu') 
-        cls.config = {
-            "seed": cfg.seed,
-            "mode": cfg.mode,
-            "pred_horizon": cfg.pred_horizon,
-            "obs_horizon": cfg.obs_horizon,
-            "action_horizon": cfg.action_horizon,
-            "T_a": cfg.T_a,
-            "batch_size": cfg.batch_size,
-            "num_epochs": cfg.num_epochs,
-            "learning_rate": cfg.learning_rate,
-            "weight_decay": cfg.weight_decay,
-            "betas": cfg.betas,
-            "eps": cfg.eps,
-            "equiv_frac": cfg.equiv_frac,
-            "save_freq": cfg.save_freq,
-            "diffusion_steps": cfg.diffusion_steps,
-            "diffusion_mode": cfg.diffusion_mode,
-        }
+
         await cls._setup_async()
         cls._post_setup()
         await cls._reset_async()
@@ -788,85 +788,39 @@ class EvalUtils(ControlFlow):
 
         
 def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,update_ori=True):
-    # TODO CLIP in TRAIN + INFERENCE
-    if agent_ac[0] <0.025:
-        gripper.close()
-    else:
-        gripper.open()
+    translations = agent_ac[:, :, :3, 3][0][0]
+    rotations=agent_ac[:, :,:3, :3][0][0]
+    quaternions = kornia.geometry.conversions.rotation_matrix_to_quaternion(rotations)
+    agent_ac=agent_ac[0][0]
+    # # TODO CLIP in TRAIN + INFERENCE
+    # if agent_ac[0] <0.025:
+    #     gripper.close()
+    # else:
+    #     gripper.open()
 
     target_world_pos=np.array(target.get_world_pose()[0].tolist())
     target_world_ori=np.array(target.get_world_pose()[1].tolist())
-    
-    print("old pos: ", target_world_pos)
-    print("agent pos: ",agent_ac[1:1+3])
-    agent_pos=np.array(agent_ac[1:1+3])
+
     # delta_pos=np.clip(delta_pos,-0.01,0.01)
     # print("clipped delta pos: ",delta_pos)
  
-    multiplier=1
-    if rel:
-        # cap fast movement
-        if cap is not None:
-            cap=float(cap)
-            if (_l2_norm(agent_pos)*30.0>=cap): 
-                # print(delta_pos,_l2_norm(delta_pos),"???")
-                multiplier=30.0*_l2_norm(agent_pos)
-                agent_pos=agent_pos*cap/multiplier
-                # print(delta_pos,_l2_norm(delta_pos),"???")
-        # cup slow movement
-        if cup is not None:
-            cup=float(cup)
-            if (_l2_norm(agent_pos)*30.0<=cup and _l2_norm(agent_pos)*30.0>1e-8): 
-                print(agent_pos,_l2_norm(agent_pos),"???")
-                multiplier=30.0*_l2_norm(agent_pos)
-                agent_pos=agent_pos*cup/multiplier
-                print(agent_pos,_l2_norm(agent_pos),"???")
-        
-        tgt_pos=target_world_pos+agent_pos
-    else:
-        tgt_pos=agent_pos
+    print(translations.shape,'translations')
+    print(quaternions.shape,'quaternions')
+    tgt_pos=target_world_pos+translations.tolist()
 
     if tgt_pos[2]<=eps:
         print("z pos went below groundplane !!!")
         tgt_pos[2]=eps
 
-    agent_ori=np.array(agent_ac[4:4+3])
-    # delta_ori=np.clip(delta_ori,-0.05,0.05)
-    angle=_l2_norm(agent_ori)
-    axis=agent_ori/angle
-    angle*=np.pi
-    if rel:
-        if rpy:
-            agent_ori
-            print(agent_ori)
-            if agent_ori[2]<0:
-                agent_ori[2]+=np.pi
-                agent_ori[2]*=-1
-                
-            if agent_ori[2]>0:
-                agent_ori[2]-=np.pi
-                agent_ori[2]*=-1
-            print(agent_ori)
-            print()
-            tgt_ori=mu.mul(normalize_quat(np.array(rpy2quat(agent_ori))),normalize_quat(target_world_ori))
-        else:
-            tgt_ori=mu.mul(normalize_quat(np.array(aa2q(axis,angle))),normalize_quat(target_world_ori))
-    else:
-        if rpy:
-            tgt_ori=normalize_quat(np.array(rpy2quat(agent_ori)))
-        else:
-            tgt_ori=normalize_quat(np.array(aa2q(axis,angle)))
-    
-    print("agent ori:", agent_ori)
-    print("aa ",axis,angle)
-    print("tgt ori", tgt_ori)
+    tgt_ori=mu.mul(normalize_quat(np.array(quaternions.tolist())),normalize_quat(target_world_ori))
+
 
     if not update_ori:
         tgt_ori=None
     target.set_world_pose(position=tgt_pos,orientation=tgt_ori) # tgt_ori
     print("applied pos: ",tgt_pos)
-    _gripper_status="CLOSING" if agent_ac[0] <0.025 else "opening"
-    print(f"gripper is {_gripper_status}")
+    # _gripper_status="CLOSING" if agent_ac[0] <0.025 else "opening"
+    # print(f"gripper is {_gripper_status}")
 
 def quat_mul(q1, q2):
     w1, x1, y1, z1 = q1[0], q1[1], q1[2], q1[3]

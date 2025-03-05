@@ -182,6 +182,7 @@ def prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config):
 
 # Prepare the output of the model
 def prepare_model_output(actions):
+    print(actions.shape,'in prep output')
     B = actions.shape[0]
     Ho = actions.shape[1]
     actions4by4 = torch.zeros((B, Ho, 4, 4), dtype=actions.dtype, device=actions.device)
@@ -216,6 +217,11 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,c
     tgt_nxyz = tgt_nxyz.view(-1, num_point, 3)
     if not isTrain:
         H_t_noise = torch.eye(4)[None].expand(bz,config["action_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
+
+        if os.name == 'nt': # mock actions on windows 
+            #actions=prepare_model_output(H_t_noise)
+            return H_t_noise
+    
         # k = torch.zeros((bz,)).long().to(device)
         # k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1) # k: torch.Size([B*Ho])                                                                                                                                                                                                                      | 0/7 [00:00<?, ?it/s]
         for denoise_idx in range(noise_scheduler.num_steps - 1, -1, -1):
