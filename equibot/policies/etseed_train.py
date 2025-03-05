@@ -167,6 +167,7 @@ def init_model_and_optimizer(device,config):
 # Prepare the input for the model
 def prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config):
     B = nxyz.shape[0]
+
     nxyz = nxyz.repeat(config["T_a"] // config["obs_horizon"], 1, 1)
     tgt_nxyz = tgt_nxyz.repeat(config["T_a"] // config["obs_horizon"], 1, 1)
     indices = [(0, 0), (0, 1), (0, 3), (1, 0), (1, 1), (1, 3), (2, 0), (2, 1), (2, 3)]
@@ -174,15 +175,18 @@ def prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config):
     noisy_actions = torch.stack(selected_elements_action, dim=-1).reshape(-1, 9).unsqueeze(1).expand(-1, num_point, -1)
     tensor_k = k.clone().detach().unsqueeze(1).unsqueeze(2).expand(-1, num_point, -1)
     feature = torch.cat((nxyz,tgt_nxyz, noisy_actions, tensor_k), dim=-1)
+
     model_input = {
-        'xyz': nxyz,
-        'feature': feature
+        'xyz': nxyz.to(dtype=torch.float32),
+        'feature': feature.to(dtype=torch.float32)
     }
+    assert model_input["xyz"].dtype == torch.float32
+    assert model_input["feature"].dtype == torch.float32
+
     return model_input
 
 # Prepare the output of the model
 def prepare_model_output(actions):
-    print(actions.shape,'in prep output')
     B = actions.shape[0]
     Ho = actions.shape[1]
     actions4by4 = torch.zeros((B, Ho, 4, 4), dtype=actions.dtype, device=actions.device)
@@ -206,6 +210,7 @@ def prepare_model_output(actions):
 # Train a single batch of data
 def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,config,isTrain=True):
     nets.train(isTrain)
+    print(nbatch['pc'].shape,'train batch')
     nxyz = nbatch['pc'][:, :, :, :3].to(device)
     tgt_nxyz = nbatch['pc'][:, :, :, 3:6].to(device)
     naction = nbatch['action'].to(device)
@@ -216,7 +221,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,c
     nxyz = nxyz.view(-1, num_point, 3)
     tgt_nxyz = tgt_nxyz.view(-1, num_point, 3)
     if not isTrain:
-        H_t_noise = torch.eye(4)[None].expand(bz,config["action_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
+        H_t_noise = torch.eye(4)[None].expand(bz,config["pred_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
 
         if os.name == 'nt': # mock actions on windows 
             #actions=prepare_model_output(H_t_noise)
@@ -228,7 +233,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,c
             k = torch.zeros((bz,)).long().to(device)
             k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1)
             k[:] = denoise_idx
-            model_input = prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config)
+            model_input = prepare_model_input(nxyz, tgt_nxyz, H_t_noise, k, num_point,config)
             
             if (denoise_idx == 0): 
                 pred = nets["equivariant_pred_net"](model_input)
@@ -242,7 +247,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,c
                 sample = H_t_noise,
                 device = device
             )
-        actions=prepare_model_output(H_t_noise)
+        actions=H_0#prepare_model_output(H_t_noise)
         return actions
     
     if torch.rand(1) < config["equiv_frac"]:

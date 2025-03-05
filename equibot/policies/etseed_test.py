@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch
 import time
@@ -10,27 +11,87 @@ from tqdm.auto import tqdm
 from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant, SE3ManiNet_Equivariant_Separate
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 
+import hydra
+import logging
+from equibot.policies.utils.misc import get_dataset
 
-# Configure parameters
-config = {
-    "dataset_path": "/home/yue.chen/work/Robotics/SE3-EquivManip/log/50_rotate_triangle.npy", # replace with your data path
-    "save_path": "log",
-    "task_name": "rotate_triangle",
-    "pred_horizon": 4,
-    "obs_horizon": 1,
-    "action_horizon": 4,
-    "T_a": 4,
-    "batch_size": 1,
-    "checkpoint_path": "",  # replace with your checkpoint path
-}
+@hydra.main(config_path="configs", config_name="etseed")
+def main(cfg):
+    config = {
+        "seed": cfg.seed,
+        "mode": cfg.mode,
+        "pred_horizon": cfg.pred_horizon,
+        "obs_horizon": cfg.obs_horizon,
+        "action_horizon": cfg.action_horizon,
+        "T_a": cfg.T_a,
+        "batch_size": cfg.batch_size,
+        "diffusion_steps": cfg.diffusion_steps,
+        "diffusion_mode": cfg.diffusion_mode,
+        "checkpoint_path": cfg.training.ckpt,
+    }
 
-# Create the dataset and data loader
-def create_dataloader():
-    pass
+
+    assert config["mode"] == "eval"
+    np.random.seed(config["seed"])
+
+    logging.basicConfig(level=logging.INFO)
+
+    # initialize parameters
+    batch_size = config["batch_size"]
+
+    # setup logging
+    log_dir = os.getcwd()
+    num_workers = min(os.cpu_count(),cfg.data.dataset.num_workers)
+
+    if os.name == 'nt': # if windows
+        num_workers=0 
+
+    valid_dataset = get_dataset(cfg, "train", valid=True)
+    valid_loader = torch.utils.data.DataLoader(
+        valid_dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        shuffle=True,
+        drop_last=False, # was True
+        pin_memory=True,
+    )
+    checkpoint_dir = log_dir
+
+    device = torch.device('cuda')
+    if not torch.cuda.is_available():
+        device = torch.device('cpu') # compile dgl w/ cuda in windows is as easy as compiling pytorch cuda from source:)
+        # micromamba further complicates it by not introducing proper sys envs for cmakelists
     
-    
-# Initialize the model and optimizer
-def init_model(device):
+    nets = init_model(device,config)
+    noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"],mode=config["diffusion_mode"],device=device)
+    wandb.init(
+        entity=cfg.wandb.entity,
+        project=cfg.wandb.project,
+        tags=["eval"],
+        name=cfg.prefix,
+        settings=wandb.Settings(code_dir="."),
+        config={
+            "pred_horizon": config["pred_horizon"],
+            "obs_horizon": config["obs_horizon"],
+            "batch_size": config["batch_size"],
+            "diffusion_num_steps": noise_scheduler.num_steps,
+            "diffusion_mode": noise_scheduler.mode,
+            "diffusion_sigma_r": noise_scheduler.sigma_r,
+            "diffusion_sigma_t": noise_scheduler.sigma_t
+        }
+    )
+    test_losses = []
+    with tqdm(valid_loader, desc='Test Batch') as tepoch:
+        for nbatch in tepoch:
+            loss_cpu = test_batch(nets, noise_scheduler, nbatch, device,config)
+            test_losses.append(loss_cpu)
+            tepoch.set_postfix(loss=loss_cpu)
+    avg_test_loss = np.mean(test_losses)
+    wandb.log({'test_loss': avg_test_loss})
+    print(f"Test Done! Average Test Loss: {avg_test_loss}")
+
+
+def init_model(device,config):
     noise_pred_net_in = SE3ManiNet_Invariant()
     noise_pred_net_eq = SE3ManiNet_Equivariant_Separate()
     nets = nn.ModuleDict({
@@ -43,7 +104,7 @@ def init_model(device):
     return nets
 
 # Prepare the input for the model
-def prepare_model_input(nxyz, nrgb, noisy_actions, k, num_point):
+def prepare_model_input(nxyz, nrgb, noisy_actions, k, num_point,config):
     B = nxyz.shape[0]
     nxyz = nxyz.repeat(config["T_a"] // config["obs_horizon"], 1, 1)
     nrgb = nrgb.repeat(config["T_a"] // config["obs_horizon"], 1, 1)
@@ -60,27 +121,28 @@ def prepare_model_input(nxyz, nrgb, noisy_actions, k, num_point):
 
 
 # test a single batch of data
-def test_batch(nets, noise_scheduler, nbatch, device):
+def test_batch(nets, noise_scheduler, nbatch, device,config):
     nets.eval()
     with torch.no_grad():
-        nxyz = nbatch['pts'][:, :, :, :3].to(device)
-        nrgb = nbatch['pts'][:, :, :, 3:].to(device)
-        naction = nbatch['gt_action'].to(device)
+        nxyz = nbatch['pc'][:, :, :, :3].to(device)
+        tgt_nxyz = nbatch['pc'][:, :, :, 3:6].to(device)
+        naction = nbatch['action'].to(device)
         bz = nxyz.shape[0]
+        naction = naction.view(naction.size(0),naction.size(1),4,4) # naction: torch.Size([B, Ho, 4, 4])
         num_point = nxyz.shape[2]
         nxyz = nxyz.view(-1, num_point, 3)
-        nrgb = nrgb.view(-1, num_point, 3)
+        tgt_nxyz = tgt_nxyz.view(-1, num_point, 3)
         
-        H_t_noise = torch.eye(4).expand(config["action_horizon"], 4, 4).unsqueeze(0).to(device) # noise action initialize
+        H_t_noise = torch.eye(4)[None].expand(bz,config["pred_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
+        if os.name == 'nt': # mock actions on windows 
+            #actions=prepare_model_output(H_t_noise)
+            return H_t_noise
         
-        kk = torch.zeros((bz,)).long().to(device)
-        kk = kk.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1)
-        kk[:] = noise_scheduler.num_steps - 1 
         for denoise_idx in range(noise_scheduler.num_steps - 1, -1, -1):
             k = torch.zeros((bz,)).long().to(device)
             k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1)
             k[:] = denoise_idx
-            model_input = prepare_model_input(nxyz, nrgb, H_t_noise, k, num_point)
+            model_input = prepare_model_input(nxyz, tgt_nxyz, H_t_noise, k, num_point,config)
             
             if (denoise_idx == 0): 
                 test_equiv = True 
@@ -100,8 +162,8 @@ def test_batch(nets, noise_scheduler, nbatch, device):
                 sample = H_t_noise,
                 device = device
             )
-            
-        loss, dist_R, dist_T = compute_loss(H_0.squeeze(0), naction.squeeze(0))
+        
+        loss, dist_R, dist_T = compute_loss(H_0.view(-1,4,4), naction.view(-1,4,4))
         # print("loss: ", loss)
         loss_cpu = loss.item()
         if test_equiv:
@@ -122,35 +184,7 @@ def test_batch(nets, noise_scheduler, nbatch, device):
     return loss_cpu
 
 
-# 主测试函数
-def main():
-    dataloader = create_dataloader()
-    device = torch.device('cuda')
-    nets = init_model(device)
-    noise_scheduler = DiffusionScheduler()
-    wandb.init(
-        project="SE3-Equivariant-Manipulation",
-        notes=time.strftime("%Y%m%d-%H%M%S"),
-        config={
-            "task": config["task_name"],
-            "pred_horizon": config["pred_horizon"],
-            "obs_horizon": config["obs_horizon"],
-            "batch_size": config["batch_size"],
-            "diffusion_num_steps": noise_scheduler.num_steps,
-            "diffusion_mode": noise_scheduler.mode,
-            "diffusion_sigma_r": noise_scheduler.sigma_r,
-            "diffusion_sigma_t": noise_scheduler.sigma_t
-        }
-    )
-    test_losses = []
-    with tqdm(dataloader, desc='Test Batch') as tepoch:
-        for nbatch in tepoch:
-            loss_cpu = test_batch(nets, noise_scheduler, nbatch, device)
-            test_losses.append(loss_cpu)
-            tepoch.set_postfix(loss=loss_cpu)
-    avg_test_loss = np.mean(test_losses)
-    wandb.log({'test_loss': avg_test_loss})
-    print(f"Test Done! Average Test Loss: {avg_test_loss}")
+
 
 if __name__ == "__main__":
     main()

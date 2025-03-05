@@ -308,10 +308,11 @@ class EvalUtils(ControlFlow):
                     #tgt_pc.append((center+p).tolist())
 
             tgt_pc=np.array(tgt_pc)
-            if eval(str(cls.cfg.flow).title()):
-                pc=np.concatenate((pc,tgt_pc-pc),axis=1) # [ 1.57756746e-01  9.57879238e-03  5.00003956e-02 -7.45579600e-04 -6.01215288e-04 -4.09781933e-07]
-            else:
-                pc=np.concatenate((pc,tgt_pc),axis=0) 
+            pc=np.concatenate((pc,tgt_pc-pc),axis=1)
+            # if eval(str(cls.cfg.flow).title()):
+            #     pc=np.concatenate((pc,tgt_pc-pc),axis=1) # [ 1.57756746e-01  9.57879238e-03  5.00003956e-02 -7.45579600e-04 -6.01215288e-04 -4.09781933e-07]
+            # else:
+            #     pc=np.concatenate((pc,tgt_pc),axis=0) 
 
             mat4x4 = np.eye(4)     
             action = np.array(
@@ -493,6 +494,7 @@ class EvalUtils(ControlFlow):
 
         obs_horizon=cls.obs_horizon
         ac_horizon=cls.ac_horizon
+        pred_horizion=cls.pred_horizon
         reduce_horizon_dim=cls.reduce_horizon_dim
 
         if cls.count>cls._end:
@@ -689,13 +691,15 @@ class EvalUtils(ControlFlow):
                 #tgt_pc.append((center+p).tolist())
                 # cls._sample._add_sphere(center+p,prim_path=f"/tgt{component}sphere{i}")
         tgt_pc=np.array(tgt_pc)
-        if eval(str(cls.cfg.flow).title()):
-            pc=np.concatenate((pc,tgt_pc-pc),axis=1) # [ 1.57756746e-01  9.57879238e-03  5.00003956e-02 -7.45579600e-04 -6.01215288e-04 -4.09781933e-07]
-        else:
-            pc=np.concatenate((pc,tgt_pc),axis=0)     
-        # pc=np.array(rope.get_world_pose()[0]) # [np.array(pc) for pc in rope.get_world_pose()[0]],
-        if eval(str(cls.cfg.test_pc_permutation).title()) is True:
-            pc=pc[::-1]
+        pc=np.concatenate((pc,tgt_pc-pc),axis=1)
+
+        # if eval(str(cls.cfg.flow).title()):
+        #     pc=np.concatenate((pc,tgt_pc-pc),axis=1) # [ 1.57756746e-01  9.57879238e-03  5.00003956e-02 -7.45579600e-04 -6.01215288e-04 -4.09781933e-07]
+        # else:
+        #     pc=np.concatenate((pc,tgt_pc),axis=0)     
+        # # pc=np.array(rope.get_world_pose()[0]) # [np.array(pc) for pc in rope.get_world_pose()[0]],
+        # if eval(str(cls.cfg.test_pc_permutation).title()) is True:
+        #     pc=pc[::-1]
 
 
         mat4x4 = np.eye(4)     
@@ -703,11 +707,12 @@ class EvalUtils(ControlFlow):
             mat4x4
         ) # TODO replace this 
 
+        agent_ac = action if not hasattr(cls, 'ac') else cls.ac[0][cls.count% ac_horizon] 
         obs = dict(
             # assert isinstance(a"gent_obs["pc"][0][0], np.ndarray)
             pc=pc,
             # state= eef_pos in saved npz
-            action=action,
+            action=agent_ac,
         )
 
         obs_history.append(obs)
@@ -720,25 +725,17 @@ class EvalUtils(ControlFlow):
         else:
             agent_obs = dict()
             for k in obs.keys():
-                for o in obs_history[-obs_horizon:]:
-                    print(o.keys())
-
                 if k == "pc":
                     # point clouds can have different number of points
                     # so do not stack them
                     agent_obs[k] = [o[k] for o in obs_history[-obs_horizon:]]
                 else:
-                    for o in obs_history[-obs_horizon:]:
-                        print(o[k].shape)
-                    print("???")
                     agent_obs[k] = np.stack(
                         [o[k] for o in obs_history[-obs_horizon:]],axis=0
                     )
         for key in agent_obs.keys():
             agent_obs[key]=torch.from_numpy(np.array(agent_obs[key]))
             agent_obs[key]=agent_obs[key][None,...]
-            print(agent_obs[key].shape)
-
         # predict actions
         st = time.time()
         if cls.count % ac_horizon == 0:
@@ -751,7 +748,8 @@ class EvalUtils(ControlFlow):
             # if eval(str(cls.cfg.manually_close).title()) is True:
             #     for i in range(len(ac)):
             #         ac[i][0]=-0.3
-            cls.ac=ac
+            cls.ac=ac.view(-1,pred_horizion,4,4).cpu()
+            print(cls.ac.shape,'prediced ac') # b Ha 4 4
 
         logging.info(f"Inference time: {time.time() - st:.3f}s")
 
@@ -763,7 +761,7 @@ class EvalUtils(ControlFlow):
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
         update_action(agent_ac[None,None,...],scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper,eval(str(cls.cfg.rel).title()),eval(str(cls.cfg.rpy).title()),cls._sample._eps,cap=cls.cfg.cap,cup=cls.cfg.cup,update_ori=cls.cfg.update_ori)
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
-
+    
     @classmethod
     async def eval_async(cls,log_dir,reduce_horizon_dim,cfg,config,simulation_app):
         cls.log_dir=log_dir
@@ -804,8 +802,8 @@ def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,upda
     # delta_pos=np.clip(delta_pos,-0.01,0.01)
     # print("clipped delta pos: ",delta_pos)
  
-    print(translations.shape,'translations')
-    print(quaternions.shape,'quaternions')
+    print(translations,'translations')
+    print(quaternions,'quaternions')
     tgt_pos=target_world_pos+translations.tolist()
 
     if tgt_pos[2]<=eps:

@@ -1154,14 +1154,13 @@ def _q2aa( q):
     v = np.array([q[1], q[2], q[3]])
     angle = 2 * np.arccos(w)
     sin_half_angle = np.sqrt(1 - w**2)
+    if sin_half_angle < 1e-15:
+        return np.array([0.0, 0.0, 1.0]) , 0.0
     if angle > np.pi:
         angle = 2 * np.pi - angle
         axis = -v / sin_half_angle
     else:
-        if sin_half_angle < 1e-15:
-            axis = np.array([1.0, 0.0, 0.0])
-        else:
-            axis = v / sin_half_angle
+        axis = v / sin_half_angle
     return axis, angle
 
 def _aa2q(axis, angle):

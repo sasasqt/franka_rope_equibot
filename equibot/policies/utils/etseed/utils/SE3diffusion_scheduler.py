@@ -115,14 +115,14 @@ class DiffusionScheduler(torch.nn.Module):
     
     
     def denoise(self,
-                model_output, # [B, 4, 4]
-                timestep,  
-                sample, # (B, pred_horizon, 4, 4)
+                model_output, # [B*Ho, 4, 4]
+                timestep, # [B*Ho]
+                sample, # (B, Ho, 4, 4)
                 device):
         
-        # # print('model_output',model_output)
-        # # print('timestep',timestep)
-        # # print('naction', sample)
+        # # print('model_output',model_output.shape)
+        # # print('timestep',timestep.shape)
+        # # print('naction', sample.shape)
         
         # B = model_output.shape[0]
         # Rs_pred = model_output[...,:3,:3]
@@ -163,8 +163,10 @@ class DiffusionScheduler(torch.nn.Module):
         # sample = H_noise @ sample  # [B, 4, 4]
         
         # return sample, H_0
-        timestep = timestep[0].cpu()
-        B = model_output.shape[0]
+        timestep = timestep[0].cpu() # scalar
+        B = sample.shape[0]
+        Ho = sample.shape[1]
+        model_output=model_output.view(B,Ho,4,4)
         H_0 = (torch.inverse(model_output) @ sample)
         gamma0 = self.gamma0[timestep].to(device)
         gamma1 = self.gamma1[timestep].to(device)

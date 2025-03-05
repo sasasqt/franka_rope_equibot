@@ -74,7 +74,7 @@ def init_model(device,config):
 
 @hydra.main(config_path="configs", config_name="etseed")
 def main(cfg):
-
+    torch.set_grad_enabled(False)
     config = {
         "seed": cfg.seed,
         "mode": cfg.mode,
@@ -85,7 +85,7 @@ def main(cfg):
         "batch_size": cfg.batch_size,
         "diffusion_steps": cfg.diffusion_steps,
         "diffusion_mode": cfg.diffusion_mode,
-        "checkpoint_path": r"C:\Users\Shadow\project\equibot_for_franka_rope\logs\train\2025-03-02_17-32-19_etseed\ckpt00019.pth",  # replace with your checkpoint path
+        "checkpoint_path": cfg.training.ckpt,  # replace with your checkpoint path
         "cfg":cfg
     }
 
