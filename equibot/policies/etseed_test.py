@@ -82,10 +82,12 @@ def main(cfg):
     )
     test_losses = []
     with tqdm(valid_loader, desc='Test Batch') as tepoch:
+        cnt=0
         for nbatch in tepoch:
-            loss_cpu = test_batch(nets, noise_scheduler, nbatch, device,config)
+            loss_cpu = test_batch(nets, noise_scheduler, nbatch, device,cnt,config)
             test_losses.append(loss_cpu)
             tepoch.set_postfix(loss=loss_cpu)
+            cnt+=1
     avg_test_loss = np.mean(test_losses)
     wandb.log({'test_loss': avg_test_loss})
     print(f"Test Done! Average Test Loss: {avg_test_loss}")
@@ -121,8 +123,10 @@ def prepare_model_input(nxyz, nrgb, noisy_actions, k, num_point,config):
 
 
 # test a single batch of data
-def test_batch(nets, noise_scheduler, nbatch, device,config):
+def test_batch(nets, noise_scheduler, nbatch, device,cnt,config):
     nets.eval()
+    wandb.log({"diffusing": cnt})
+
     with torch.no_grad():
         nxyz = nbatch['pc'][:, :, :, :3].to(device)
         tgt_nxyz = nbatch['pc'][:, :, :, 3:6].to(device)
@@ -163,24 +167,24 @@ def test_batch(nets, noise_scheduler, nbatch, device,config):
                 device = device
             )
         
-        loss, dist_R, dist_T = compute_loss(H_0.view(-1,4,4), naction.view(-1,4,4))
-        # print("loss: ", loss)
-        loss_cpu = loss.item()
-        if test_equiv:
-            dist_equiv_r = dist_R
-            dist_equiv_t = dist_T
-        else:
-            dist_invar_r = dist_R
-            dist_invar_t = dist_T
-        wandb.log({"test_dist_R": dist_R})
-        wandb.log({"test_dist_T": dist_T})
-        wandb.log({"test_loss_cpu": loss_cpu})
-        if test_equiv:
-            wandb.log({"test_dist_R_eq": dist_equiv_r})
-            wandb.log({"test_dist_T_eq": dist_equiv_t})
-        else:
-            wandb.log({"test_dist_R_in": dist_invar_r})
-            wandb.log({"test_dist_T_in": dist_invar_t})
+            loss, dist_R, dist_T = compute_loss(H_0.view(-1,4,4), naction.view(-1,4,4))
+            # print("loss: ", loss)
+            loss_cpu = loss.item()
+            if test_equiv:
+                dist_equiv_r = dist_R
+                dist_equiv_t = dist_T
+            else:
+                dist_invar_r = dist_R
+                dist_invar_t = dist_T
+            wandb.log({"test_dist_R": dist_R})
+            wandb.log({"test_dist_T": dist_T})
+            wandb.log({"test_loss_cpu": loss_cpu})
+            if test_equiv:
+                wandb.log({"test_dist_R_eq": dist_equiv_r})
+                wandb.log({"test_dist_T_eq": dist_equiv_t})
+            else:
+                wandb.log({"test_dist_R_in": dist_invar_r})
+                wandb.log({"test_dist_T_in": dist_invar_t})
     return loss_cpu
 
 
