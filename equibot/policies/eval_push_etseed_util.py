@@ -742,7 +742,15 @@ class EvalUtils(ControlFlow):
             #print(agent_obs['pc'].shape)
             #print(type(agent_obs['pc']))
 
-            #exit
+            # id= torch.eye(4, dtype=torch.float32, device='cuda')
+            # rot=rpy2quat(torch.tensor([0.0,0.0,0.001],dtype=torch.float32, device='cuda'))
+            # print(rot,'rot')
+            # rot=kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.tensor(rot,dtype=torch.float32, device='cuda'))
+            # id[:3, :3]=rot
+
+            # id[:3, 3] = -1.0*torch.tensor([0.00001,0.00001,0.00001],dtype=torch.float32, device='cuda')*cls.count
+            # ac = id[None, None, :, :].expand(1,pred_horizion,4,4)
+
             ac = train_batch(nets=nets, noise_scheduler=noise_scheduler, nbatch=agent_obs, device=cls.device,config=cls.config, optimizer=None, lr_scheduler=None,isTrain=False)
             print(ac.shape, "ac?") # b Ha 4 4
             # if eval(str(cls.cfg.manually_close).title()) is True:
@@ -810,13 +818,15 @@ def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,upda
         print("z pos went below groundplane !!!")
         tgt_pos[2]=eps
 
-    tgt_ori=mu.mul(normalize_quat(np.array(quaternions.tolist())),normalize_quat(target_world_ori))
-
-
+    #tgt_ori=mu.mul(normalize_quat(np.array(quaternions.tolist())),normalize_quat(target_world_ori))
+    tgt_ori=kornia.geometry.quaternion.Quaternion(quaternions)*kornia.geometry.quaternion.Quaternion(torch.tensor(target_world_ori,dtype=torch.float32))
+    
     if not update_ori:
         tgt_ori=None
-    target.set_world_pose(position=tgt_pos,orientation=tgt_ori) # tgt_ori
+    target.set_world_pose(position=tgt_pos,orientation=tgt_ori.data) # tgt_ori
     print("applied pos: ",tgt_pos)
+    print("applied ori: ",tgt_ori)
+    
     # _gripper_status="CLOSING" if agent_ac[0] <0.025 else "opening"
     # print(f"gripper is {_gripper_status}")
 
