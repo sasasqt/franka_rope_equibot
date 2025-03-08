@@ -250,12 +250,8 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,c
         actions=H_0#prepare_model_output(H_t_noise)
         return actions
     
-    if torch.rand(1) < config["equiv_frac"]:
-        train_equiv = True
-        k = torch.zeros((bz,)).long().to(device)
-    else:
-        train_equiv = False
-        k = torch.randint(1, noise_scheduler.num_steps, (bz,), device=device)
+    train_equiv = True
+    k = torch.randint(0, noise_scheduler.num_steps, (bz,), device=device)
     k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1) # k: torch.Size([B*Ho])                                                                                                                                                                                                                      | 0/7 [00:00<?, ?it/s]
     noisy_actions, noise = noise_scheduler.add_noise(naction, k, device=device)
     model_input = prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config)
