@@ -1,5 +1,5 @@
 import os
-from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant, SE3ManiNet_Equivariant_Separate
+from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant_Separate, SE3ManiNet_Equivariant_Separate, SE3ManiNet_Fused_Separate
 from equibot.policies.utils.etseed.utils.group_utils import bgs, bgdR
 import torch
 from scipy.spatial.transform import Rotation as R
@@ -18,16 +18,21 @@ def check_invariant_model(num_trials=10, threshold=0.01):
         rotated_pts = rot.apply(pts) + np.random.rand(3)
         xyz = np.stack([pts, rotated_pts], axis=0)
 
-        feature = np.random.rand(100,12)
-        feature = np.stack([feature, rot.apply(feature)], axis=0)
-
+        feature1 = np.random.rand(100,7)
+        feature2=np.random.rand(100,3)
+        feature3=np.random.rand(100,3)
+        
+        feature=np.concatenate([feature1,feature2,feature3],axis=-1)
+        rot_feature=np.concatenate([feature1,rot.apply(feature2),rot.apply(feature3)],axis=-1)
+        feature = np.stack([feature, rot_feature], axis=0)  # (2, 100, 13)
+                        
         xyz = torch.tensor(xyz, dtype=torch.float32).cuda()
         feature = torch.tensor(feature, dtype=torch.float32).cuda()
         data = {}
         
         data['xyz'] = xyz
         data['feature'] = feature
-        model = SE3ManiNet_Invariant().cuda()
+        model = SE3ManiNet_Invariant_Separate().cuda()
         result = model(data)
         result_np = []
         for i in range(len(result)):
@@ -49,67 +54,226 @@ def check_invariant_model(num_trials=10, threshold=0.01):
 #! Check equivariant model
 #! Although all the rotations written in the code are right multiplications, the actual physical meaning is left multiplication.
 def check_equivariant_model(num_trials=10, threshold=np.pi/180*1):
-    model = SE3ManiNet_Equivariant_Separate().cuda()
-    total_trials = num_trials
-    success_count = 0
-    failure_count = 0
-    zero_count = 0
-    
-    total_trans_dist = 0
-    total_rot_dist = 0
-    total_real_dist = 0
-    
-    for trial in tqdm.tqdm(range(total_trials)):
+
+    success_record = []
+    for test_inv_trial in tqdm.tqdm(range(num_trials)):
         rot = R.random()
-        pts = np.random.rand(128,3)
-        num_points = pts.shape[0]
-        trans = np.random.rand(3) * 10
-        T = np.eye(4)
-        T[:3,:3] = rot.as_matrix()
-        T[:3,3] = trans
-        rotated_pts = pts @ rot.as_matrix().T + trans
+        pts = np.random.rand(100,3)
+        trans=np.random.rand(3)
+
+        rotated_pts = rot.apply(pts) + trans
+
+        # undo_tran=result_np[1][:,:3,3]-trans
+        # undo_rot=np.einsum('ij,bjk->bjk',rot.inv().as_matrix(),result_np[1][:,:3,:3])
+        # undo_result_np1=np.tile(np.eye(4),(pts.shape[0], 1, 1))
+        # undo_result_np1[:,:3,3]=undo_tran
+        # undo_result_np1[:,:3,:3]=undo_rot
+
+        # difference = result_np[0] - undo_result_np1
+
         xyz = np.stack([pts, rotated_pts], axis=0)
-        feature = np.random.rand(num_points,13)
-        feature = np.stack([feature, feature], axis=0)
+
+        feature1 = np.random.rand(100,7)
+        feature2=np.random.rand(100,3)
+        feature3=np.random.rand(100,3)
+        
+        feature=np.concatenate([feature1,feature2,feature3],axis=-1)
+        rot_feature=np.concatenate([feature1,rot.apply(feature2),rot.apply(feature3)],axis=-1)
+        feature = np.stack([feature, rot_feature], axis=0)  # (2, 100, 13)
+                        
         xyz = torch.tensor(xyz, dtype=torch.float32).cuda()
         feature = torch.tensor(feature, dtype=torch.float32).cuda()
         data = {}
+        
         data['xyz'] = xyz
         data['feature'] = feature
-        #! model output
+        model = SE3ManiNet_Equivariant_Separate().cuda()
+        result = model(data,return_raw=True)
+        result = np.concatenate((result['pos'].detach().cpu().numpy(), result['ori'].detach().cpu().numpy()), axis=-1)
         result_np = []
-        result = model(data)
+        for i in range(len(result)):
+            result_np.append(result[i])
+        result_np = np.array(result_np)
+
+        undo_rot=rot.inv().apply(result_np[1][:,:3].reshape(-1,3))
+
+         
+        # undo_tran=result_np[1][:,:3,3]-trans
+        # undo_rot=np.einsum('ij,bjk->bjk',rot.inv().as_matrix(),result_np[1][:,:3,:3])
+        # undo_result_np1=np.tile(np.eye(4),(pts.shape[0], 1, 1))
+        # undo_result_np1[:,:3,3]=undo_tran
+        # undo_result_np1[:,:3,:3]=undo_rot
+
+        pos_diff = result_np[0][:,:3].reshape(-1,3) - undo_rot
+        print("pos",pos_diff)
+
+        rot_diff = result_np[0][:,3:].reshape(-1,3) - result_np[1][:,3:].reshape(-1,3)
+        print("rot",rot_diff)
+        
+        if (np.allclose(pos_diff, 0.0, atol=threshold) and np.allclose(rot_diff, 0.0, atol=threshold)):
+            # print('Invariant model is correct')
+            success_record.append(1)
+        else:
+            # print('!!!!!!!Invariant model is wrong')
+            success_record.append(0)
+    print('Equiv test pass rate:', np.mean(success_record)*100, '%')
+    return np.mean(success_record)
+
+
+    # total_trials = num_trials
+    # success_count = 0
+    # failure_count = 0
+    # zero_count = 0
+    
+    # total_trans_dist = 0
+    # total_rot_dist = 0
+    # total_real_dist = 0
+    
+    # for trial in tqdm.tqdm(range(total_trials)):
+    #     rot = R.random()
+    #     pts = np.random.rand(100,3)
+    #     num_points = pts.shape[0]
+    #     trans = np.random.rand(3) * 10
+    #     T = np.eye(4)
+    #     T[:3,:3] = rot.as_matrix()
+    #     T[:3,3] = trans
+    #     rotated_pts = pts @ rot.as_matrix().T + trans
+    #     xyz = np.stack([pts, rotated_pts], axis=0)
+
+    #     feature1 = np.random.rand(100,7)
+    #     feature2=np.random.rand(100,3)
+    #     feature3=np.random.rand(100,3)
+        
+    #     feature=np.concatenate([feature1,feature2,feature3],axis=-1)
+    #     rot_feature=np.concatenate([feature1,rot.apply(feature2),rot.apply(feature3)],axis=-1)
+    #     feature = np.stack([feature, rot_feature], axis=0)  # (2, 100, 13)
+        
+    #     xyz = torch.tensor(xyz, dtype=torch.float32).cuda()
+    #     feature = torch.tensor(feature, dtype=torch.float32).cuda()
+    #     data = {}
+    #     data['xyz'] = xyz
+    #     data['feature'] = feature
+
+    #     #! model output
+    #     result_np = []
+    #     model = SE3ManiNet_Equivariant_Separate().cuda()
+    #     result = model(data)
+    #     for i in range(len(result)):
+    #         result_np.append(result[i].view(-1,4,4).detach().cpu().numpy())
+    #     # phi(Rx)
+    #     phi_Tx = result_np[1]
+    #     # Rphi(x)
+    #     phi_x = result_np[0]
+    #     Tphi_x = np.eye(4)
+    #     Tphi_x=np.tile(Tphi_x, (pts.shape[0], 1, 1))
+
+    #     print(phi_x.shape, Tphi_x.shape)
+    #     Tphi_x[:,:3,:3] = phi_x[:,:3,:3] @ rot.as_matrix().T
+    #     Tphi_x[:3,3] = phi_x[:3,3] + trans
+    #     if (np.allclose(phi_Tx, np.zeros_like(phi_Tx), atol=1e-1)):
+    #         zero_count += 1
+    #         # print('zero')
+    #         continue
+    #     geo_dist = bgdR(torch.tensor(phi_Tx)[:3,:3].unsqueeze(0), torch.tensor(Tphi_x[:3,:3]).unsqueeze(0)).item()
+    #     trans_dist = np.linalg.norm(phi_Tx[:3,3] - Tphi_x[:3,3])
+        
+    #     real_dist = math.sqrt(geo_dist ** 2 + trans_dist ** 2)
+        
+    #     total_rot_dist = total_rot_dist + geo_dist
+    #     total_trans_dist = total_trans_dist + trans_dist
+    #     total_real_dist = total_real_dist + real_dist
+    #     print(f"real_dist: {real_dist}")
+    #     if (geo_dist<threshold and trans_dist<threshold):
+    #         success_count += 1
+    #     else:
+    #         failure_count += 1
+    # print('Equiv test pass rate:', int(success_count/total_trials*100), '%')
+    # print("geo_dist:",total_rot_dist/total_trials,"trans_dist:",total_trans_dist/total_trials,"real_dist:",total_real_dist/total_trials)
+
+
+
+def check_fused_model(num_trials=10, threshold=0.01):
+
+    success_record = []
+    for test_inv_trial in tqdm.tqdm(range(num_trials)):
+        rot = R.random()
+        pts = np.random.rand(100,3)
+        trans=np.random.rand(3)
+
+        rotated_pts = rot.apply(pts) + trans
+
+        # undo_tran=result_np[1][:,:3,3]-trans
+        # undo_rot=np.einsum('ij,bjk->bjk',rot.inv().as_matrix(),result_np[1][:,:3,:3])
+        # undo_result_np1=np.tile(np.eye(4),(pts.shape[0], 1, 1))
+        # undo_result_np1[:,:3,3]=undo_tran
+        # undo_result_np1[:,:3,:3]=undo_rot
+
+        # difference = result_np[0] - undo_result_np1
+
+        xyz = np.stack([pts, rotated_pts], axis=0)
+
+        feature1 = np.random.rand(100,7)
+        feature2=np.random.rand(100,3)
+        feature3=np.random.rand(100,3)
+        
+        feature=np.concatenate([feature1,feature2,feature3],axis=-1)
+        rot_feature=np.concatenate([feature1,rot.apply(feature2),rot.apply(feature3)],axis=-1)
+        feature = np.stack([feature, rot_feature], axis=0)  # (2, 100, 13)
+                        
+        xyz = torch.tensor(xyz, dtype=torch.float32).cuda()
+        feature = torch.tensor(feature, dtype=torch.float32).cuda()
+        data = {}
+        
+        data['xyz'] = xyz
+        data['feature'] = feature
+        model = SE3ManiNet_Fused_Separate().cuda()
+
+        result = model(data,return_raw=False,Inv=True)
+        result_np = []
         for i in range(len(result)):
             result_np.append(result[i].detach().cpu().numpy())
-        # phi(Rx)
-        phi_Tx = result_np[1]
-        # Rphi(x)
-        phi_x = result_np[0]
-        Tphi_x = np.eye(4)
-        Tphi_x[:3,:3] = phi_x[:3,:3] @ rot.as_matrix().T
-        Tphi_x[:3,3] = rot.as_matrix() @ phi_x[:3,3] + trans
-        if (np.allclose(phi_Tx, np.zeros_like(phi_Tx), atol=1e-1)):
-            zero_count += 1
-            # print('zero')
-            continue
-        geo_dist = bgdR(torch.tensor(phi_Tx)[:3,:3].unsqueeze(0), torch.tensor(Tphi_x[:3,:3]).unsqueeze(0)).item()
-        trans_dist = np.linalg.norm(phi_Tx[:3,3] - Tphi_x[:3,3])
+        result_np = np.array(result_np)
         
-        real_dist = math.sqrt(geo_dist ** 2 + trans_dist ** 2)
+        difference = result_np[0] - result_np[1]
+        #print("difference",difference)
         
-        total_rot_dist = total_rot_dist + geo_dist
-        total_trans_dist = total_trans_dist + trans_dist
-        total_real_dist = total_real_dist + real_dist
-        print(f"real_dist: {real_dist}")
-        if (geo_dist<threshold and trans_dist<threshold):
-            success_count += 1
+        if (np.allclose(result_np[0], result_np[1], atol=threshold)):
+            # print('Invariant model is correct')
+            success_record.append(1)
         else:
-            failure_count += 1
-    print('Equiv test pass rate:', int(success_count/total_trials*100), '%')
-    print("geo_dist:",total_rot_dist/total_trials,"trans_dist:",total_trans_dist/total_trials,"real_dist:",total_real_dist/total_trials)
+            # print('!!!!!!!Invariant model is wrong')
+            success_record.append(0)
+
+
+
+        result = model(data,return_raw=True,Inv=False)
+        result = np.concatenate((result['pos'].detach().cpu().numpy(), result['ori'].detach().cpu().numpy()), axis=-1)
+        result_np = []
+        for i in range(len(result)):
+            result_np.append(result[i])
+        result_np = np.array(result_np)
+
+        undo_rot=rot.inv().apply(result_np[1][:,:3].reshape(-1,3))
+
+        pos_diff = result_np[0][:,:3].reshape(-1,3) - undo_rot
+        print("pos",pos_diff)
+
+        rot_diff = result_np[0][:,3:].reshape(-1,3) - result_np[1][:,3:].reshape(-1,3)
+        print("rot",result_np[0][:,3:].reshape(-1,3) - result_np[1][:,3:].reshape(-1,3))
+        
+        if (np.allclose(pos_diff, 0.0, atol=threshold) and np.allclose(rot_diff, 0.0, atol=threshold)):
+            # print('Invariant model is correct')
+            success_record.append(1)
+        else:
+            # print('!!!!!!!Invariant model is wrong')
+            success_record.append(0)
+    print('Fused test pass rate:', np.mean(success_record)*100, '%')
+    return np.mean(success_record)
 
 check_invariant_model(num_trials=100, threshold=0.01)
-check_equivariant_model(num_trials=100)
+check_equivariant_model(num_trials=100,threshold=0.01)
+check_fused_model(num_trials=100,threshold=0.01)
+
 #!! test Schimidt
 # a = torch.tensor(np.random.rand(10000,3,2)).cuda()
 # Sch_a = bgs(a).detach().cpu().numpy()

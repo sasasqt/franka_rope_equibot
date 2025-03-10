@@ -43,22 +43,22 @@ def bgs(d6s):
     return torch.stack([b1, b2, b3], dim=1)
 
 def process_action(raw_action, translation):
-    # [batch, 9] -> [batch, 4, 4]
+    # [batch, 6] -> [batch, 4, 4]
     # given a 9D vector of action(3translation + 6rotation), convert it to a 4x4 matrix of SE3
-    # assert raw_action.shape[-1] == 9
+    # assert raw_action.shape[-1] == 6
     batch_size = raw_action.shape[0]
     action = torch.zeros(batch_size, 4, 4, device=raw_action.device)
     action[:,3,3] = 1
     action[:,:3,3] += translation[:,:] # translation
-    R = bgs(raw_action[:,3:].reshape(-1, 2, 3).permute(0, 2, 1))
+    R = bgs(raw_action.reshape(-1, 2, 3).permute(0, 2, 1))
     action[:,:3,:3] += R # rotation
     return action
 
 
 def orthogonalization(raw_action):
-    # [batch, 9] -> [batch, 4, 4]
+    # [batch, 6] -> [batch, 4, 4]
     batch_size = raw_action.shape[0]
-    R = bgs(raw_action[:,3:].reshape(-1, 2, 3).permute(0, 2, 1))
+    R = bgs(raw_action.reshape(-1, 2, 3).permute(0, 2, 1))
     return R
 
 def bgdR(Rgts, Rps):
