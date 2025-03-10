@@ -8,8 +8,8 @@ from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({"headless": True})
 
-from omni.isaac.utils._isaac_utils import math as mu
-
+# from omni.isaac.utils._isaac_utils import math as mu
+import kornia
 
 # len(data) = 1
 # data[0].keys()=Isaac Sim Data
@@ -321,12 +321,12 @@ def main(cfg):
             )
 
             delta_rot = np.array(
-                mu.mul(
-                    ((fut["Right"]["Right_target_world_orientation"])),
-                    mu.inverse(
-                        (right_target_world_rot)
-                    ),  # quat_conj should close to mu.inverse(normalize_quat(right_target_world_rot))
-                )
+                # mu.mul(
+                #     ((fut["Right"]["Right_target_world_orientation"])),
+                #     mu.inverse(
+                #         (right_target_world_rot)
+                #     ),  # quat_conj should close to mu.inverse(normalize_quat(right_target_world_rot))
+                # )
             )
 
             ori = q2rmat(delta_rot)

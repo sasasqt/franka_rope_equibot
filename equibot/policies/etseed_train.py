@@ -170,11 +170,17 @@ def prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config):
 
     nxyz = nxyz.repeat(config["T_a"] // config["obs_horizon"], 1, 1)
     tgt_nxyz = tgt_nxyz.repeat(config["T_a"] // config["obs_horizon"], 1, 1)
-    indices = [(0, 0), (0, 1), (0, 3), (1, 0), (1, 1), (1, 3), (2, 0), (2, 1), (2, 3)]
-    selected_elements_action = [noisy_actions[:, :, i, j] for i, j in indices]
-    noisy_actions = torch.stack(selected_elements_action, dim=-1).reshape(-1, 9).unsqueeze(1).expand(-1, num_point, -1)
+    ori_indices = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]
+    selected_ori_actions = [noisy_actions[:, :, i, j] for i, j in ori_indices]
+
+    trans_indices = [(0, 3), (1, 3), (2, 3)]
+    selected_trans_actions = [noisy_actions[:, :, i, j] for i, j in trans_indices]
+
+    noisy_ori_actions = torch.stack(selected_ori_actions, dim=-1).reshape(-1, 6).unsqueeze(1).expand(-1, num_point, -1)
+    noisy_trans_actions = torch.stack(selected_trans_actions, dim=-1).reshape(-1, 3).unsqueeze(1).expand(-1, num_point, -1)
+    
     tensor_k = k.clone().detach().unsqueeze(1).unsqueeze(2).expand(-1, num_point, -1)
-    feature = torch.cat((nxyz,tgt_nxyz, noisy_actions, tensor_k), dim=-1)
+    feature = torch.cat((tensor_k,noisy_ori_actions,noisy_trans_actions,nxyz,tgt_nxyz), dim=-1)
 
     model_input = {
         'xyz': nxyz.to(dtype=torch.float32),

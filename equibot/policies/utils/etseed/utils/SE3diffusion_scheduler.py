@@ -171,7 +171,7 @@ class DiffusionScheduler(torch.nn.Module):
         gamma0 = self.gamma0[timestep].to(device)
         gamma1 = self.gamma1[timestep].to(device)
         sample = se3.exp(gamma0 * se3.log(H_0) + gamma1 * se3.log(sample))
-        return sample, H_0
+        return sample, H_0 # sample = A^{k-1}, H_0 = A^{k->0}A^k
     
     
 

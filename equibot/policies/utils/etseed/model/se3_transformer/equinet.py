@@ -6,6 +6,82 @@ from ...utils.group_utils import process_action, orthogonalization
 
 class SE3ManiNet_Equivariant(ExtendedModule):
     def __init__(self, voxelize=True, voxel_size=0.01, radius_threshold=0.12, feature_point_radius=0.02):
+        pass # this is not used
+    #     super().__init__()
+    #     ''' 
+    #     input features:
+    #     rgb: 3 type0
+    #     action: 9 type0 (the first 2 columns of rotation matrix(2x3), and a translation vector(1x3))
+    #     pose: 9 type0 (the first 2 columns of rotation matrix(2x3), and a translation vector(1x3))
+    #     k: 1 type0 (denote currently is the k-th denoising step)
+        
+    #     output features:
+    #     action: 2 type1(rotation) + 3 type0(translation)
+    #     '''
+    #     num_fib_in = [13]
+    #     num_fib_out = [3,2]
+    #     self.pos_net = SE3Backbone(
+    #         fiber_in=Fiber({
+    #             "0": num_fib_in[0], 
+    #         }),
+    #         fiber_out=Fiber({
+    #             "0": 4, # 1: heatmap, 3: offset
+    #             "1": 2  # 2: ori
+    #         }),
+    #         num_layers= 4,
+    #         num_degrees= 3,
+    #         num_channels= 8,
+    #         num_heads= 1,
+    #         channels_div= 2,
+    #         voxelize = voxelize, # change this to control num_points
+    #         voxel_size= voxel_size,
+    #         radius_threshold=radius_threshold,
+    #     )
+    #     self.ori_net = SE3Backbone(
+    #         fiber_in=Fiber({
+    #             "0": num_fib_in[0], 
+    #         }),
+    #         fiber_out=Fiber({
+    #             "0": num_fib_out[0], # 3 type 0
+    #             "1": num_fib_out[1], # 2 type 1
+    #         }),
+    #         num_layers= 4,
+    #         num_degrees= 4,
+    #         num_channels= 8,
+    #         num_heads= 1,
+    #         channels_div= 2,
+    #         voxelize = voxelize,
+    #         voxel_size= voxel_size,
+    #         radius_threshold=radius_threshold,
+    #     )
+    #     self.feature_point_radius = feature_point_radius
+
+    # def forward(self, inputs, train_pos=False, reference_point=None, distance_threshold=0.3, random_drop=False, draw_pcd=False, pcd_name=None, mask_part=False, save_ori_feature=False):
+    #     bs = inputs["xyz"].shape[0]
+    #     seg_output = self.pos_net(inputs)
+    #     xyz = seg_output["xyz"]
+    #     feature = seg_output["feature"] # encode node feature
+    #     output_pos = torch.zeros([len(xyz), 3]).to(self.device)
+    #     mass_center = torch.zeros([len(xyz), 3]).to(self.device)
+        
+    #     action_raw=[]
+    #     for i in range(bs):
+    #         action_raw.append(torch.mean(seg_output["feature"][i][:,1:], dim=0))  # 9
+    #     action_raw = torch.stack(action_raw, dim=0)  # batch_size * 9
+    #     R = orthogonalization(action_raw)
+        
+    #     for i in range(len(xyz)):
+    #         pos_weight = torch.nn.functional.softmax(feature[i][:,:1].reshape(-1, 1), dim=0).squeeze()
+    #         offset = torch.mean(feature[i][:,1:4], dim=0)
+    #         mass_center[i] = (xyz[i].T * pos_weight).T.sum(dim=0)
+    #         offset = offset @ R[i]
+    #         output_pos[i] = mass_center[i] + offset
+            
+    #     action = process_action(action_raw, output_pos)
+    #     return action
+
+class SE3ManiNet_Equivariant_Separate(ExtendedModule):
+    def __init__(self, voxelize=True, voxel_size=0.01, radius_threshold=0.12, feature_point_radius=0.02):
         super().__init__()
         ''' 
         input features:
@@ -13,19 +89,20 @@ class SE3ManiNet_Equivariant(ExtendedModule):
         action: 9 type0 (the first 2 columns of rotation matrix(2x3), and a translation vector(1x3))
         pose: 9 type0 (the first 2 columns of rotation matrix(2x3), and a translation vector(1x3))
         k: 1 type0 (denote currently is the k-th denoising step)
-        
+
         output features:
         action: 2 type1(rotation) + 3 type0(translation)
         '''
-        num_fib_in = [13]
+        num_fib_in = [7,9] # 16 in total, type0:tensor_k,noisy_ori_actions, type1: noisy_trans_actions,nxyz,tgt_nxyz
         num_fib_out = [3,2]
         self.pos_net = SE3Backbone(
             fiber_in=Fiber({
                 "0": num_fib_in[0], 
+                "1": num_fib_in[1], 
             }),
             fiber_out=Fiber({
-                "0": 4, # 1: heatmap, 3: offset
-                "1": 2  # 2: ori
+                "0": 4, # 1: for pos_weights and 3: for invariant offset # the actual offset = R @ offset
+                "1": 2  # 2: for two columns of ori
             }),
             num_layers= 4,
             num_degrees= 3,
@@ -75,81 +152,6 @@ class SE3ManiNet_Equivariant(ExtendedModule):
             mass_center[i] = (xyz[i].T * pos_weight).T.sum(dim=0)
             offset = offset @ R[i]
             output_pos[i] = mass_center[i] + offset
-            
-        action = process_action(action_raw, output_pos)
-        return action
-
-class SE3ManiNet_Equivariant_Separate(ExtendedModule):
-    def __init__(self, voxelize=True, voxel_size=0.01, radius_threshold=0.12, feature_point_radius=0.02):
-        super().__init__()
-        ''' 
-        input features:
-        rgb: 3 type0
-        action: 9 type0 (the first 2 columns of rotation matrix(2x3), and a translation vector(1x3))
-        pose: 9 type0 (the first 2 columns of rotation matrix(2x3), and a translation vector(1x3))
-        k: 1 type0 (denote currently is the k-th denoising step)
-
-        output features:
-        action: 2 type1(rotation) + 3 type0(translation)
-        '''
-        num_fib_in = [13]
-        num_fib_out = [3,2]
-        self.pos_net = SE3Backbone(
-            fiber_in=Fiber({
-                "0": num_fib_in[0], 
-            }),
-            fiber_out=Fiber({
-                "0": 4, # 1: heatmap, 3: offset
-                "1": 2  # 2: ori
-            }),
-            num_layers= 4,
-            num_degrees= 3,
-            num_channels= 8,
-            num_heads= 1,
-            channels_div= 2,
-            voxelize = voxelize, # change this to control num_points
-            voxel_size= voxel_size,
-            radius_threshold=radius_threshold,
-        )
-        self.ori_net = SE3Backbone(
-            fiber_in=Fiber({
-                "0": num_fib_in[0], 
-            }),
-            fiber_out=Fiber({
-                "0": num_fib_out[0], # 4 type 0
-                "1": num_fib_out[1], # 2 type 1
-            }),
-            num_layers= 4,
-            num_degrees= 4,
-            num_channels= 8,
-            num_heads= 1,
-            channels_div= 2,
-            voxelize = voxelize,
-            voxel_size= voxel_size,
-            radius_threshold=radius_threshold,
-        )
-        self.feature_point_radius = feature_point_radius
-
-    def forward(self, inputs, train_pos=False, reference_point=None, distance_threshold=0.3, random_drop=False, draw_pcd=False, pcd_name=None, mask_part=False, save_ori_feature=False):
-        bs = inputs["xyz"].shape[0]
-        seg_output = self.pos_net(inputs)
-        xyz = seg_output["xyz"]
-        feature = seg_output["feature"] # encode node feature
-        output_pos = torch.zeros([len(xyz), 3]).to(self.device)
-        mass_center = torch.zeros([len(xyz), 3]).to(self.device)
-        
-        action_raw=[]
-        for i in range(bs):
-            action_raw.append(torch.mean(seg_output["feature"][i][:,1:], dim=0))  # 9
-        action_raw = torch.stack(action_raw, dim=0)  # batch_size * 9
-        R = orthogonalization(action_raw)
-        
-        for i in range(len(xyz)):
-            pos_weight = torch.nn.functional.softmax(feature[i][:,:1].reshape(-1, 1), dim=0).squeeze()
-            offset = torch.mean(feature[i][:,1:4], dim=0)
-            mass_center[i] = (xyz[i].T * pos_weight).T.sum(dim=0)
-            offset = offset @ R[i]
-            output_pos[i] = mass_center[i] + offset
         
         ori_output = self.ori_net(inputs)
         action_ori = []
@@ -164,11 +166,12 @@ class SE3ManiNet_Equivariant_Separate(ExtendedModule):
 class SE3ManiNet_Invariant(ExtendedModule):
     def __init__(self, voxelize=True, voxel_size=0.01, radius_threshold=0.12, feature_point_radius=0.02, T_p=4):
         super().__init__()
-        num_fib_in = [13]
+        num_fib_in = [12] # was 13
         num_fib_out = [9]
         self.pos_net = SE3Backbone(
             fiber_in=Fiber({
-                "0": num_fib_in[0], 
+                #"0": num_fib_in[0], # was this
+                "1":4 
             }),
             fiber_out=Fiber({
                 "0": 3,
