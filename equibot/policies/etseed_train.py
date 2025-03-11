@@ -9,7 +9,7 @@ from diffusers.optimization import get_scheduler
 from tqdm.auto import tqdm
 
 # env import
-from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant, SE3ManiNet_Equivariant_Separate
+from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant_Separate, SE3ManiNet_Equivariant_Separate
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 
 import hydra
@@ -141,7 +141,7 @@ def init_model_and_optimizer(device,config):
     print(torch.cuda.device_count())
     print(torch.version.cuda)
 
-    noise_pred_net_in = SE3ManiNet_Invariant()
+    noise_pred_net_in = SE3ManiNet_Invariant_Separate()
     noise_pred_net_eq = SE3ManiNet_Equivariant_Separate()
     nets = nn.ModuleDict({
         'invariant_pred_net': noise_pred_net_in,
@@ -262,17 +262,19 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,c
     else:
         train_equiv = False
         k = torch.randint(1, noise_scheduler.num_steps, (bz,), device=device)
-    k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1) # k: torch.Size([B*Ho])                                                                                                                                                                                                                      | 0/7 [00:00<?, ?it/s]
+    k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1) # k: torch.Size([B*Ho])
+    
     noisy_actions, noise = noise_scheduler.add_noise(naction, k, device=device)
     model_input = prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config)
     if train_equiv:
         pred = nets["equivariant_pred_net"](model_input)
     else:
         pred = nets["invariant_pred_net"](model_input)
-    noise_pred = pred
+    noise_pred = torch.mean(pred, dim=1)
     # noise_pred: [B*Ho,4,4]
     # noise: [B,Ho,4,4]
-    loss, dist_r, dist_t = compute_loss(noise_pred, noise.view(noise.size(0)*noise.size(1),4,4))    
+    # see algorithm 1
+    loss, dist_r, dist_t = compute_loss(noise_pred,(naction @torch.inverse(noisy_actions)).view(noise.size(0)*noise.size(1),4,4))    
     if train_equiv:
         dist_equiv_r = dist_r
         dist_equiv_t = dist_t

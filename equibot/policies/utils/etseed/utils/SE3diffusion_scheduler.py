@@ -79,6 +79,7 @@ class DiffusionScheduler(torch.nn.Module):
         B = original_samples.shape[0] # batch
         Ho = original_samples.size(1)  # horizon
         
+        # H_T the identity transformation
         H_T = torch.eye(4)[None].expand(B,Ho, -1, -1).to(device) # H_T: [B,Ho,4,4]
         alpha_bars = self.alpha_bars[timesteps].to(device)[:, None] # alpha_bars: [B*Ho, 1]
         # interpolation function F 
@@ -93,10 +94,12 @@ class DiffusionScheduler(torch.nn.Module):
         
         # H_T @ torch.inverse(original_samples) [B,Ho,4,4]
         # se3.log(H_T @ (torch.inverse(original_samples))) [B,Ho,6]
+
         # H_t [B,Ho,4,4] the interpolation part, see eq 35
         H_t = se3.exp((1. - torch.sqrt(alpha_bars.view(B,Ho,1))) * se3.log(H_T @ (torch.inverse(original_samples).to(torch.float32)))) @ original_samples.to(torch.float32)
 
         # add noise
+        # the gamma in perturbation
         scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
         # Perturbation 
         # print("torch.sqrt(1. - alpha_bars)",torch.sqrt(1. - alpha_bars).shape)
@@ -106,9 +109,10 @@ class DiffusionScheduler(torch.nn.Module):
 
         noise = torch.sqrt(1. - alpha_bars.view(B,Ho,1)) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
             
-        # Perturbation * interpolation
+        # perturbation part in eq 34
         H_noise = se3.exp(noise) #  [B,Ho,4,4]
 
+        # perturbation + interpolation, see eq 34
         H_t_noise = H_noise @ H_t #  [B,Ho,4,4]
 
         return H_t_noise, H_noise
@@ -171,7 +175,7 @@ class DiffusionScheduler(torch.nn.Module):
         gamma0 = self.gamma0[timestep].to(device)
         gamma1 = self.gamma1[timestep].to(device)
         sample = se3.exp(gamma0 * se3.log(H_0) + gamma1 * se3.log(sample))
-        return sample, H_0 # sample = A^{k-1}, H_0 = A^{k->0}A^k
+        return sample, H_0 # sample = A^{k-1}, H_0 = A^{k->0}A^k, see algorithm 2
     
     
 
