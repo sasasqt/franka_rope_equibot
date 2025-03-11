@@ -1,5 +1,5 @@
 import os
-from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant_Separate, SE3ManiNet_Equivariant_Separate, SE3ManiNet_Fused_Separate
+from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant_Separate, SE3ManiNet_Equivariant_Separate, SE3ManiNet_Fused_Separate, SE3VisionNet
 from equibot.policies.utils.etseed.utils.group_utils import bgs, bgdR
 import torch
 from scipy.spatial.transform import Rotation as R
@@ -270,9 +270,183 @@ def check_fused_model(num_trials=10, threshold=0.01):
     print('Fused test pass rate:', np.mean(success_record)*100, '%')
     return np.mean(success_record)
 
-check_invariant_model(num_trials=100, threshold=0.01)
-check_equivariant_model(num_trials=100,threshold=0.01)
-check_fused_model(num_trials=100,threshold=0.01)
+
+
+def check_vision_model(num_trials=10, threshold=0.01):
+
+    success_record = []
+    for test_inv_trial in tqdm.tqdm(range(num_trials)):
+        rot = R.random()
+        pts = np.random.rand(100,3)
+        trans=np.random.rand(3)
+
+        rotated_pts = rot.apply(pts) + trans
+
+        # undo_tran=result_np[1][:,:3,3]-trans
+        # undo_rot=np.einsum('ij,bjk->bjk',rot.inv().as_matrix(),result_np[1][:,:3,:3])
+        # undo_result_np1=np.tile(np.eye(4),(pts.shape[0], 1, 1))
+        # undo_result_np1[:,:3,3]=undo_tran
+        # undo_result_np1[:,:3,:3]=undo_rot
+
+        # difference = result_np[0] - undo_result_np1
+
+        xyz = np.stack([pts, rotated_pts], axis=0)
+
+        #feature1 = np.random.rand(100,7)
+        feature2=np.random.rand(100,3)
+        feature3=np.random.rand(100,3)
+        
+        feature=feature2 #np.concatenate([feature1,feature2,feature3],axis=-1)
+        rot_feature=rot.apply(feature2)
+        feature = np.stack([feature, rot_feature], axis=0)  # (2, 100, 6)
+                        
+        xyz = torch.tensor(xyz, dtype=torch.float32).cuda()
+        feature = torch.tensor(feature, dtype=torch.float32).cuda()
+        data = {}
+        
+        data['xyz'] = xyz
+        data['feature'] = feature
+        model = SE3VisionNet().cuda()
+
+
+        raw = model(data,return_raw=True)
+        result=raw['weights']
+        result_np = []
+        for i in range(len(result)):
+            result_np.append(result[i].detach().cpu().numpy())
+        result_np = np.array(result_np)
+        
+        difference = result_np[0] - result_np[1]
+        print("difference",difference)
+        
+        if (np.allclose(result_np[0], result_np[1], atol=threshold)):
+            # print('Invariant model is correct')
+            success_record.append(1)
+        else:
+            # print('!!!!!!!Invariant model is wrong')
+            success_record.append(0)
+
+
+        result = raw['global_feat']
+        result_np = []
+        for i in range(len(result)):
+            result_np.append(result[i].detach().cpu().numpy())
+        result_np = np.array(result_np)
+        
+        difference = result_np[0] - rot.inv().apply(result_np[1])
+        print("difference",difference)
+        
+        if (np.allclose(result_np[0], rot.inv().apply(result_np[1]), atol=threshold)):
+            # print('Invariant model is correct')
+            success_record.append(1)
+        else:
+            # print('!!!!!!!Invariant model is wrong')
+            success_record.append(0)
+
+    print('Vision test pass rate:', np.mean(success_record)*100, '%')
+    return np.mean(success_record)
+
+
+
+
+
+def check_hierarchical_vision_model(num_trials=10, threshold=0.01):
+
+    success_record = []
+    for test_inv_trial in tqdm.tqdm(range(num_trials)):
+        rot = R.random()
+        pts = np.random.rand(100,3)
+        trans=np.random.rand(3)
+
+        rotated_pts = rot.apply(pts) + trans
+
+        # undo_tran=result_np[1][:,:3,3]-trans
+        # undo_rot=np.einsum('ij,bjk->bjk',rot.inv().as_matrix(),result_np[1][:,:3,:3])
+        # undo_result_np1=np.tile(np.eye(4),(pts.shape[0], 1, 1))
+        # undo_result_np1[:,:3,3]=undo_tran
+        # undo_result_np1[:,:3,:3]=undo_rot
+
+        # difference = result_np[0] - undo_result_np1
+
+        xyz = np.stack([pts, rotated_pts], axis=0)
+
+        #feature1 = np.random.rand(100,7)
+        feature2=np.random.rand(100,3)
+        feature3=np.random.rand(100,3)
+        
+        feature=feature2 #np.concatenate([feature1,feature2,feature3],axis=-1)
+        rot_feature=rot.apply(feature2)
+        feature = np.stack([feature, rot_feature], axis=0)  # (2, 100, 6)
+                        
+        xyz = torch.tensor(xyz, dtype=torch.float32).cuda()
+        feature = torch.tensor(feature, dtype=torch.float32).cuda()
+        data = {}
+        
+        data['xyz'] = xyz
+        data['feature'] = feature
+        model = SE3VisionNet().cuda()
+
+        # result = model(data,num_layers=1)
+        # result_np = []
+        # for i in range(len(result)):
+        #     result_np.append(result[i].detach().cpu().numpy())
+        # result_np = np.array(result_np)
+        
+        # difference = result_np[0] - result_np[1]
+        # print("difference",difference)
+        
+        # if (np.allclose(result_np[0], result_np[1], atol=threshold)):
+        #     # print('Invariant model is correct')
+        #     success_record.append(1)
+        # else:
+        #     # print('!!!!!!!Invariant model is wrong')
+        #     success_record.append(0)
+
+        raw,global_feat = model(data,return_raw=True)
+        result=raw['weights']
+        result_np = []
+        for i in range(len(result)):
+            result_np.append(result[i].detach().cpu().numpy())
+        result_np = np.array(result_np)
+        
+        difference = result_np[0] - result_np[1]
+        print("difference",difference)
+        
+        if (np.allclose(result_np[0], result_np[1], atol=threshold)):
+            # print('Invariant model is correct')
+            success_record.append(1)
+        else:
+            # print('!!!!!!!Invariant model is wrong')
+            success_record.append(0)
+
+
+        result=raw['global_feat']
+        result_np = []
+        for i in range(len(result)):
+            result_np.append(result[i].detach().cpu().numpy())
+        result_np = np.array(result_np)
+        
+        difference = result_np[0] - rot.inv().apply(result_np[1])
+        print("difference",difference)
+        
+        if (np.allclose(result_np[0], rot.inv().apply(result_np[1]), atol=threshold)):
+            # print('Invariant model is correct')
+            success_record.append(1)
+        else:
+            # print('!!!!!!!Invariant model is wrong')
+            success_record.append(0)
+
+    print('Vision test pass rate:', np.mean(success_record)*100, '%')
+    return np.mean(success_record)
+
+
+
+# check_invariant_model(num_trials=100, threshold=0.01)
+# check_equivariant_model(num_trials=100,threshold=0.01)
+# check_fused_model(num_trials=100,threshold=0.01)
+check_vision_model(num_trials=10,threshold=0.01)
+# check_hierarchical_vision_model(num_trials=10,threshold=0.01)
+
 
 #!! test Schimidt
 # a = torch.tensor(np.random.rand(10000,3,2)).cuda()

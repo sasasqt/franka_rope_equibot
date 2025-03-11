@@ -219,3 +219,75 @@ class SE3ManiNet_Fused_Separate(ExtendedModule):
         action = process_action(action.view(-1,6), output_pos.view(-1,3)).view(bs,-1,4,4) # orthogonalization
         return action # [B, Ho, 4, 4]
     
+
+
+class SE3VisionNet(ExtendedModule):
+    def __init__(self, voxelize=False):
+        super().__init__()
+        self.global_type_1_feat=1
+        self.weights_net = SE3Backbone(
+            fiber_in=Fiber({
+                #"0": 3, # rgb
+                "1": 1, # tgt_xyz
+            }),
+            fiber_out=Fiber({
+                "0": 1, # the weights/heatmap
+                "1": self.global_type_1_feat, # the global feature
+            }),
+            num_layers= 4,
+            num_degrees= 4,
+            num_channels= 8,
+            num_heads= 1,
+            channels_div= 2,
+            voxelize = voxelize,
+        )
+
+        
+    def forward(self, inputs,return_raw=False):
+
+        output = self.weights_net(inputs)        
+        xyz = output["xyz"]
+        feature = output["feature"]
+        
+        bs = len(xyz)
+        n=xyz[0].shape[0]
+
+        # process translation
+        weights = []
+        new_xyz = torch.zeros(bs,max(n//2,1),3).to(self.device)
+        new_feat = torch.zeros(bs,max(n//2,1),self.global_type_1_feat*3+1).to(self.device)
+        
+        global_feat = torch.zeros(bs,3).to(self.device)
+        for i in range(bs):
+            batchi_feature = output["feature"][i] # [N, 3]
+            weight = torch.nn.functional.softmax(batchi_feature[:,:1].reshape(-1, 1), dim=0).squeeze() # [N]
+            top_indices = torch.topk(weight, k=max(n//2,1), dim=0).indices
+            new_xyz[i] = xyz[i][top_indices]
+            print(feature[i].shape)
+            new_feat[i] = feature[i][top_indices]
+            weights.append(weight)
+            global_feat[i]=batchi_feature[:,1:].mean(dim=0)
+        if return_raw:
+            return {
+                'weights':weights,
+                'global_feat':global_feat 
+            }
+        return {'xyz':new_xyz,'feature':new_feat}, global_feat # [B,max(N//2,1),3],[B,max(N//2,1),fiber_out], [B,3]
+
+
+
+class SE3VsisionNet_Hierarchical(ExtendedModule):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def _forward(self, inputs,return_raw=False,num_layers=4):
+        bs = inputs["xyz"].shape[0]
+        global_feats=torch.zeros(num_layers,bs,self.global_type_1_feat*3)
+        for layer in range(num_layers):
+            inputs,global_feat=self._forward(inputs,return_raw=False)
+            global_feats[layer]=global_feat
+
+            if layer == num_layers-1 and return_raw==True:
+                raw=self._forward(inputs,return_raw=True)
+                return raw,torch.einsum('lbf->blf',global_feats)
+        return torch.einsum('lbf->blf',global_feats)
