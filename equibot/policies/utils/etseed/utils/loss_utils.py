@@ -45,8 +45,8 @@ def compute_loss(T1, T2):
     R_1, t_1 = T1[:, :3, :3], T1[:, :3, 3]
     R_2, t_2 = T2[:, :3, :3], T2[:, :3, 3]
     t_err=torch.abs(t_1-t_2)
-    print(torch.min(t_err,0),torch.max(t_err,0),'translation errors')
-    print(t_2[0],'gts')
+    print(torch.min(t_err,0).values.data,torch.max(t_err,0).values.data,'translation errors')
+    print(t_2[torch.min(t_err,0).indices, torch.arange(t_err.size(1))].data,t_2[torch.max(t_err,0).indices, torch.arange(t_err.size(1))].data,'gts')
     
     dist_R_square = geodesic_distance_between_R(R_1, R_2) ** 2
     dist_t_square = torch.sum((t_1-t_2) ** 2, dim=1)

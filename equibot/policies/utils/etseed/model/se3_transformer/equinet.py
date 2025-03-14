@@ -50,7 +50,7 @@ class SE3ManiNet_Equivariant_Separate(ExtendedModule):
             voxelize = voxelize,
         )
 
-    def forward(self, inputs,return_raw=False):
+    def forward(self, inputs,return_raw=False,**kwargs):
         bs = inputs["xyz"].shape[0] 
         pos_output = self.pos_net(inputs)    
         ori_output = self.ori_net(inputs)
@@ -77,6 +77,7 @@ class SE3ManiNet_Equivariant_Separate(ExtendedModule):
             }
     
         action = process_action(action.view(-1,6), output_pos.view(-1,3)).view(bs,-1,4,4) # orthogonalization
+        print('equi ',action.shape)
         return action # [B, Ho, 4, 4]  
 
 
@@ -116,7 +117,7 @@ class SE3ManiNet_Invariant_Separate(ExtendedModule):
             voxelize = voxelize,
         )
 
-    def forward(self, inputs,return_raw=False):
+    def forward(self, inputs,return_raw=False,**kwargs):
         bs = inputs["xyz"].shape[0] 
         pos_output = self.pos_net(inputs)        
         ori_output = self.ori_net(inputs)
@@ -143,6 +144,7 @@ class SE3ManiNet_Invariant_Separate(ExtendedModule):
             }
     
         action = process_action(action.view(-1,6), output_pos.view(-1,3)).view(bs,-1,4,4) # orthogonalization
+        print('inv ',action.shape)
         return action # [B, Ho, 4, 4]
     
 
@@ -161,12 +163,11 @@ class SE3ManiNet_Fused_Separate(ExtendedModule):
             fiber_out=Fiber({
                 "0": 3, # offset/translation
                 "1": 1, # offset/translation
-
             }),
             num_layers= 4,
-            num_degrees= 3,
+            num_degrees= 4,
             num_channels= 8,
-            num_heads= 1,
+            num_heads= 2,
             channels_div= 2,
             voxelize = voxelize,
         )
@@ -181,13 +182,13 @@ class SE3ManiNet_Fused_Separate(ExtendedModule):
             num_layers= 4,
             num_degrees= 4,
             num_channels= 8,
-            num_heads= 1,
+            num_heads= 2,
             channels_div= 2,
             voxelize = voxelize,
         )
 
-    def forward(self, inputs,return_raw=False,Inv=True):
-        bs = inputs["xyz"].shape[0] 
+    def forward(self, inputs,num_point,return_raw=False,Inv=True):
+        bs = inputs["xyz"].shape[0]
         pos_output = self.pos_net(inputs)        
         ori_output = self.ori_net(inputs)
 
@@ -201,14 +202,16 @@ class SE3ManiNet_Fused_Separate(ExtendedModule):
 
             #actioni_raw = torch.mean(batchi_feature,dim = 0)
             feature_list.append(batchi_feature)
-        output_pos = torch.stack(feature_list,dim = 0) # [B, Horizon, 3]
-        
+        output_pos = torch.stack(feature_list,dim = 0) 
+        output_pos=torch.mean(output_pos.view(bs,-1,num_point,3),dim=2) # [B, Horizon, 3]
+
         # process orientation
         feature_list = list()
         for i in range(bs):
             batchi_feature = ori_output["feature"][i] # [Horizon, 6]
             feature_list.append(batchi_feature)
-        action = torch.stack(feature_list,dim = 0) # [B, Horizon, 6]
+        action = torch.stack(feature_list,dim = 0)
+        action=torch.mean(action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
 
         if return_raw:
             return{
@@ -216,8 +219,68 @@ class SE3ManiNet_Fused_Separate(ExtendedModule):
                 'ori':action
             }
     
-        action = process_action(action.view(-1,6), output_pos.view(-1,3)).view(bs,-1,4,4) # orthogonalization
-        return action # [B, Ho, 4, 4]
+        action = process_action(action.view(-1,6), output_pos.view(-1,3),follow_rot_trans_convention=True).view(bs,-1,4,4) # orthogonalization
+        # action=action.view(bs,-1,num_point,4,4)
+        return action # torch.mean(action, dim=2) # [B, Ho, 4, 4]
+    
+
+
+class SE3ManiNet_Fused(ExtendedModule):
+    def __init__(self, voxelize=False):
+        super().__init__()
+        num_fib_in = [7,2] # 13 in total, 7 type0:tensor_k,noisy_ori_actions, 2 type1: noisy_trans_actions,tgt_nxyz
+        num_fib_out = [6]
+        self.pos_ori_net = SE3Backbone(
+            fiber_in=Fiber({
+                "0": num_fib_in[0], 
+                "1": num_fib_in[1], 
+            }),
+            fiber_out=Fiber({
+                "0": 3+6, # offset/translation + 2 cols of rotation
+                "1": 1, # offset/translation
+            }),
+            num_layers= 4,
+            num_degrees= 4,
+            num_channels= 8,
+            num_heads= 2,
+            channels_div= 2,
+            voxelize = voxelize,
+        )
+
+    def forward(self, inputs,num_point,return_raw=False,Inv=True):
+        bs = inputs["xyz"].shape[0]
+        pos_ori_net = self.pos_ori_net(inputs)        
+
+        # process translation
+        feature_list = list()
+        for i in range(bs):
+            if Inv:
+                batchi_feature = pos_ori_net["feature"][i][:,:3] # [Horizon, 3]
+            else: # Equiv
+                batchi_feature = pos_ori_net["feature"][i][:,9:] # [Horizon, 3]
+
+            #actioni_raw = torch.mean(batchi_feature,dim = 0)
+            feature_list.append(batchi_feature)
+        output_pos = torch.stack(feature_list,dim = 0) 
+        output_pos=torch.mean(output_pos.view(bs,-1,num_point,3),dim=2) # [B, Horizon, 3]
+
+        # process orientation
+        feature_list = list()
+        for i in range(bs):
+            batchi_feature = pos_ori_net["feature"][i][:,3:9] # [Horizon, 6]
+            feature_list.append(batchi_feature)
+        action = torch.stack(feature_list,dim = 0)
+        action=torch.mean(action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
+
+        if return_raw:
+            return{
+                'pos':output_pos,
+                'ori':action
+            }
+    
+        action = process_action(action.view(-1,6), output_pos.view(-1,3),follow_rot_trans_convention=True).view(bs,-1,4,4) # orthogonalization
+        # action=action.view(bs,-1,num_point,4,4)
+        return action # torch.mean(action, dim=2) # [B, Ho, 4, 4]
     
 
 

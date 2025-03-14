@@ -42,15 +42,18 @@ def bgs(d6s):
     b3 = torch.cross(b1, b2, dim=1)
     return torch.stack([b1, b2, b3], dim=1)
 
-def process_action(raw_action, translation):
+def process_action(raw_action, translation,follow_rot_trans_convention=True):
     # [batch, 6] -> [batch, 4, 4]
     # given a 9D vector of action(3translation + 6rotation), convert it to a 4x4 matrix of SE3
     # assert raw_action.shape[-1] == 6
     batch_size = raw_action.shape[0]
     action = torch.zeros(batch_size, 4, 4, device=raw_action.device)
     action[:,3,3] = 1
-    action[:,:3,3] += translation[:,:] # translation
     R = bgs(raw_action.reshape(-1, 2, 3).permute(0, 2, 1))
+    if not follow_rot_trans_convention:
+        translation=torch.einsum('bij,bj->bi',R.detach(),translation)
+    action[:,:3,3] += translation[:,:] # translation
+
     action[:,:3,:3] += R # rotation
     return action
 

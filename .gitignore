@@ -11,3 +11,6 @@ outputs/*
 .vs/equibot_for_franka_rope/v17/DocumentLayout.json
 .vs/equibot_for_franka_rope/v17/.wsuo
 franka_rope.py
+wandb/*
+
+output.log

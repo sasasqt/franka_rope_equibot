@@ -198,7 +198,7 @@ def check_fused_model(num_trials=10, threshold=0.01):
     for test_inv_trial in tqdm.tqdm(range(num_trials)):
         rot = R.random()
         pts = np.random.rand(100,3)
-        trans=np.random.rand(3)
+        trans=np.random.rand(3)-2
 
         rotated_pts = rot.apply(pts) + trans
 
@@ -212,9 +212,9 @@ def check_fused_model(num_trials=10, threshold=0.01):
 
         xyz = np.stack([pts, rotated_pts], axis=0)
 
-        feature1 = np.random.rand(100,7)
-        feature2=np.random.rand(100,3)
-        feature3=np.random.rand(100,3)
+        feature1 = np.random.rand(100,7)-0.8
+        feature2=np.random.rand(100,3)-0.8
+        feature3=np.random.rand(100,3)-0.8
         
         feature=np.concatenate([feature1,feature2,feature3],axis=-1)
         rot_feature=np.concatenate([feature1,rot.apply(feature2),rot.apply(feature3)],axis=-1)
@@ -228,7 +228,7 @@ def check_fused_model(num_trials=10, threshold=0.01):
         data['feature'] = feature
         model = SE3ManiNet_Fused_Separate().cuda()
 
-        result = model(data,return_raw=False,Inv=True)
+        result = model(data,num_point=100,return_raw=False,Inv=True)
         result_np = []
         for i in range(len(result)):
             result_np.append(result[i].detach().cpu().numpy())
@@ -246,7 +246,7 @@ def check_fused_model(num_trials=10, threshold=0.01):
 
 
 
-        result = model(data,return_raw=True,Inv=False)
+        result = model(data,num_point=100,return_raw=True,Inv=False)
         result = np.concatenate((result['pos'].detach().cpu().numpy(), result['ori'].detach().cpu().numpy()), axis=-1)
         result_np = []
         for i in range(len(result)):
@@ -410,9 +410,9 @@ def check_hierarchical_vision_model(num_trials=10, threshold=0.01):
 
 # check_invariant_model(num_trials=100, threshold=0.01)
 # check_equivariant_model(num_trials=100,threshold=0.01)
-# check_fused_model(num_trials=100,threshold=0.01)
+check_fused_model(num_trials=100,threshold=0.01)
 # check_vision_model(num_trials=10,threshold=0.01)
-check_hierarchical_vision_model(num_trials=10,threshold=0.01)
+# check_hierarchical_vision_model(num_trials=10,threshold=0.01)
 
 
 #!! test Schimidt

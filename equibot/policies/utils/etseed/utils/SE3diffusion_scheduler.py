@@ -74,40 +74,22 @@ class DiffusionScheduler(torch.nn.Module):
     
     def add_noise(self,
         original_samples: torch.FloatTensor, # [B, Ho, 4, 4]
-        timesteps: torch.IntTensor, # [B*Ho]
+        timesteps: torch.IntTensor, # [B]
         device):
         B = original_samples.shape[0] # batch
         Ho = original_samples.size(1)  # horizon
         
         # H_T the identity transformation
         H_T = torch.eye(4)[None].expand(B,Ho, -1, -1).to(device) # H_T: [B,Ho,4,4]
-        alpha_bars = self.alpha_bars[timesteps].to(device)[:, None] # alpha_bars: [B*Ho, 1]
-        # interpolation function F 
-        # H_t: [1,2,4,4] 
-        # print("(1. - torch.sqrt(alpha_bars))",(se3.exp((1. - torch.sqrt(alpha_bars))).dtype))
-        # print("H_T @ torch.inverse(original_samples)",(H_T @ (torch.inverse(original_samples)).to(torch.float32)).dtype)
-        # print("se3.log(H_T @ (torch.inverse(original_samples).to(torch.float32)))",se3.log(H_T @ (torch.inverse(original_samples).to(torch.float32))))
-        # print("H_t",H_T.dtype)
-        # print("torch.inverse(original_samples)",torch.inverse(original_samples).dtype)
-        # print("H_T @ torch.inverse(original_samples)",(H_T @ torch.inverse(original_samples)).dtype)
-        # exit(0)
-        
-        # H_T @ torch.inverse(original_samples) [B,Ho,4,4]
-        # se3.log(H_T @ (torch.inverse(original_samples))) [B,Ho,6]
-
+        alpha_bars = self.alpha_bars[timesteps].to(device) # [B]
+      
         # H_t [B,Ho,4,4] the interpolation part, see eq 35
-        H_t = se3.exp((1. - torch.sqrt(alpha_bars.view(B,Ho,1))) * se3.log(H_T @ (torch.inverse(original_samples).to(torch.float32)))) @ original_samples.to(torch.float32)
+        H_t = se3.exp((1. - torch.sqrt(alpha_bars)).unsqueeze(-1).unsqueeze(-1) * se3.log(H_T @ (torch.inverse(original_samples).to(torch.float32)))) @ original_samples.to(torch.float32)
 
         # add noise
         # the gamma in perturbation
         scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
-        # Perturbation 
-        # print("torch.sqrt(1. - alpha_bars)",torch.sqrt(1. - alpha_bars).shape)
-        # print("scale",scale.shape)
-        # print("torch.randn(B, 6)",torch.randn(B, 6).shape)
-        # exit(0)
-
-        noise = torch.sqrt(1. - alpha_bars.view(B,Ho,1)) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
+        noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
             
         # perturbation part in eq 34
         H_noise = se3.exp(noise) #  [B,Ho,4,4]

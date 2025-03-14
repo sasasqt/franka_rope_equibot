@@ -9,7 +9,7 @@ from diffusers.optimization import get_scheduler
 from tqdm.auto import tqdm
 
 # env import
-from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant_Separate, SE3ManiNet_Equivariant_Separate
+from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant_Separate, SE3ManiNet_Equivariant_Separate, SE3ManiNet_Fused_Separate, SE3ManiNet_Fused
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 
 import hydra
@@ -65,7 +65,7 @@ def main(cfg):
         pin_memory=True,
     )
     config["num_training_steps"]=cfg.data.dataset.num_training_steps = (
-        max(1,cfg.num_epochs * len(train_dataset) // (batch_size * cfg.diffusion_steps))
+        max(1,2 * len(train_dataset) // (batch_size))
     )
 
     valid_dataset = get_dataset(cfg, "train", valid=True)
@@ -107,18 +107,19 @@ def main(cfg):
             "diffusion_sigma_t": noise_scheduler.sigma_t
         }
     )
+    global g_step
+    g_step=-1
     with tqdm(range(config["num_epochs"]), desc='Epoch', position=0) as tglobal:
         for epoch_idx in tglobal:
             epoch_loss = []
             with tqdm(train_dataloader, desc='Batch', position=1, leave=False) as tepoch:
                 for nbatch in tepoch:
-                    loss_cpu = train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,config=config)
+                    g_step+=1
+                    loss_cpu = train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx, device,config=config)
                     epoch_loss.append(loss_cpu)
                     tepoch.set_postfix(loss=loss_cpu)
             tglobal.set_postfix(loss=np.mean(epoch_loss))
-            current_lr = optimizer.param_groups[0]['lr']
-            wandb.log({'learning_rate': current_lr})
-            wandb.log({'train_loss_avg': np.mean(epoch_loss), 'epoch': epoch_idx})
+            wandb.log({'train_loss_avg': np.mean(epoch_loss), 'epoch': epoch_idx},step=g_step)
             
             if (epoch_idx + 1) % config["save_freq"] == 0 or epoch_idx == cfg["num_epochs"] - 1:
                 checkpoint_path = os.path.join(checkpoint_dir, f'ckpt{epoch_idx:05d}.pth')
@@ -141,8 +142,11 @@ def init_model_and_optimizer(device,config):
     print(torch.cuda.device_count())
     print(torch.version.cuda)
 
-    noise_pred_net_in = SE3ManiNet_Invariant_Separate()
-    noise_pred_net_eq = SE3ManiNet_Equivariant_Separate()
+    # noise_pred_net_in = SE3ManiNet_Fused_Separate()
+    # noise_pred_net_eq = SE3ManiNet_Fused_Separate()
+    noise_pred_net_in = SE3ManiNet_Fused()
+    noise_pred_net_eq = SE3ManiNet_Fused()
+    
     nets = nn.ModuleDict({
         'invariant_pred_net': noise_pred_net_in,
         'equivariant_pred_net': noise_pred_net_eq
@@ -167,20 +171,19 @@ def init_model_and_optimizer(device,config):
 # Prepare the input for the model
 def prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config):
     B = nxyz.shape[0]
-
-    nxyz = nxyz.repeat(config["T_a"] // config["obs_horizon"], 1, 1)
-    tgt_nxyz = tgt_nxyz.repeat(config["T_a"] // config["obs_horizon"], 1, 1)
+    nxyz = nxyz.repeat(1,config["T_a"] // config["obs_horizon"], 1) #[B,Ho*num_pts,3]
+    tgt_nxyz = tgt_nxyz.repeat(1,config["T_a"] // config["obs_horizon"], 1) #[B,Ho*num_pts,3]
     ori_indices = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]
     selected_ori_actions = [noisy_actions[:, :, i, j] for i, j in ori_indices]
 
     trans_indices = [(0, 3), (1, 3), (2, 3)]
     selected_trans_actions = [noisy_actions[:, :, i, j] for i, j in trans_indices]
+    noisy_ori_actions = torch.stack(selected_ori_actions, dim=-1).repeat_interleave(num_point,dim=1) # [B,Ho*num_pts,6]
+    noisy_trans_actions = torch.stack(selected_trans_actions, dim=-1).repeat_interleave(num_point,dim=1) # [B,Ho*num_pts,3]
+    # k: [B]        
+    tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
 
-    noisy_ori_actions = torch.stack(selected_ori_actions, dim=-1).reshape(-1, 6).unsqueeze(1).expand(-1, num_point, -1)
-    noisy_trans_actions = torch.stack(selected_trans_actions, dim=-1).reshape(-1, 3).unsqueeze(1).expand(-1, num_point, -1)
-    
-    tensor_k = k.clone().detach().unsqueeze(1).unsqueeze(2).expand(-1, num_point, -1)
-    feature = torch.cat((tensor_k,noisy_ori_actions,noisy_trans_actions,nxyz,tgt_nxyz), dim=-1)
+    feature = torch.cat((tensor_k,noisy_ori_actions,noisy_trans_actions,tgt_nxyz), dim=-1)
 
     model_input = {
         'xyz': nxyz.to(dtype=torch.float32),
@@ -214,18 +217,18 @@ def prepare_model_output(actions):
 
 
 # Train a single batch of data
-def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,config,isTrain=True):
+def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx, device,config,isTrain=True):
+    global g_step
     nets.train(isTrain)
-    print(nbatch['pc'].shape,'train batch')
-    nxyz = nbatch['pc'][:, :, :, :3].to(device)
+    nxyz = nbatch['pc'][:, :, :, :3].to(device) # [B,Ho,num_pts,3]
     tgt_nxyz = nbatch['pc'][:, :, :, 3:6].to(device)
-    naction = nbatch['action'].to(device)
+    naction = nbatch['action'].to(device) # [B,Ho,4by4]
     #neefpose = nbatch['eef_pos'].to(device)
     bz = nxyz.shape[0]
     naction = naction.view(naction.size(0),naction.size(1),4,4) # naction: torch.Size([B, Ho, 4, 4])
     num_point = nxyz.shape[2]
-    nxyz = nxyz.view(-1, num_point, 3)
-    tgt_nxyz = tgt_nxyz.view(-1, num_point, 3)
+    nxyz = nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
+    tgt_nxyz = tgt_nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
     if not isTrain:
         H_t_noise = torch.eye(4)[None].expand(bz,config["pred_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
 
@@ -234,18 +237,19 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,c
             return H_t_noise
     
         # k = torch.zeros((bz,)).long().to(device)
-        # k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1) # k: torch.Size([B*Ho])                                                                                                                                                                                                                      | 0/7 [00:00<?, ?it/s]
+        # k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1) # k: torch.Size([B*Ho])                                                        
         for denoise_idx in range(noise_scheduler.num_steps - 1, -1, -1):
             k = torch.zeros((bz,)).long().to(device)
             k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1)
             k[:] = denoise_idx
             model_input = prepare_model_input(nxyz, tgt_nxyz, H_t_noise, k, num_point,config)
             
-            if (denoise_idx == 0): 
-                pred = nets["equivariant_pred_net"](model_input)
-            else: 
-                pred = nets["invariant_pred_net"](model_input)
-                
+            # if (denoise_idx == 0): 
+            #     pred = nets["equivariant_pred_net"](model_input)
+            # else: 
+            #     pred = nets["invariant_pred_net"](model_input)
+            pred = nets["equivariant_pred_net"](model_input)
+
             noise_pred = pred
             H_t_noise, H_0 = noise_scheduler.denoise(
                 model_output = noise_pred,
@@ -255,46 +259,66 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch, device,c
             )
         actions=H_0#prepare_model_output(H_t_noise)
         return actions
-    
-    if torch.rand(1) < config["equiv_frac"]:
-        train_equiv = True
-        k = torch.zeros((bz,)).long().to(device)
-    else:
-        train_equiv = False
-        k = torch.randint(1, noise_scheduler.num_steps, (bz,), device=device)
-    k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1) # k: torch.Size([B*Ho])
-    
+
+    # k [B]
+    # if epoch_idx==0:
+    #     train_equiv = True
+    #     k = torch.randint(0, noise_scheduler.num_steps, (bz,), device=device)
+    # elif torch.rand(1) < config["equiv_frac"] or not "old_equiv" in globals():
+    #     train_equiv = True
+    #     k = torch.zeros((bz,)).long().to(device)
+    # else:
+    #     train_equiv = False
+    #     k = torch.randint(1, noise_scheduler.num_steps, (bz,), device=device)
+    # train_equiv = True
+    k = torch.randint(0, noise_scheduler.num_steps, (bz,), device=device)
+
     noisy_actions, noise = noise_scheduler.add_noise(naction, k, device=device)
     model_input = prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config)
-    if train_equiv:
-        pred = nets["equivariant_pred_net"](model_input)
-    else:
-        pred = nets["invariant_pred_net"](model_input)
-    noise_pred = torch.mean(pred, dim=1)
-    # noise_pred: [B*Ho,4,4]
+    # if train_equiv:
+    #     pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
+    # else:
+    #     pred = nets["invariant_pred_net"](model_input, num_point,Inv=True)
+    pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
+
+    noise_pred = pred
+    # noise_pred: [B,Ho,4,4]
     # noise: [B,Ho,4,4]
-    # see algorithm 1
-    loss, dist_r, dist_t = compute_loss(noise_pred,(naction @torch.inverse(noisy_actions)).view(noise.size(0)*noise.size(1),4,4))    
-    if train_equiv:
-        dist_equiv_r = dist_r
-        dist_equiv_t = dist_t
-    else:
-        dist_invar_r = dist_r
-        dist_invar_t = dist_t
+    # see algorithm 1, but no more naction @torch.inverse(noisy_actions)
+    loss, dist_r, dist_t = compute_loss(noise_pred.view(-1,4,4),(naction ).view(noise.size(0)*noise.size(1),4,4))  
+
+    # weighted=torch.tensor(max(1.0,1.0 + (5-epoch_idx)/5), device=loss.device)
+    # wandb.log({"weighted": weighted},step=g_step)
+    # loss=weighted*dist_r + (2.0-weighted)*dist_t
+
+    # if train_equiv:
+    #     dist_equiv_r = dist_r
+    #     dist_equiv_t = dist_t
+    # else:
+    #     dist_invar_r = dist_r
+    #     dist_invar_t = dist_t
+    dist_equiv_r = dist_r
+    dist_equiv_t = dist_t
+
     loss.backward()
     optimizer.step()
     optimizer.zero_grad()
     lr_scheduler.step()
     loss_cpu = loss.item()
-    wandb.log({"dist_R": dist_r})
-    wandb.log({"dist_T": dist_t})
-    wandb.log({"loss_cpu": loss_cpu})
-    if train_equiv:
-        wandb.log({"dist_R_eq": dist_equiv_r})
-        wandb.log({"dist_T_eq": dist_equiv_t})
-    else:
-        wandb.log({"dist_R_in": dist_invar_r})
-        wandb.log({"dist_T_in": dist_invar_t})
+    wandb.log({"dist_R": dist_r},step=g_step)
+    wandb.log({"dist_T": dist_t},step=g_step)
+    wandb.log({"loss_cpu": loss_cpu},step=g_step)
+    wandb.log({'learning_rate': optimizer.param_groups[0]['lr']},step=g_step)
+
+    # if train_equiv:
+    #     wandb.log({"dist_R_eq": dist_equiv_r})
+    #     wandb.log({"dist_T_eq": dist_equiv_t})
+    # else:
+    #     wandb.log({"dist_R_in": dist_invar_r})
+    #     wandb.log({"dist_T_in": dist_invar_t})
+
+    # wandb.log({"dist_R_eq": dist_equiv_r})
+    # wandb.log({"dist_T_eq": dist_equiv_t})
     return loss_cpu
 
 
