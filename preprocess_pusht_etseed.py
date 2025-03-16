@@ -4,12 +4,13 @@ import os
 from math import sqrt
 import math
 import hydra
+
 # from isaacsim import SimulationApp
 
 # simulation_app = SimulationApp({"headless": True})
 
 # from omni.isaac.utils._isaac_utils import math as mu
-import kornia
+from scipy.spatial.transform import Rotation as R # this operates on float64, unlike kornia which is on float32
 
 # len(data) = 1
 # data[0].keys()=Isaac Sim Data
@@ -331,13 +332,11 @@ def main(cfg):
             # ori = q2rmat(delta_rot)
 
             _q=fut["Right"]["Right_target_world_orientation"]
-            q1=kornia.geometry.quaternion.Quaternion.from_coeffs(_q[0], _q[1], _q[2], _q[3])
-            q1=kornia.geometry.conversions.normalize_quaternion(q1)
-            _q=right_target_world_rot
-            q2=kornia.geometry.quaternion.Quaternion.from_coeffs(_q[0], _q[1], _q[2], _q[3])
-            delta_rot=np.array(
-                (q1*(q2**-1)).matrix() # 3 by 3 rot matrix
-            )
+            q1=R.from_quat(_q,scalar_first=True)
+            _q=curr["Right"]["Right_target_world_orientation"]
+            q2=R.from_quat(_q,scalar_first=True)
+
+            delta_rot=(q1*(q2.inv())).as_matrix() # 3 by 3 rot matrix
             ori=delta_rot
             mat4x4 = np.eye(4)
             mat4x4[:3, :3] = ori
@@ -348,23 +347,30 @@ def main(cfg):
                 mat4x4
             )
 
-            curr = fut
             _i = i // 3
             assert not (np.isnan(np.array(pc)).any())
             assert not (np.isnan(np.array(action)).any())
-            
-            print(delta_rot@right_target_world_rot, fut["Right"]["Right_target_world_orientation"])
-            print(delta_rot@right_target_world_rot-np.array(fut["Right"]["Right_target_world_orientation"]))
-            print(delta_pos+right_target_world_pos, fut["Right"]["Right_target_world_position"])
-            print(delta_pos+right_target_world_pos-np.array(fut["Right"]["Right_target_world_position"]))
-            print("HMM")
+            recalculated=delta_rot@(R.from_quat(curr["Right"]["Right_target_world_orientation"],scalar_first=True).as_matrix())
+            gt=(R.from_quat(fut["Right"]["Right_target_world_orientation"],scalar_first=True).as_matrix())
+            np.testing.assert_allclose(recalculated-gt, 0, atol=1e-7)
 
-            # np.savez(
-            #     # :02d is expected from the dataset py
-            #     os.path.join(output_dir + rf"\01_ep{ep:06d}_view0_t{_i:02d}.npz"),
-            #     pc=np.array(pc),
-            #     action=np.array(action[np.newaxis, :]),
-            # )
+            tmp=delta_rot@(R.from_quat(right_target_world_rot,scalar_first=True).as_matrix())
+            recalculated=R.from_matrix(tmp).as_quat(scalar_first=True,canonical=False)
+            gt=np.array(fut["Right"]["Right_target_world_orientation"])
+            np.testing.assert_allclose(recalculated-gt, 0, atol=1e-7)
+
+            recalculated=delta_pos+right_target_world_pos
+            gt=np.array(fut["Right"]["Right_target_world_position"])
+            np.testing.assert_allclose(recalculated-gt, 0, atol=1e-7)
+
+            np.savez(
+                # :02d is expected from the dataset py
+                os.path.join(output_dir + rf"\01_ep{ep:06d}_view0_t{_i:02d}.npz"),
+                pc=np.array(pc),
+                action=np.array(action[np.newaxis, :]),
+            )
+            curr = fut
+
 
 
 if __name__ == "__main__":
