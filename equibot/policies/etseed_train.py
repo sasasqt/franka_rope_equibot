@@ -196,28 +196,29 @@ def prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config):
 
 # Prepare the output of the model
 def prepare_model_output(actions):
-    B = actions.shape[0]
-    Ho = actions.shape[1]
-    actions4by4 = torch.zeros((B, Ho, 4, 4), dtype=actions.dtype, device=actions.device)
-    indices = [(0, 0), (0, 1), (0, 3), (1, 0), (1, 1), (1, 3), (2, 0), (2, 1), (2, 3)]
-    for i, (row, col) in enumerate(indices):
-        actions4by4[:, :, row, col] = actions[:, :, i]
-    col1 = actions4by4[..., :3, 0]
-    col2 = actions4by4[..., :3, 1]
-    col3 = torch.cross(col1, col2, dim=-1)
-    actions4by4[..., :3, 2] = col3
+    pass
+    # B = actions.shape[0]
+    # Ho = actions.shape[1]
+    # actions4by4 = torch.zeros((B, Ho, 4, 4), dtype=actions.dtype, device=actions.device)
+    # indices = [(0, 0), (0, 1), (0, 3), (1, 0), (1, 1), (1, 3), (2, 0), (2, 1), (2, 3)]
+    # for i, (row, col) in enumerate(indices):
+    #     actions4by4[:, :, row, col] = actions[:, :, i]
+    # col1 = actions4by4[..., :3, 0]
+    # col2 = actions4by4[..., :3, 1]
+    # col3 = torch.cross(col1, col2, dim=-1)
+    # actions4by4[..., :3, 2] = col3
 
-    translations = actions4by4[:, :, :3, 3]
-    rotations=actions4by4[:, :,:3, :3]
-    quaternions = kornia.geometry.conversions.rotation_matrix_to_quaternion(rotations)
-    zeros = torch.zeros(B, Ho, 1, device=actions.device)
-    stacked = torch.cat([zeros, translations, quaternions], dim=2)
+    # translations = actions4by4[:, :, :3, 3]
+    # rotations=actions4by4[:, :,:3, :3]
+    # quaternions = kornia.geometry.conversions.rotation_matrix_to_quaternion(rotations)
+    # zeros = torch.zeros(B, Ho, 1, device=actions.device)
+    # stacked = torch.cat([zeros, translations, quaternions], dim=2)
 
-    return stacked
+    # return stacked
 
 
 # Train a single batch of data
-def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx, device,config,isTrain=True):
+def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx, device,config,isTrain=True,isVisualEval=False):
     global g_step
     nets.train(isTrain)
     nxyz = nbatch['pc'][:, :, :, :3].to(device) # [B,Ho,num_pts,3]
@@ -230,26 +231,25 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     nxyz = nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
     tgt_nxyz = tgt_nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
     if not isTrain:
+
         H_t_noise = torch.eye(4)[None].expand(bz,config["pred_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
 
         if os.name == 'nt': # mock actions on windows 
             #actions=prepare_model_output(H_t_noise)
             return H_t_noise
-    
-        # k = torch.zeros((bz,)).long().to(device)
-        # k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1) # k: torch.Size([B*Ho])                                                        
+                                                          
         for denoise_idx in range(noise_scheduler.num_steps - 1, -1, -1):
-            k = torch.zeros((bz,)).long().to(device)
-            k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1)
-            k[:] = denoise_idx
+            g_step+=1
+            k=torch.full((bz,), denoise_idx).long().to(device)
             model_input = prepare_model_input(nxyz, tgt_nxyz, H_t_noise, k, num_point,config)
             
             # if (denoise_idx == 0): 
-            #     pred = nets["equivariant_pred_net"](model_input)
+            #     test_equiv = True 
+            #     pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
             # else: 
-            #     pred = nets["invariant_pred_net"](model_input)
-            pred = nets["equivariant_pred_net"](model_input)
-
+            #     test_equiv = False 
+            #     pred = nets["invariant_pred_net"](model_input,num_point,Inv=True)
+            pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
             noise_pred = pred
             H_t_noise, H_0 = noise_scheduler.denoise(
                 model_output = noise_pred,
@@ -257,8 +257,33 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
                 sample = H_t_noise,
                 device = device
             )
-        actions=H_0#prepare_model_output(H_t_noise)
-        return actions
+            if not isVisualEval:
+                loss, dist_R, dist_T = compute_loss(H_0.view(-1,4,4), naction.view(-1,4,4))
+                # print("loss: ", loss)
+                loss_cpu = loss.item()
+                # if test_equiv:
+                #     dist_equiv_r = dist_R
+                #     dist_equiv_t = dist_T
+                # else:
+                #     dist_invar_r = dist_R
+                #     dist_invar_t = dist_T
+
+                wandb.log({"test_dist_R": dist_R},step=g_step)
+                wandb.log({"test_dist_T": dist_T},step=g_step)
+                wandb.log({"test_loss_cpu": loss_cpu},step=g_step)
+                # if test_equiv:
+                #     wandb.log({"test_dist_R_eq": dist_equiv_r},step=g_step)
+                #     wandb.log({"test_dist_T_eq": dist_equiv_t},step=g_step)
+                # else:
+                #     wandb.log({"test_dist_R_in": dist_invar_r},step=g_step)
+                #     wandb.log({"test_dist_T_in": dist_invar_t},step=g_step)
+
+        if isVisualEval:
+            actions=H_t_noise
+            return actions
+        else:
+            return loss_cpu
+ 
 
     # k [B]
     # if epoch_idx==0:

@@ -101,59 +101,17 @@ class DiffusionScheduler(torch.nn.Module):
     
     
     def denoise(self,
-                model_output, # [B*Ho, 4, 4]
-                timestep, # [B*Ho]
-                sample, # (B, Ho, 4, 4)
+                model_output, # [B,Ho,4,4]
+                timestep, # [B]
+                sample, # [B,Ho,4,4]
                 device):
         
-        # # print('model_output',model_output.shape)
-        # # print('timestep',timestep.shape)
-        # # print('naction', sample.shape)
-        
-        # B = model_output.shape[0]
-        # Rs_pred = model_output[...,:3,:3]
-        # ts_pred = model_output[...,:3,3:]
-        
-        # # print("Rs_pred",Rs_pred)
-        # # print("ts_pred",ts_pred)
-        # _delta_H_t = torch.cat([Rs_pred, ts_pred], dim=2)  # [B, 3, 4]
-        # delta_H_t = torch.eye(4)[None].expand(B, -1, -1).to(device)  # [B, 4, 4]
-        # delta_H_t[:, :3, :] = _delta_H_t
-        
-        # H_0 = delta_H_t @ sample 
-        # # print("H_0.shape",H_0.shape)
-        # # exit(0)
-        # gamma0 = self.gamma0[timestep]
-        # gamma1 = self.gamma1[timestep]
-        # # print("gamma0.shape",gamma0.shape)
-        # # print("se3.log(H_0)",se3.log(H_0).shape)
-        # # print("se3.log(H_0)",se3.log(sample).shape)
-        # gamma0 = gamma0.unsqueeze(1)
-        # gamma1 = gamma1.unsqueeze(1)
-        # sample = se3.exp(gamma0 * se3.log(H_0) + gamma1 * se3.log(sample))
-        
-        
-        
-        # alpha_bar = self.alpha_bars[timestep].to(device)
-        # alpha_bar_ = self.alpha_bars[timestep-1].to(device)
-        # beta = self.betas[timestep].to(device)
-        # cc = ((1 - alpha_bar_) / (1.- alpha_bar)) * beta
-        # scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6]
-        # # print("torch.sqrt(cc)",torch.sqrt(cc).shape)
-        # # print("scale",scale.shape)
-        # # print("torch.randn(B, 6)",torch.randn(B, 6).shape)
-        # # exit(0)
-        # # [8, 1] * [1, 6]
-        # noise = torch.sqrt(cc).unsqueeze(1) * scale * torch.randn(B, 6).to(device)  # [B, 6]
-        # H_noise = se3.exp(noise)
-        # sample = H_noise @ sample  # [B, 4, 4]
-        
-        # return sample, H_0
         timestep = timestep[0].cpu() # scalar
         B = sample.shape[0]
         Ho = sample.shape[1]
-        model_output=model_output.view(B,Ho,4,4)
-        H_0 = (torch.inverse(model_output) @ sample)
+        # see algorithm 2, but no longer use A^{k->0}A^k
+        # H_0 = (torch.inverse(model_output) @ sample)
+        H_0= model_output
         gamma0 = self.gamma0[timestep].to(device)
         gamma1 = self.gamma1[timestep].to(device)
         sample = se3.exp(gamma0 * se3.log(H_0) + gamma1 * se3.log(sample))

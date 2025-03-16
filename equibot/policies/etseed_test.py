@@ -5,10 +5,11 @@ import time
 import torch.nn as nn
 import wandb
 from equibot.policies.utils.etseed.utils.loss_utils import compute_loss
+from .etseed_train import prepare_model_input
 from tqdm.auto import tqdm
 
 # env import
-from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant, SE3ManiNet_Equivariant_Separate
+from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant_Separate, SE3ManiNet_Equivariant_Separate, SE3ManiNet_Fused_Separate, SE3ManiNet_Fused
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 
 import hydra
@@ -81,21 +82,22 @@ def main(cfg):
         }
     )
     test_losses = []
+    global g_step
+    g_step=-1
     with tqdm(valid_loader, desc='Test Batch') as tepoch:
-        cnt=0
         for nbatch in tepoch:
-            loss_cpu = test_batch(nets, noise_scheduler, nbatch, device,cnt,config)
+            g_step+=1
+            loss_cpu = test_batch(nets, noise_scheduler, nbatch, device,config)
             test_losses.append(loss_cpu)
             tepoch.set_postfix(loss=loss_cpu)
-            cnt+=1
     avg_test_loss = np.mean(test_losses)
-    wandb.log({'test_loss': avg_test_loss})
+    wandb.log({'test_loss': avg_test_loss},step=g_step)
     print(f"Test Done! Average Test Loss: {avg_test_loss}")
 
 
 def init_model(device,config):
-    noise_pred_net_in = SE3ManiNet_Invariant()
-    noise_pred_net_eq = SE3ManiNet_Equivariant_Separate()
+    noise_pred_net_in = SE3ManiNet_Fused()
+    noise_pred_net_eq = SE3ManiNet_Fused()
     nets = nn.ModuleDict({
         'invariant_pred_net': noise_pred_net_in,
         'equivariant_pred_net': noise_pred_net_eq
@@ -105,37 +107,22 @@ def init_model(device,config):
     nets.eval()
     return nets
 
-# Prepare the input for the model
-def prepare_model_input(nxyz, nrgb, noisy_actions, k, num_point,config):
-    B = nxyz.shape[0]
-    nxyz = nxyz.repeat(config["T_a"] // config["obs_horizon"], 1, 1)
-    nrgb = nrgb.repeat(config["T_a"] // config["obs_horizon"], 1, 1)
-    indices = [(0, 0), (0, 1), (0, 3), (1, 0), (1, 1), (1, 3), (2, 0), (2, 1), (2, 3)]
-    selected_elements_action = [noisy_actions[:, :, i, j] for i, j in indices]
-    noisy_actions = torch.stack(selected_elements_action, dim=-1).reshape(-1, 9).unsqueeze(1).expand(-1, num_point, -1)
-    tensor_k = k.clone().detach().unsqueeze(1).unsqueeze(2).expand(-1, num_point, -1)
-    feature = torch.cat((nrgb, noisy_actions, tensor_k), dim=-1)
-    model_input = {
-        'xyz': nxyz,
-        'feature': feature
-    }
-    return model_input
-
 
 # test a single batch of data
-def test_batch(nets, noise_scheduler, nbatch, device,cnt,config):
+def test_batch(nets, noise_scheduler, nbatch, device,config):
     nets.eval()
-    wandb.log({"diffusing": cnt})
+    global g_step
 
     with torch.no_grad():
-        nxyz = nbatch['pc'][:, :, :, :3].to(device)
+        nxyz = nbatch['pc'][:, :, :, :3].to(device) # [B,Ho,num_pts,3]
         tgt_nxyz = nbatch['pc'][:, :, :, 3:6].to(device)
-        naction = nbatch['action'].to(device)
+        naction = nbatch['action'].to(device) # [B,Ho,4by4]
+        #neefpose = nbatch['eef_pos'].to(device)
         bz = nxyz.shape[0]
         naction = naction.view(naction.size(0),naction.size(1),4,4) # naction: torch.Size([B, Ho, 4, 4])
         num_point = nxyz.shape[2]
-        nxyz = nxyz.view(-1, num_point, 3)
-        tgt_nxyz = tgt_nxyz.view(-1, num_point, 3)
+        nxyz = nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
+        tgt_nxyz = tgt_nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
         
         H_t_noise = torch.eye(4)[None].expand(bz,config["pred_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
         if os.name == 'nt': # mock actions on windows 
@@ -143,6 +130,7 @@ def test_batch(nets, noise_scheduler, nbatch, device,cnt,config):
             return H_t_noise
         
         for denoise_idx in range(noise_scheduler.num_steps - 1, -1, -1):
+            g_step+=1
             k = torch.zeros((bz,)).long().to(device)
             k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1)
             k[:] = denoise_idx
@@ -176,15 +164,15 @@ def test_batch(nets, noise_scheduler, nbatch, device,cnt,config):
             else:
                 dist_invar_r = dist_R
                 dist_invar_t = dist_T
-            wandb.log({"test_dist_R": dist_R})
-            wandb.log({"test_dist_T": dist_T})
-            wandb.log({"test_loss_cpu": loss_cpu})
+            wandb.log({"test_dist_R": dist_R},step=g_step)
+            wandb.log({"test_dist_T": dist_T},step=g_step)
+            wandb.log({"test_loss_cpu": loss_cpu},step=g_step)
             if test_equiv:
-                wandb.log({"test_dist_R_eq": dist_equiv_r})
-                wandb.log({"test_dist_T_eq": dist_equiv_t})
+                wandb.log({"test_dist_R_eq": dist_equiv_r},step=g_step)
+                wandb.log({"test_dist_T_eq": dist_equiv_t},step=g_step)
             else:
-                wandb.log({"test_dist_R_in": dist_invar_r})
-                wandb.log({"test_dist_T_in": dist_invar_t})
+                wandb.log({"test_dist_R_in": dist_invar_r},step=g_step)
+                wandb.log({"test_dist_T_in": dist_invar_t},step=g_step)
     return loss_cpu
 
 
