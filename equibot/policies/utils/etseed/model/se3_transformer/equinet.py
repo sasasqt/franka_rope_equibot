@@ -77,7 +77,6 @@ class SE3ManiNet_Equivariant_Separate(ExtendedModule):
             }
     
         action = process_action(action.view(-1,6), output_pos.view(-1,3)).view(bs,-1,4,4) # orthogonalization
-        print('equi ',action.shape)
         return action # [B, Ho, 4, 4]  
 
 
@@ -144,7 +143,6 @@ class SE3ManiNet_Invariant_Separate(ExtendedModule):
             }
     
         action = process_action(action.view(-1,6), output_pos.view(-1,3)).view(bs,-1,4,4) # orthogonalization
-        print('inv ',action.shape)
         return action # [B, Ho, 4, 4]
     
 
@@ -220,8 +218,7 @@ class SE3ManiNet_Fused_Separate(ExtendedModule):
             }
     
         action = process_action(action.view(-1,6), output_pos.view(-1,3),follow_rot_trans_convention=True).view(bs,-1,4,4) # orthogonalization
-        # action=action.view(bs,-1,num_point,4,4)
-        return action # torch.mean(action, dim=2) # [B, Ho, 4, 4]
+        return action # [B, Ho, 4, 4]
     
 
 
@@ -236,8 +233,8 @@ class SE3ManiNet_Fused(ExtendedModule):
                 "1": num_fib_in[1], 
             }),
             fiber_out=Fiber({
-                "0": 3+6, # offset/translation + 2 cols of rotation
-                "1": 1, # offset/translation
+                "0": 3+6+1, # offset/translation (unit direction) + 2 cols of rotation + magnitude of offset
+                "1": 1, # offset/translation (unit direction)
             }),
             num_layers= 4,
             num_degrees= 4,
@@ -251,14 +248,13 @@ class SE3ManiNet_Fused(ExtendedModule):
         bs = inputs["xyz"].shape[0]
         pos_ori_net = self.pos_ori_net(inputs)        
 
-        # process translation
+        # process unit offset/translation direction
         feature_list = list()
         for i in range(bs):
             if Inv:
-                batchi_feature = pos_ori_net["feature"][i][:,:3] # [Horizon, 3]
+                batchi_feature = pos_ori_net["feature"][i][:,0:3] # [Horizon, 3]
             else: # Equiv
-                batchi_feature = pos_ori_net["feature"][i][:,9:] # [Horizon, 3]
-
+                batchi_feature = pos_ori_net["feature"][i][:,10:13] # [Horizon, 3]
             #actioni_raw = torch.mean(batchi_feature,dim = 0)
             feature_list.append(batchi_feature)
         output_pos = torch.stack(feature_list,dim = 0) 
@@ -272,6 +268,20 @@ class SE3ManiNet_Fused(ExtendedModule):
         action = torch.stack(feature_list,dim = 0)
         action=torch.mean(action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
 
+        # process offset/translation magnitude
+        feature_list = list()
+        for i in range(bs):
+            batchi_feature = pos_ori_net["feature"][i][:,9:10] # [Horizon, 1]
+            feature_list.append(batchi_feature)
+        magnitude = torch.stack(feature_list,dim = 0)
+        magnitude=torch.mean(magnitude.view(bs,-1,num_point,1),dim=2) # [B, Horizon, 1]
+        # # maybe normalize without backprop?
+        # output_pos=torch.nn.functional.normalize(output_pos, p=2, dim=-1) * magnitude
+        # norm = torch.norm(output_pos, p=2, dim=-1, keepdim=True).detach()  
+        # output_pos=output_pos * magnitude / norm
+        output_pos=output_pos * magnitude # magnitude consists of both inv and equiv part
+
+
         if return_raw:
             return{
                 'pos':output_pos,
@@ -279,8 +289,7 @@ class SE3ManiNet_Fused(ExtendedModule):
             }
     
         action = process_action(action.view(-1,6), output_pos.view(-1,3),follow_rot_trans_convention=True).view(bs,-1,4,4) # orthogonalization
-        # action=action.view(bs,-1,num_point,4,4)
-        return action # torch.mean(action, dim=2) # [B, Ho, 4, 4]
+        return action # [B, Ho, 4, 4]
     
 
 
