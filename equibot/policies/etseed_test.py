@@ -124,12 +124,16 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
         nxyz = nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
         tgt_nxyz = tgt_nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
 
-        H_t_noise = torch.eye(4)[None].expand(bz,config["pred_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
-
+        H_Identity = torch.eye(4)[None].expand(bz,config["pred_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
+        k=torch.full((bz,), noise_scheduler.num_steps - 1).long().to(device)
+        H_t_noise,_=noise_scheduler.add_noise(naction, k, device=device)
+        
         if os.name == 'nt': # mock actions on windows 
             #actions=prepare_model_output(H_t_noise)
             return H_t_noise
                                                           
+        # predict action instead of noise might due to https://github.com/lucidrains/denoising-diffusion-pytorch/issues/58#issuecomment-2676085515
+        # but why does the predicted action at denoise_idx=num_steps already good, if not the best action?
         for denoise_idx in range(noise_scheduler.num_steps - 1, -1, -1):
             g_step+=1
             k=torch.full((bz,), denoise_idx).long().to(device)
