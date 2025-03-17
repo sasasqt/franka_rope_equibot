@@ -248,7 +248,7 @@ class SE3ManiNet_Fused(ExtendedModule):
         bs = inputs["xyz"].shape[0]
         pos_ori_net = self.pos_ori_net(inputs)        
 
-        # process unit offset/translation direction
+        # process offset/translation direction
         feature_list = list()
         for i in range(bs):
             if Inv:
@@ -260,6 +260,15 @@ class SE3ManiNet_Fused(ExtendedModule):
         output_pos = torch.stack(feature_list,dim = 0) 
         output_pos=torch.mean(output_pos.view(bs,-1,num_point,3),dim=2) # [B, Horizon, 3]
 
+        # process offset/translation direction 2
+        feature_list = list()
+        for i in range(bs):
+            batchi_feature = pos_ori_net["feature"][i][:,0:3] # [Horizon, 3]
+            feature_list.append(batchi_feature)
+        inv_output_pos = torch.stack(feature_list,dim = 0) 
+        inv_output_pos=torch.mean(inv_output_pos.view(bs,-1,num_point,3),dim=2) # [B, Horizon, 3]
+        output_pos=output_pos + inv_output_pos
+
         # process orientation
         feature_list = list()
         for i in range(bs):
@@ -268,7 +277,7 @@ class SE3ManiNet_Fused(ExtendedModule):
         action = torch.stack(feature_list,dim = 0)
         action=torch.mean(action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
 
-        # process orientation
+        # process orientation 2
         feature_list = list()
         for i in range(bs):
             batchi_feature = pos_ori_net["feature"][i][:,13:19] # [Horizon, 6]
@@ -277,18 +286,18 @@ class SE3ManiNet_Fused(ExtendedModule):
         inv_action=torch.mean(inv_action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
         action=action+inv_action
 
-        # process offset/translation magnitude
-        feature_list = list()
-        for i in range(bs):
-            batchi_feature = pos_ori_net["feature"][i][:,9:10] # [Horizon, 1]
-            feature_list.append(batchi_feature)
-        magnitude = torch.stack(feature_list,dim = 0)
-        magnitude=torch.mean(magnitude.view(bs,-1,num_point,1),dim=2) # [B, Horizon, 1]
-        # # maybe normalize without backprop?
-        # output_pos=torch.nn.functional.normalize(output_pos, p=2, dim=-1) * magnitude
-        # norm = torch.norm(output_pos, p=2, dim=-1, keepdim=True).detach()  
-        # output_pos=output_pos * magnitude / norm
-        output_pos=output_pos * magnitude # magnitude consists of both inv and equiv part
+        # # process offset/translation magnitude
+        # feature_list = list()
+        # for i in range(bs):
+        #     batchi_feature = pos_ori_net["feature"][i][:,9:10] # [Horizon, 1]
+        #     feature_list.append(batchi_feature)
+        # magnitude = torch.stack(feature_list,dim = 0)
+        # magnitude=torch.mean(magnitude.view(bs,-1,num_point,1),dim=2) # [B, Horizon, 1]
+        # # # maybe normalize without backprop?
+        # # output_pos=torch.nn.functional.normalize(output_pos, p=2, dim=-1) * magnitude
+        # # norm = torch.norm(output_pos, p=2, dim=-1, keepdim=True).detach()  
+        # # output_pos=output_pos * magnitude / norm
+        # output_pos=output_pos * magnitude # magnitude consists of both inv and equiv part
 
 
         if return_raw:
