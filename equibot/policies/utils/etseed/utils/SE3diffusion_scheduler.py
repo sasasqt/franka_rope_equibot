@@ -117,6 +117,17 @@ class DiffusionScheduler(torch.nn.Module):
         sample = se3.exp(gamma0 * se3.log(H_0) + gamma1 * se3.log(sample))
         return sample, H_0 # sample = A^{k-1}, H_0 = A^{k->0}A^k, see algorithm 2
     
+    # see eq 10 in DiffusionReg paper, (exp are applied to both sides)
+    def pre_compute_loss(self,
+                H_0, # [B,Ho,4,4]
+                timestep, # [B]
+                H_t, # [B,Ho,4,4]
+                predicted, # [B,Ho,4,4]
+                device):
+        
+        interpolated, _=self.denoise(H_0,timestep,H_t,device)
+        
+        return interpolated,predicted
     
 
 class DiffusionScheduler_vanilla(torch.nn.Module):

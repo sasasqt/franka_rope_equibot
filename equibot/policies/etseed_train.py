@@ -310,7 +310,13 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     # noise_pred: [B,Ho,4,4]
     # noise: [B,Ho,4,4]
     # see algorithm 1, but no more naction @torch.inverse(noisy_actions)
-    loss, dist_r, dist_t = compute_loss(noise_pred.view(-1,4,4),(naction ).view(noise.size(0)*noise.size(1),4,4))  
+    interpolated, predicted=noise_scheduler.pre_compute_loss(
+        H_0 = naction,
+        timestep = k,
+        H_t = noisy_actions,
+        predicted=noise_pred,
+        device = device)
+    loss, dist_r, dist_t = compute_loss(predicted.view(-1,4,4),(interpolated).view(noise.size(0)*noise.size(1),4,4))  
 
     # weighted=torch.tensor(max(1.0,1.0 + (5-epoch_idx)/5), device=loss.device)
     # wandb.log({"weighted": weighted},step=g_step)
