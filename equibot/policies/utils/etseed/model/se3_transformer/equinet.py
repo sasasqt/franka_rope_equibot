@@ -234,7 +234,7 @@ class SE3ManiNet_Fused(ExtendedModule):
             }),
             fiber_out=Fiber({
                 "0": 3+6+1, # offset/translation (unit direction) + 2 cols of rotation + magnitude of offset
-                "1": 1, # offset/translation (unit direction)
+                "1": 1+2, # offset/translation (unit direction) + 2 cols of rotation
             }),
             num_layers= 4,
             num_degrees= 4,
@@ -267,6 +267,15 @@ class SE3ManiNet_Fused(ExtendedModule):
             feature_list.append(batchi_feature)
         action = torch.stack(feature_list,dim = 0)
         action=torch.mean(action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
+
+        # process orientation
+        feature_list = list()
+        for i in range(bs):
+            batchi_feature = pos_ori_net["feature"][i][:,13:19] # [Horizon, 6]
+            feature_list.append(batchi_feature)
+        inv_action = torch.stack(feature_list,dim = 0)
+        inv_action=torch.mean(inv_action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
+        action=action+inv_action
 
         # process offset/translation magnitude
         feature_list = list()
