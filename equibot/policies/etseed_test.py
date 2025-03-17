@@ -109,7 +109,7 @@ def init_model(device,config):
 
 
 # test a single batch of data
-def test_batch(nets, noise_scheduler, nbatch, device,config):
+def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
     nets.eval()
     global g_step
 
@@ -123,30 +123,25 @@ def test_batch(nets, noise_scheduler, nbatch, device,config):
         num_point = nxyz.shape[2]
         nxyz = nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
         tgt_nxyz = tgt_nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
-        
+
         H_t_noise = torch.eye(4)[None].expand(bz,config["pred_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
+
         if os.name == 'nt': # mock actions on windows 
             #actions=prepare_model_output(H_t_noise)
             return H_t_noise
-        
+                                                          
         for denoise_idx in range(noise_scheduler.num_steps - 1, -1, -1):
             g_step+=1
-            k = torch.zeros((bz,)).long().to(device)
-            k = k.repeat(config["T_a"], 1).transpose(0, 1).reshape(-1)
-            k[:] = denoise_idx
+            k=torch.full((bz,), denoise_idx).long().to(device)
             model_input = prepare_model_input(nxyz, tgt_nxyz, H_t_noise, k, num_point,config)
             
-            if (denoise_idx == 0): 
-                test_equiv = True 
-            else: 
-                test_equiv = False
-            
-            with torch.no_grad():
-                if (test_equiv):
-                    pred = nets["equivariant_pred_net"](model_input)
-                else:
-                    pred = nets["invariant_pred_net"](model_input)
-    
+            # if (denoise_idx == 0): 
+            #     test_equiv = True 
+            #     pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
+            # else: 
+            #     test_equiv = False 
+            #     pred = nets["invariant_pred_net"](model_input,num_point,Inv=True)
+            pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
             noise_pred = pred
             H_t_noise, H_0 = noise_scheduler.denoise(
                 model_output = noise_pred,
@@ -154,26 +149,32 @@ def test_batch(nets, noise_scheduler, nbatch, device,config):
                 sample = H_t_noise,
                 device = device
             )
-        
-            loss, dist_R, dist_T = compute_loss(H_0.view(-1,4,4), naction.view(-1,4,4))
-            # print("loss: ", loss)
-            loss_cpu = loss.item()
-            if test_equiv:
-                dist_equiv_r = dist_R
-                dist_equiv_t = dist_T
-            else:
-                dist_invar_r = dist_R
-                dist_invar_t = dist_T
-            wandb.log({"test_dist_R": dist_R},step=g_step)
-            wandb.log({"test_dist_T": dist_T},step=g_step)
-            wandb.log({"test_loss_cpu": loss_cpu},step=g_step)
-            if test_equiv:
-                wandb.log({"test_dist_R_eq": dist_equiv_r},step=g_step)
-                wandb.log({"test_dist_T_eq": dist_equiv_t},step=g_step)
-            else:
-                wandb.log({"test_dist_R_in": dist_invar_r},step=g_step)
-                wandb.log({"test_dist_T_in": dist_invar_t},step=g_step)
-    return loss_cpu
+            if not isVisualEval:
+                loss, dist_R, dist_T = compute_loss(H_0.view(-1,4,4), naction.view(-1,4,4))
+                # print("loss: ", loss)
+                loss_cpu = loss.item()
+                # if test_equiv:
+                #     dist_equiv_r = dist_R
+                #     dist_equiv_t = dist_T
+                # else:
+                #     dist_invar_r = dist_R
+                #     dist_invar_t = dist_T
+
+                wandb.log({"test_dist_R": dist_R},step=g_step)
+                wandb.log({"test_dist_T": dist_T},step=g_step)
+                wandb.log({"test_loss_cpu": loss_cpu},step=g_step)
+                # if test_equiv:
+                #     wandb.log({"test_dist_R_eq": dist_equiv_r},step=g_step)
+                #     wandb.log({"test_dist_T_eq": dist_equiv_t},step=g_step)
+                # else:
+                #     wandb.log({"test_dist_R_in": dist_invar_r},step=g_step)
+                #     wandb.log({"test_dist_T_in": dist_invar_t},step=g_step)
+
+        if isVisualEval:
+            actions=H_t_noise
+            return actions
+        else:
+            return loss_cpu
 
 
 
