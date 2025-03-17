@@ -86,7 +86,6 @@ def main(cfg):
     g_step=-1
     with tqdm(valid_loader, desc='Test Batch') as tepoch:
         for nbatch in tepoch:
-            g_step+=1
             loss_cpu = test_batch(nets, noise_scheduler, nbatch, device,config)
             test_losses.append(loss_cpu)
             tepoch.set_postfix(loss=loss_cpu)

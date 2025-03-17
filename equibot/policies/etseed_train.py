@@ -114,7 +114,6 @@ def main(cfg):
             epoch_loss = []
             with tqdm(train_dataloader, desc='Batch', position=1, leave=False) as tepoch:
                 for nbatch in tepoch:
-                    g_step+=1
                     loss_cpu = train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx, device,config=config)
                     epoch_loss.append(loss_cpu)
                     tepoch.set_postfix(loss=loss_cpu)
@@ -218,9 +217,10 @@ def prepare_model_output(actions):
 
 
 # Train a single batch of data
-def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx, device,config,isTrain=True,isVisualEval=False):
+def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx, device,config):
     global g_step
-    nets.train(isTrain)
+    g_step+=1
+    nets.train()
     nxyz = nbatch['pc'][:, :, :, :3].to(device) # [B,Ho,num_pts,3]
     tgt_nxyz = nbatch['pc'][:, :, :, 3:6].to(device)
     naction = nbatch['action'].to(device) # [B,Ho,4by4]
@@ -230,60 +230,6 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     num_point = nxyz.shape[2]
     nxyz = nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
     tgt_nxyz = tgt_nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
-    if not isTrain:
-
-        H_t_noise = torch.eye(4)[None].expand(bz,config["pred_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
-
-        if os.name == 'nt': # mock actions on windows 
-            #actions=prepare_model_output(H_t_noise)
-            return H_t_noise
-                                                          
-        for denoise_idx in range(noise_scheduler.num_steps - 1, -1, -1):
-            g_step+=1
-            k=torch.full((bz,), denoise_idx).long().to(device)
-            model_input = prepare_model_input(nxyz, tgt_nxyz, H_t_noise, k, num_point,config)
-            
-            # if (denoise_idx == 0): 
-            #     test_equiv = True 
-            #     pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
-            # else: 
-            #     test_equiv = False 
-            #     pred = nets["invariant_pred_net"](model_input,num_point,Inv=True)
-            pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
-            noise_pred = pred
-            H_t_noise, H_0 = noise_scheduler.denoise(
-                model_output = noise_pred,
-                timestep = k,
-                sample = H_t_noise,
-                device = device
-            )
-            if not isVisualEval:
-                loss, dist_R, dist_T = compute_loss(H_0.view(-1,4,4), naction.view(-1,4,4))
-                # print("loss: ", loss)
-                loss_cpu = loss.item()
-                # if test_equiv:
-                #     dist_equiv_r = dist_R
-                #     dist_equiv_t = dist_T
-                # else:
-                #     dist_invar_r = dist_R
-                #     dist_invar_t = dist_T
-
-                wandb.log({"test_dist_R": dist_R},step=g_step)
-                wandb.log({"test_dist_T": dist_T},step=g_step)
-                wandb.log({"test_loss_cpu": loss_cpu},step=g_step)
-                # if test_equiv:
-                #     wandb.log({"test_dist_R_eq": dist_equiv_r},step=g_step)
-                #     wandb.log({"test_dist_T_eq": dist_equiv_t},step=g_step)
-                # else:
-                #     wandb.log({"test_dist_R_in": dist_invar_r},step=g_step)
-                #     wandb.log({"test_dist_T_in": dist_invar_t},step=g_step)
-
-        if isVisualEval:
-            actions=H_t_noise
-            return actions
-        else:
-            return loss_cpu
- 
 
     # k [B]
     # if epoch_idx==0:

@@ -269,22 +269,22 @@ class SE3ManiNet_Fused(ExtendedModule):
         # inv_output_pos=torch.mean(inv_output_pos.view(bs,-1,num_point,3),dim=2) # [B, Horizon, 3]
         # output_pos=output_pos + inv_output_pos
 
-        # # process orientation
-        # feature_list = list()
-        # for i in range(bs):
-        #     batchi_feature = pos_ori_net["feature"][i][:,3:9] # [Horizon, 6]
-        #     feature_list.append(batchi_feature)
-        # action = torch.stack(feature_list,dim = 0)
-        # action=torch.mean(action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
-
-        # process orientation 2
+        # process orientation
         feature_list = list()
         for i in range(bs):
-            batchi_feature = pos_ori_net["feature"][i][:,13:19] # [Horizon, 6]
+            batchi_feature = pos_ori_net["feature"][i][:,3:9] # [Horizon, 6]
             feature_list.append(batchi_feature)
-        inv_action = torch.stack(feature_list,dim = 0)
-        inv_action=torch.mean(inv_action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
-        action= inv_action # action+inv_action
+        action = torch.stack(feature_list,dim = 0)
+        action=torch.mean(action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
+
+        # # process orientation 2
+        # feature_list = list()
+        # for i in range(bs):
+        #     batchi_feature = pos_ori_net["feature"][i][:,13:19] # [Horizon, 6]
+        #     feature_list.append(batchi_feature)
+        # inv_action = torch.stack(feature_list,dim = 0)
+        # inv_action=torch.mean(inv_action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
+        # action=action+inv_action
 
         # process offset/translation magnitude
         feature_list = list()
