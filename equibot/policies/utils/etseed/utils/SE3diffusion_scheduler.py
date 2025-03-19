@@ -89,7 +89,7 @@ class DiffusionScheduler(torch.nn.Module):
         # add noise
         # the gamma in perturbation
         scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
-        noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
+        noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,1, 6).expand(-1,Ho,-1).to(device)  # [B,Ho, 6]
             
         # perturbation part in eq 34
         H_noise = se3.exp(noise) #  [B,Ho,4,4]

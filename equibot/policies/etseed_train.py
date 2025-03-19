@@ -245,7 +245,13 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     k = torch.randint(0, noise_scheduler.num_steps, (bz,), device=device)
 
     noisy_actions, noise = noise_scheduler.add_noise(naction, k, device=device)
-    model_input = prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config)
+    
+    ones = torch.ones(tgt_nxyz.size(0), tgt_nxyz.size(1), 1,device=device)
+    new_tgt_nxyz = torch.cat((tgt_nxyz, ones), dim=-1) # [B,Ho*num_pts,4]
+
+    new_tgt_nxyz=torch.einsum('bnij,bnj->bni',noise[:, 0:1, :].expand(-1,new_tgt_nxyz.shape[1], -1, -1),new_tgt_nxyz)
+
+    model_input = prepare_model_input(nxyz, new_tgt_nxyz[...,:3], noisy_actions, k, num_point,config)
     # if train_equiv:
     #     pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
     # else:
