@@ -182,7 +182,7 @@ def prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config):
     # k: [B]        
     tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
 
-    feature = torch.cat((tensor_k,noisy_ori_actions,noisy_trans_actions,tgt_nxyz), dim=-1)
+    feature = torch.cat((tensor_k,noisy_ori_actions,tgt_nxyz-nxyz,noisy_trans_actions,), dim=-1)
 
     model_input = {
         'xyz': nxyz.to(dtype=torch.float32),
