@@ -24,10 +24,13 @@ from datetime import datetime
 from pxr import Gf, UsdGeom
 import omni.usd
 
-from equibot.policies.etseed_train import init_model_and_optimizer, prepare_model_input, train_batch, prepare_model_output
+from equibot.policies.etseed_train import init_model_and_optimizer, prepare_model_input, prepare_model_output
+from equibot.policies.etseed_test import test_batch
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 
-import kornia
+# import kornia
+from scipy.spatial.transform import Rotation as R # this operates on float64, unlike kornia which is on float32
+
 import torch
 import wandb
 # TODO dont block the ui: put the inference code in a new process, and cross processes communication
@@ -751,13 +754,13 @@ class EvalUtils(ControlFlow):
             # id[:3, 3] = -1.0*torch.tensor([0.00001,0.00001,0.00001],dtype=torch.float32, device='cuda')*cls.count
             # ac = id[None, None, :, :].expand(1,pred_horizion,4,4)
 
-            ac = train_batch(nets=nets, noise_scheduler=noise_scheduler, nbatch=agent_obs, device=cls.device,config=cls.config, optimizer=None, lr_scheduler=None,isTrain=False)
-            print(ac.shape, "ac?") # b Ha 4 4
+            ac = test_batch(nets=nets, noise_scheduler=noise_scheduler, nbatch=agent_obs, device=cls.device,config=cls.config, isVisualEval=True)
+            # print(ac.shape, "ac?") # b Ha 4 4
             # if eval(str(cls.cfg.manually_close).title()) is True:
             #     for i in range(len(ac)):
             #         ac[i][0]=-0.3
             cls.ac=ac.view(-1,pred_horizion,4,4).cpu()
-            print(cls.ac.shape,'prediced ac') # b Ha 4 4
+            # print(cls.ac.shape,'prediced ac') # b Ha 4 4
 
         logging.info(f"Inference time: {time.time() - st:.3f}s")
 
@@ -796,8 +799,9 @@ class EvalUtils(ControlFlow):
 def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,update_ori=True):
     translations = agent_ac[:, :, :3, 3][0][0]
     rotations=agent_ac[:, :,:3, :3][0][0]
-    quaternions = kornia.geometry.conversions.rotation_matrix_to_quaternion(rotations)
-    agent_ac=agent_ac[0][0]
+    print('raw actions',translations[1],rotations[2])
+    quaternions = R.from_matrix(rotations).as_quat(canonical=False,scalar_first=True)
+    # agent_ac=agent_ac[0][0]
     # # TODO CLIP in TRAIN + INFERENCE
     # if agent_ac[0] <0.025:
     #     gripper.close()
@@ -819,123 +823,123 @@ def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,upda
         tgt_pos[2]=eps
 
     #tgt_ori=mu.mul(normalize_quat(np.array(quaternions.tolist())),normalize_quat(target_world_ori))
-    tgt_ori=kornia.geometry.quaternion.Quaternion(quaternions)*kornia.geometry.quaternion.Quaternion(torch.tensor(target_world_ori,dtype=torch.float32))
+    tgt_ori=(R.from_matrix(rotations)*R.from_quat(target_world_ori, scalar_first=True)).as_quat(canonical=False,scalar_first=True)
     
     if not update_ori:
         tgt_ori=None
-    target.set_world_pose(position=tgt_pos,orientation=tgt_ori.data) # tgt_ori
+    target.set_world_pose(position=tgt_pos,orientation=tgt_ori) # tgt_ori
     print("applied pos: ",tgt_pos)
     print("applied ori: ",tgt_ori)
     
     # _gripper_status="CLOSING" if agent_ac[0] <0.025 else "opening"
     # print(f"gripper is {_gripper_status}")
 
-def quat_mul(q1, q2):
-    w1, x1, y1, z1 = q1[0], q1[1], q1[2], q1[3]
-    w2, x2, y2, z2 =  q2[0], q2[1], q2[2], q2[3]
+# def quat_mul(q1, q2):
+#     w1, x1, y1, z1 = q1[0], q1[1], q1[2], q1[3]
+#     w2, x2, y2, z2 =  q2[0], q2[1], q2[2], q2[3]
     
-    w = w1*w2 - x1*x2 - y1*y2 - z1*z2
-    x = w1*x2 + x1*w2 + y1*z2 - z1*y2
-    y = w1*y2 - x1*z2 + y1*w2 + z1*x2
-    z = w1*z2 + x1*y2 - y1*x2 + z1*w2
+#     w = w1*w2 - x1*x2 - y1*y2 - z1*z2
+#     x = w1*x2 + x1*w2 + y1*z2 - z1*y2
+#     y = w1*y2 - x1*z2 + y1*w2 + z1*x2
+#     z = w1*z2 + x1*y2 - y1*x2 + z1*w2
     
-    return [w,x,y,z]
+#     return [w,x,y,z]
 
-def _l2_norm(q):
-    return sqrt(sum(map(lambda x: float(x)**2, q)))
+# def _l2_norm(q):
+#     return sqrt(sum(map(lambda x: float(x)**2, q)))
 
-def normalize_quat(q):
-    norm=_l2_norm(q)
-    q[0],q[1],q[2],q[3]=q[0]/norm,q[1]/norm,q[2]/norm,q[3]/norm
-    return q
+# def normalize_quat(q):
+#     norm=_l2_norm(q)
+#     q[0],q[1],q[2],q[3]=q[0]/norm,q[1]/norm,q[2]/norm,q[3]/norm
+#     return q
 
-def q2cols(q):
-    q=normalize_quat(q)
-    w,x,y,z=q
-    col1=[2*(w**2+x**2)-1,2*(x*y+w*z),2*(x*z-w*y)]
-    col3=[2*(w*y+x*z),2*(y*z-w*x),w**2-x**2-y**2+z**2]
-    return col1,col3
+# def q2cols(q):
+#     q=normalize_quat(q)
+#     w,x,y,z=q
+#     col1=[2*(w**2+x**2)-1,2*(x*y+w*z),2*(x*z-w*y)]
+#     col3=[2*(w*y+x*z),2*(y*z-w*x),w**2-x**2-y**2+z**2]
+#     return col1,col3
 
-import math
+# import math
 
-def rpy2quat(rpy):
-    # return euler_angles_to_quat(rpy)
-    roll, pitch, yaw=rpy[0],rpy[1],rpy[2]
+# def rpy2quat(rpy):
+#     # return euler_angles_to_quat(rpy)
+#     roll, pitch, yaw=rpy[0],rpy[1],rpy[2]
 
-    # Compute half angles
-    half_roll = roll / 2.0
-    half_pitch = pitch / 2.0
-    half_yaw = yaw / 2.0
+#     # Compute half angles
+#     half_roll = roll / 2.0
+#     half_pitch = pitch / 2.0
+#     half_yaw = yaw / 2.0
 
-    # Compute trigonometric terms
-    cr = math.cos(half_roll)
-    sr = math.sin(half_roll)
-    cp = math.cos(half_pitch)
-    sp = math.sin(half_pitch)
-    cy = math.cos(half_yaw)
-    sy = math.sin(half_yaw)
+#     # Compute trigonometric terms
+#     cr = math.cos(half_roll)
+#     sr = math.sin(half_roll)
+#     cp = math.cos(half_pitch)
+#     sp = math.sin(half_pitch)
+#     cy = math.cos(half_yaw)
+#     sy = math.sin(half_yaw)
 
-    # Compute quaternion components
-    w = cr * cp * cy + sr * sp * sy
-    x = sr * cp * cy - cr * sp * sy
-    y = cr * sp * cy + sr * cp * sy
-    z = cr * cp * sy - sr * sp * cy
+#     # Compute quaternion components
+#     w = cr * cp * cy + sr * sp * sy
+#     x = sr * cp * cy - cr * sp * sy
+#     y = cr * sp * cy + sr * cp * sy
+#     z = cr * cp * sy - sr * sp * cy
 
-    return [w, x, y, z]
+#     return [w, x, y, z]
 
-def q2aa( q):
-    # Z is UP in isaacsim, but Y is up in dynamic control, physx and unity!
-    q = normalize_quat(q)
-    w = q[0]
-    v = np.array([q[1], q[2], q[3]])
-    angle = 2 * np.arccos(w)
-    sin_half_angle = np.sqrt(1 - w**2)
-    if angle > np.pi:
-        # angle = 2 * np.pi - angle
-        # axis = -v / sin_half_angle
-        # do not introduce discontinuity
-        # [0. 0. 1.] 3.141592653589793
-        # [-0.0029799   0.00955669 -0.99994989] 3.1302814058467474
+# def q2aa( q):
+#     # Z is UP in isaacsim, but Y is up in dynamic control, physx and unity!
+#     q = normalize_quat(q)
+#     w = q[0]
+#     v = np.array([q[1], q[2], q[3]])
+#     angle = 2 * np.arccos(w)
+#     sin_half_angle = np.sqrt(1 - w**2)
+#     if angle > np.pi:
+#         # angle = 2 * np.pi - angle
+#         # axis = -v / sin_half_angle
+#         # do not introduce discontinuity
+#         # [0. 0. 1.] 3.141592653589793
+#         # [-0.0029799   0.00955669 -0.99994989] 3.1302814058467474
  
-        axis = v / sin_half_angle
-    else:
-        if sin_half_angle < 1e-15:
-            axis = np.array([0.0, 0.0, 1.0])
-        else:
-            axis = v / sin_half_angle
-    return axis, angle
+#         axis = v / sin_half_angle
+#     else:
+#         if sin_half_angle < 1e-15:
+#             axis = np.array([0.0, 0.0, 1.0])
+#         else:
+#             axis = v / sin_half_angle
+#     return axis, angle
 
-def aa2q(axis, angle):
-    axis = axis / np.linalg.norm(axis)
-    half_angle = angle / 2
-    w = np.cos(half_angle)
-    xyz = axis * np.sin(half_angle)
-    # wxyz
-    return np.array([w, xyz[0], xyz[1], xyz[2]])
-
-
+# def aa2q(axis, angle):
+#     axis = axis / np.linalg.norm(axis)
+#     half_angle = angle / 2
+#     w = np.cos(half_angle)
+#     xyz = axis * np.sin(half_angle)
+#     # wxyz
+#     return np.array([w, xyz[0], xyz[1], xyz[2]])
 
 
-def q2rmat(q):
-    q = normalize_quat(q)
-    w, x, y, z = q
 
-    w2 = w * w
-    x2 = x * x
-    y2 = y * y
-    z2 = z * z
 
-    r11 = w2 + x2 - y2 - z2
-    r12 = 2 * (x * y - w * z)
-    r13 = 2 * (x * z + w * y)
+# def q2rmat(q):
+#     q = normalize_quat(q)
+#     w, x, y, z = q
 
-    r21 = 2 * (x * y + w * z)
-    r22 = w2 - x2 + y2 - z2
-    r23 = 2 * (y * z - w * x)
+#     w2 = w * w
+#     x2 = x * x
+#     y2 = y * y
+#     z2 = z * z
 
-    r31 = 2 * (x * z - w * y)
-    r32 = 2 * (y * z + w * x)
-    r33 = w2 - x2 - y2 + z2
+#     r11 = w2 + x2 - y2 - z2
+#     r12 = 2 * (x * y - w * z)
+#     r13 = 2 * (x * z + w * y)
 
-    return np.array([[r11, r12, r13], [r21, r22, r23], [r31, r32, r33]])
+#     r21 = 2 * (x * y + w * z)
+#     r22 = w2 - x2 + y2 - z2
+#     r23 = 2 * (y * z - w * x)
+
+#     r31 = 2 * (x * z - w * y)
+#     r32 = 2 * (y * z + w * x)
+#     r33 = w2 - x2 - y2 + z2
+
+#     return np.array([[r11, r12, r13], [r21, r22, r23], [r31, r32, r33]])
 

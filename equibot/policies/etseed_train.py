@@ -242,10 +242,10 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     #     train_equiv = False
     #     k = torch.randint(1, noise_scheduler.num_steps, (bz,), device=device)
     # train_equiv = True
-    k = torch.randint(0, noise_scheduler.num_steps, (bz,), device=device)
-
-    noisy_actions, noise = noise_scheduler.add_noise(naction, k, device=device)
-    model_input = prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config)
+    # k = torch.randint(0, noise_scheduler.num_steps, (bz,), device=device)
+    k = torch.zeros((bz,)).long().to(device)
+    # noisy_actions, noise = noise_scheduler.add_noise(naction, k, device=device)
+    model_input = prepare_model_input(nxyz, tgt_nxyz, naction, k, num_point,config)
     # if train_equiv:
     #     pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
     # else:
@@ -265,7 +265,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     # loss, dist_r, dist_t = compute_loss(predicted.view(-1,4,4),(interpolated).view(noise.size(0)*noise.size(1),4,4))  
 
     # see algorithm 1, but no more naction @torch.inverse(noisy_actions)
-    loss, dist_r, dist_t = compute_loss(noise_pred.view(-1,4,4),(naction ).view(noise.size(0)*noise.size(1),4,4))  
+    loss, dist_r, dist_t = compute_loss(noise_pred.view(-1,4,4),(naction ).view(-1,4,4))  
 
 
     # weighted=torch.tensor(max(1.0,1.0 + (5-epoch_idx)/5), device=loss.device)

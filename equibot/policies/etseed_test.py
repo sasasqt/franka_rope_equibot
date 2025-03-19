@@ -110,7 +110,9 @@ def init_model(device,config):
 # test a single batch of data
 def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
     nets.eval()
-    global g_step
+    if 'g_step' not in globals():
+        global g_step
+        g_step=-1
 
     with torch.no_grad():
         nxyz = nbatch['pc'][:, :, :, :3].to(device) # [B,Ho,num_pts,3]

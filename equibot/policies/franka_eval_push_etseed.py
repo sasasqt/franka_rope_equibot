@@ -54,15 +54,16 @@ async def eval_async(config):
         
 
 import torch
-from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant, SE3ManiNet_Equivariant_Separate
+torch.set_grad_enabled(False)
+from equibot.policies.utils.etseed.model.se3_transformer.equinet import  SE3ManiNet_Fused
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 import torch.nn as nn
 
 
 # Initialize the model and optimizer
 def init_model(device,config):
-    noise_pred_net_in = SE3ManiNet_Invariant()
-    noise_pred_net_eq = SE3ManiNet_Equivariant_Separate()
+    noise_pred_net_in = SE3ManiNet_Fused()
+    noise_pred_net_eq = SE3ManiNet_Fused()
     nets = nn.ModuleDict({
         'invariant_pred_net': noise_pred_net_in,
         'equivariant_pred_net': noise_pred_net_eq
@@ -74,7 +75,6 @@ def init_model(device,config):
 
 @hydra.main(config_path="configs", config_name="etseed")
 def main(cfg):
-    torch.set_grad_enabled(False)
     config = {
         "seed": cfg.seed,
         "mode": cfg.mode,
