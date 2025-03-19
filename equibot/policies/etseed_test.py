@@ -125,7 +125,7 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
 
         H_Identity = torch.eye(4)[None].expand(bz,config["pred_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
         k=torch.full((bz,), noise_scheduler.num_steps - 1).long().to(device)
-        H_t_noise,_=noise_scheduler.add_noise(naction, k, device=device)
+        H_t_noise,_=noise_scheduler.add_noise(H_Identity, k, device=device)
         
         if os.name == 'nt': # mock actions on windows 
             #actions=prepare_model_output(H_t_noise)
