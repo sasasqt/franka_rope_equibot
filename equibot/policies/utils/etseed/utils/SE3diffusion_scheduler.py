@@ -19,13 +19,13 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return torch.tensor(betas, dtype=torch.float32)
 
 class DiffusionScheduler(torch.nn.Module):
-    def __init__(self,num_steps=100,mode='squaredcos_cap_v2',device= torch.device("cuda")):
+    def __init__(self,num_steps=100,sigma_r: float = 0.05,sigma_t: float = 0.03,mode='squaredcos_cap_v2',device= torch.device("cuda")):
         super().__init__()
         self.num_steps: int = num_steps # 100
         self.beta_1: float = 1e-4
         self.beta_T: float = 0.05
-        self.sigma_r: float = 0.05 # 0.2 0.05 0.001 0.0005
-        self.sigma_t: float = 0.03 # 0.1 0.03 0.001 0.0003
+        self.sigma_r: float = sigma_r # 0.2 0.05 0.001 0.0005
+        self.sigma_t: float = sigma_t # 0.1 0.03 0.001 0.0003
         self.mode = mode # ['linear','cosine','squaredcos_cap_v2']
         self.S = 0.008 # 0.008
        

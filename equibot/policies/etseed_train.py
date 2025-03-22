@@ -34,6 +34,8 @@ def main(cfg):
         "weight_decay": cfg.weight_decay,
         "betas": cfg.betas,
         "eps": cfg.eps,
+        "sigma_r":cfg.sigma_r,
+        "sigma_t": cfg.sigma_t,
         "equiv_frac": cfg.equiv_frac,
         "save_freq": cfg.save_freq,
         "diffusion_steps": cfg.diffusion_steps,
@@ -87,7 +89,7 @@ def main(cfg):
         # micromamba further complicates it by not introducing proper sys envs for cmakelists
     
     nets, optimizer, lr_scheduler = init_model_and_optimizer(device,config)
-    noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"],mode=config["diffusion_mode"],device=device)
+    noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
     
     wandb.init(
         entity=cfg.wandb.entity,
@@ -182,7 +184,7 @@ def prepare_model_input(nxyz, tgt_nxyz, noisy_actions, k, num_point,config):
     # k: [B]        
     tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
 
-    feature = torch.cat((tensor_k,noisy_ori_actions,noisy_trans_actions,tgt_nxyz), dim=-1)
+    feature = torch.cat((tensor_k,noisy_ori_actions,tgt_nxyz-nxyz,noisy_trans_actions,), dim=-1)
 
     model_input = {
         'xyz': nxyz.to(dtype=torch.float32),

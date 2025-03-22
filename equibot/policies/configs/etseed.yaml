@@ -24,6 +24,8 @@ learning_rate: 0.001
 weight_decay: 1e-6
 betas: [0.95, 0.999]
 eps: 1.0e-08
+sigma_r: 0.001
+sigma_t: 0.001
 equiv_frac: 0.1
 save_freq: 3
 diffusion_steps: 100

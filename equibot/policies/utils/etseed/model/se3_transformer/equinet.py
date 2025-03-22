@@ -225,7 +225,7 @@ class SE3ManiNet_Fused_Separate(ExtendedModule):
 class SE3ManiNet_Fused(ExtendedModule):
     def __init__(self, voxelize=False):
         super().__init__()
-        num_fib_in = [7,2] # 13 in total, 7 type0:tensor_k,noisy_ori_actions, 2 type1: noisy_trans_actions,tgt_nxyz
+        num_fib_in = [10,1] # 13 in total, 7 type0:tensor_k,noisy_ori_actions,tgt_nxyz-nxyz 1 type1: noisy_trans_actions,
         num_fib_out = [6]
         self.pos_ori_net = SE3Backbone(
             fiber_in=Fiber({
