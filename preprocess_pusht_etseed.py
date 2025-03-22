@@ -259,7 +259,7 @@ def main(cfg):
     # rpy = eval(str(cfg.franka_rope.preprocess.rpy).title())
     # flow = eval(str(cfg.franka_rope.preprocess.flow).title())
 
-    # gravity_dir = [0, 0, -1]  # z is up in isaac sim
+    gravity_dir = [0, 0, -1]  # z is up in isaac sim
     for ep, filename in enumerate(os.listdir(input_dir)):
         if not filename.endswith(".json"):
             continue
@@ -336,7 +336,7 @@ def main(cfg):
             _q=curr["Right"]["Right_target_world_orientation"]
             q2=R.from_quat(_q,scalar_first=True)
 
-            delta_rot=(q1*(q2.inv())).as_matrix() # 3 by 3 rot matrix
+            delta_rot=(q1*(q2.inv())).as_matrix() # 3 by 3 rot orthogonal matrix
             ori=delta_rot
             mat4x4 = np.eye(4)
             mat4x4[:3, :3] = ori
@@ -362,13 +362,33 @@ def main(cfg):
             recalculated=delta_pos+right_target_world_pos
             gt=np.array(fut["Right"]["Right_target_world_position"])
             np.testing.assert_allclose(recalculated-gt, 0, atol=1e-7)
-
+            ori=R.from_quat(right_target_world_rot,scalar_first=True).as_matrix()
+            ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
+            cols = [ori[i, j] for i, j in ori_indices]
+            eef_pos = np.array((
+                    right_target_world_pos[0],
+                    right_target_world_pos[1],
+                    right_target_world_pos[2],
+                    cols[0],
+                    cols[1],
+                    cols[2],
+                    cols[3],
+                    cols[4],
+                    cols[5],
+                    gravity_dir[0],
+                    gravity_dir[1],
+                    gravity_dir[2],
+                    gripper_pose,
+                ))
+            
             np.savez(
                 # :02d is expected from the dataset py
                 os.path.join(output_dir + rf"\01_ep{ep:06d}_view0_t{_i:02d}.npz"),
-                pc=np.array(pc),
-                action=np.array(action[np.newaxis, :]),
+                pc=np.array(pc), # (40, 6) = (num_points, src + tgt)
+                eef_pos=np.array(eef_pos), #  (13,)
+                action=np.array(action[np.newaxis, :]), #  (1, 4, 4)
             )
+
             curr = fut
 
 

@@ -2,7 +2,7 @@ import torch
 import os
 from .se3_backbone import SE3Backbone, ExtendedModule
 from .se3_transformer.model.fiber import Fiber
-from ...utils.group_utils import process_action, orthogonalization
+from ...utils.group_utils import process_action #, orthogonalization
 
 class SE3ManiNet_Equivariant_Separate(ExtendedModule):
     def __init__(self, voxelize=False):
@@ -223,92 +223,64 @@ class SE3ManiNet_Fused_Separate(ExtendedModule):
 
 
 class SE3ManiNet_Fused(ExtendedModule):
-    def __init__(self, voxelize=False):
+    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8):
         super().__init__()
-        num_fib_in = [10,1] # 13 in total, 7 type0:tensor_k,noisy_ori_actions,tgt_nxyz-nxyz 1 type1: noisy_trans_actions,
-        num_fib_out = [6]
+        self.pred_horizon=pred_horizon
+        num_fib_in = [2,5] # 17 in total, 2 type0:tensor_k, binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
         self.pos_ori_net = SE3Backbone(
             fiber_in=Fiber({
                 "0": num_fib_in[0], 
                 "1": num_fib_in[1], 
             }),
             fiber_out=Fiber({
-                "0": 3+6+1, # offset/translation (unit direction) + 2 cols of rotation + magnitude of offset
-                "1": 1+2, # offset/translation (unit direction) + 2 cols of rotation
+                "0": (6+1+1)*pred_horizon, # 2 cols of rotation + magnitude of offset + weights of each rot cand.
+                "1": (1)*pred_horizon, # offset/translation (not unit direction)
             }),
-            num_layers= 4,
-            num_degrees= 4,
-            num_channels= 8,
+            num_layers= 8,
+            num_degrees= 6,
+            num_channels= 16,
             num_heads= 2,
             channels_div= 2,
             voxelize = voxelize,
+            k_neighbours=k_neighbours,
         )
 
-    def forward(self, inputs,num_point,return_raw=False,Inv=True):
+    def forward(self, inputs,num_point,return_raw=False,Inv=False):
         bs = inputs["xyz"].shape[0]
-        pos_ori_net = self.pos_ori_net(inputs)        
+        pos_ori_net = self.pos_ori_net(inputs)
+        
+        # process type 0 orientation + type 0 offset/translation magnitude # "0": (6+1+1)*pred_horizon, # 2 cols of rotation + magnitude of offset
+        # process type 1 offset/translation direction
 
-        # process offset/translation direction
-        feature_list = list()
+        type0_feature_list = []
+        type1_feature_list = []
         for i in range(bs):
-            if Inv:
-                batchi_feature = pos_ori_net["feature"][i][:,0:3] # [Horizon, 3]
-            else: # Equiv
-                batchi_feature = pos_ori_net["feature"][i][:,10:13] # [Horizon, 3]
-            #actioni_raw = torch.mean(batchi_feature,dim = 0)
-            feature_list.append(batchi_feature)
-        output_pos = torch.stack(feature_list,dim = 0) 
-        output_pos=torch.mean(output_pos.view(bs,-1,num_point,3),dim=2) # [B, Horizon, 3]
+            batchi_type0_feature = pos_ori_net["feature"][i] # [Ho*num_point, Hp*7]
+            batchi_type0_feature=batchi_type0_feature.view(batchi_type0_feature.shape[0],self.pred_horizon,-1)
+            trans_mag_feature=batchi_type0_feature[:, :, 6:7]
+            # mag_feature=torch.mean(mag_feature, dim=0) # [Hp, 1]
+            rot_mag_feature=batchi_type0_feature[:, :, 7:8]
+            rot_feature=batchi_type0_feature[:, :, :6]
+            rot_feature=torch.mean(rot_feature * rot_mag_feature, dim=0) # [Hp, 6]
+            type0_feature_list.append(rot_feature)
 
-        # # process offset/translation direction 2
-        # feature_list = list()
-        # for i in range(bs):
-        #     batchi_feature = pos_ori_net["feature"][i][:,0:3] # [Horizon, 3]
-        #     feature_list.append(batchi_feature)
-        # inv_output_pos = torch.stack(feature_list,dim = 0) 
-        # inv_output_pos=torch.mean(inv_output_pos.view(bs,-1,num_point,3),dim=2) # [B, Horizon, 3]
-        # output_pos=output_pos + inv_output_pos
+            batchi_type1_feature = pos_ori_net["feature"][i][:,(6+1+1)*self.pred_horizon:(6+1+1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]
+            batchi_type1_feature=batchi_type1_feature.view(batchi_type1_feature.shape[0],self.pred_horizon,-1)
+            trans_feature=torch.mean(batchi_type1_feature* trans_mag_feature, dim=0) # [Hp, 3]
+            type1_feature_list.append(trans_feature)
 
-        # process orientation
-        feature_list = list()
-        for i in range(bs):
-            batchi_feature = pos_ori_net["feature"][i][:,3:9] # [Horizon, 6]
-            feature_list.append(batchi_feature)
-        action = torch.stack(feature_list,dim = 0)
-        action=torch.mean(action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
-
-        # # process orientation 2
-        # feature_list = list()
-        # for i in range(bs):
-        #     batchi_feature = pos_ori_net["feature"][i][:,13:19] # [Horizon, 6]
-        #     feature_list.append(batchi_feature)
-        # inv_action = torch.stack(feature_list,dim = 0)
-        # inv_action=torch.mean(inv_action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
-        # action=action+inv_action
-
-        # process offset/translation magnitude
-        feature_list = list()
-        for i in range(bs):
-            batchi_feature = pos_ori_net["feature"][i][:,9:10] # [Horizon, 1]
-            feature_list.append(batchi_feature)
-        magnitude = torch.stack(feature_list,dim = 0)
-        magnitude=torch.mean(magnitude.view(bs,-1,num_point,1),dim=2) # [B, Horizon, 1]
-        # # maybe normalize without backprop?
-        # output_pos=torch.nn.functional.normalize(output_pos, p=2, dim=-1) * magnitude
-        # norm = torch.norm(output_pos, p=2, dim=-1, keepdim=True).detach()  
-        # output_pos=output_pos * magnitude / norm
-        output_pos=output_pos * magnitude # magnitude consists of both inv and equiv part
-
+        # TODO BUG first dim wont match if voxelized, thus cannot be stacked # [B, Hp, 3]
+        output_ori = torch.stack(type0_feature_list,dim = 0) # [B, Hp, 6]
+        output_pos = torch.stack(type1_feature_list,dim = 0) # [B, Hp, 3]
 
         if return_raw:
             return{
                 'pos':output_pos,
-                'ori':action
+                'ori':output_ori
             }
     
-        action = process_action(action.view(-1,6), output_pos.view(-1,3),follow_rot_trans_convention=True).view(bs,-1,4,4) # orthogonalization
-        return action # [B, Ho, 4, 4]
-    
+        output_ori = process_action(output_ori.view(-1,6), output_pos.view(-1,3),follow_rot_trans_convention=True).view(bs,-1,4,4) # orthogonalization
+        return output_ori # [B, Ho, 4, 4]
 
 
 class SE3VisionNet(ExtendedModule):

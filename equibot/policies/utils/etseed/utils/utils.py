@@ -6,7 +6,7 @@ from dgl import backend as F
 from dgl.convert import graph as dgl_graph
 from equibot.policies.utils.etseed.model.se3_transformer.se3_transformer.model.fiber import Fiber
 from equibot.policies.utils.etseed.model.se3_transformer.se3_transformer.runtime.utils import to_cuda
-from torch_cluster import radius_graph
+from torch_cluster import knn_graph, radius_graph
 from scipy.spatial.transform import Rotation
 
 def voxel_filter(pcd, feature, voxel_size: float, coord_reduction: str = "average"):
@@ -37,7 +37,7 @@ def voxel_filter(pcd, feature, voxel_size: float, coord_reduction: str = "averag
     return coord_vox, color_vox
 
 
-def build_graph(xyz, feature, dist_threshold=0.02, self_connection=True, voxelize=False, voxel_size=0.001, fiber_in=Fiber({0: 3})):
+def build_graph(xyz, feature,k_neighbours=8, dist_threshold=0.02, self_connection=True, voxelize=False, voxel_size=0.001, fiber_in=Fiber({0: 3}),use_knn=True):
     # xyz can be the same shape or not    
     if isinstance(xyz, torch.Tensor):
         bs = xyz.shape[0]
@@ -60,7 +60,11 @@ def build_graph(xyz, feature, dist_threshold=0.02, self_connection=True, voxeliz
         if voxelize:
             current_pcd, current_feature = voxel_filter(current_pcd, current_feature, voxel_size=voxel_size)
 
-        edge_src, edge_dst = radius_graph(current_pcd, dist_threshold * 0.999, max_num_neighbors = max_num_neighbors, loop = self_connection)
+        if use_knn:
+            edge_src, edge_dst = knn_graph(current_pcd, k_neighbours, loop = self_connection)
+        else:
+            edge_src, edge_dst = radius_graph(current_pcd, dist_threshold * 0.999, max_num_neighbors = max_num_neighbors, loop = self_connection)
+        
 
         pcds.append(current_pcd)
         raw_features.append(current_feature)

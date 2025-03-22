@@ -52,6 +52,8 @@ class EquivariantNet(ExtendedModule):
                  voxel_size = 0.01,
                  radius_threshold = 0.02,
                  final_layer_norm = False,
+                 k_neighbours=8,
+                 use_knn=True,
                  **kwargs):
         
         super().__init__()
@@ -64,6 +66,9 @@ class EquivariantNet(ExtendedModule):
         self.voxelize = voxelize
         self.voxel_size = voxel_size
         self.radius_threshold = radius_threshold
+
+        self.k_neighbours=k_neighbours
+        self.use_knn=use_knn
 
         fiber_hidden = Fiber.create(num_degrees, num_channels)
         # we set fiber out here, the output channel can be changed
@@ -114,9 +119,9 @@ class EquivariantNet(ExtendedModule):
             batch_size = xyz.shape[0]
         else:
             batch_size = len(xyz)
-
+        
         if not given_graph:
-            batch_graph, node_feats, edge_feats, pcds, raw_node_feats = build_graph(xyz, feature, dist_threshold=self.radius_threshold, voxelize=self.voxelize, voxel_size=self.voxel_size, fiber_in=self.fiber_in)
+            batch_graph, node_feats, edge_feats, pcds, raw_node_feats = build_graph(xyz, feature,k_neighbours=self.k_neighbours, dist_threshold=self.radius_threshold, voxelize=self.voxelize, voxel_size=self.voxel_size, fiber_in=self.fiber_in,use_knn=self.use_knn)
         else:
             batch_graph = given_graph["batch_graph"] 
             node_feats = given_graph["node_feats"]
@@ -194,6 +199,7 @@ class SE3Backbone(ExtendedModule):
         voxel_size: float = 0.02,
         radius_threshold: float = 0.04,
         pooling: bool = False,
+        k_neighbours=8,
     ):
         super().__init__()
         self.net = EquivariantNet(
@@ -208,6 +214,8 @@ class SE3Backbone(ExtendedModule):
             voxel_size=voxel_size,
             radius_threshold=radius_threshold,
             pooling=pooling,
+            k_neighbours=k_neighbours,
+            use_knn=True
         )
 
     
