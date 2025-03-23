@@ -210,35 +210,39 @@ def prepare_model_input(nxyz, tgt_nxyz, neefpose, k, num_point,config):
 
 
     # k: [B]        
-    tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
+    # tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
 
-    # vectors = torch.tensor([[1.0, 1.0, 1.0]] * B,device=nxyz.device)  # Shape: (B, 3)
-    # angles = k.clone().detach()*torch.pi/(1+config['diffusion_steps']+config['pred_horizon'])
+    vectors = torch.tensor([[1.0, 1.0, 1.0]] * B,device=nxyz.device)  # Shape: (B, 3)
+    angles = k.clone().detach()*torch.pi/(1+config['diffusion_steps']+config['pred_horizon'])
 
-    # axes = vectors / torch.norm(vectors, dim=1, keepdim=True)  # Shape: (batch_size, 3)
+    axes = vectors / torch.norm(vectors, dim=1, keepdim=True)  # Shape: (batch_size, 3)
 
-    # # Rodrigues' formula
-    # K = torch.zeros(B, 3, 3,device=nxyz.device)
-    # K[:, 0, 1] = -axes[:, 2]
-    # K[:, 0, 2] = axes[:, 1]
-    # K[:, 1, 0] = axes[:, 2]
-    # K[:, 1, 2] = -axes[:, 0]
-    # K[:, 2, 0] = -axes[:, 1]
-    # K[:, 2, 1] = axes[:, 0]
+    # Rodrigues' formula
+    K = torch.zeros(B, 3, 3,device=nxyz.device)
+    K[:, 0, 1] = -axes[:, 2]
+    K[:, 0, 2] = axes[:, 1]
+    K[:, 1, 0] = axes[:, 2]
+    K[:, 1, 2] = -axes[:, 0]
+    K[:, 2, 0] = -axes[:, 1]
+    K[:, 2, 1] = axes[:, 0]
 
-    # I = torch.eye(3,device=nxyz.device).unsqueeze(0).repeat(B, 1, 1)
-    # angles = angles.unsqueeze(-1).unsqueeze(-1)
+    I = torch.eye(3,device=nxyz.device).unsqueeze(0).repeat(B, 1, 1)
+    angles = angles.unsqueeze(-1).unsqueeze(-1)
 
-    # # Compute rotation matrices
-    # rotation_matrices = I + torch.sin(angles) * K + (1 - torch.cos(angles)) * torch.bmm(K, K)
-
-    # print(rotation_matrices,angles)
-
+    # Compute rotation matrices
+    rotation_matrices = I + torch.sin(angles) * K + (1 - torch.cos(angles)) * torch.bmm(K, K)
+    k1=rotation_matrices[:, :, 0] # [B,3] first col
+    k2=rotation_matrices[:, :, 1] # [B,3] second col
+    k1=k1.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
+    k2=k2.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
 
     #  the order of inputs for se3 transformer:
     # 1 type0: binary gripper_action 
     # 9 type1: tensor_k;tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
-    feature = torch.cat((tensor_k,gripper_pose,tgt_nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+    #feature = torch.cat((tensor_k,gripper_pose,tgt_nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+    
+    feature = torch.cat((gripper_pose,k1,k2,tgt_nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+    
     # ref_output=torch.cat((noisy_ori_actions,noisy_trans_actions), dim=-1)
 
     model_input = {

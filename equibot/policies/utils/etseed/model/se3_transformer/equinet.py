@@ -226,7 +226,7 @@ class SE3ManiNet_Fused(ExtendedModule):
     def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8):
         super().__init__()
         self.pred_horizon=pred_horizon
-        num_fib_in = [2,5] # 17 in total, 2 type0:tensor_k, binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        num_fib_in = [1,7] # 17 in total, 1 type0:binary gripper_action 7 type1: k1,k2; tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
         self.pos_ori_net = SE3Backbone(
             fiber_in=Fiber({
                 "0": num_fib_in[0], 
