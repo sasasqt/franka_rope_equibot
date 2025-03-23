@@ -331,7 +331,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         loss=torch.nn.functional.mse_loss(noise_pred, noise)
     else:
         # see algorithm 1, but no more naction @torch.inverse(noisy_actions)
-        loss, dist_r, dist_t = compute_loss(noise_pred.view(-1,4,4),(naction ).view(noise.size(0)*noise.size(1),4,4))  
+        loss, dist_r, dist_t = compute_loss(torch.einsum('bhij,bhjk->bhjk',noise_pred,noisy_actions).view(-1,4,4),(naction ).view(noise.size(0)*noise.size(1),4,4))  
 
 
     # weighted=torch.tensor(max(1.0,1.0 + (5-epoch_idx)/5), device=loss.device)
