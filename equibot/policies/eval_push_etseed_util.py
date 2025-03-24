@@ -24,7 +24,9 @@ from datetime import datetime
 from pxr import Gf, UsdGeom
 import omni.usd
 
-from equibot.policies.etseed_train import init_model_and_optimizer, prepare_model_input, train_batch, prepare_model_output
+from equibot.policies.etseed_train import init_model_and_optimizer, prepare_model_input, prepare_model_output
+from equibot.policies.etseed_test import test_batch
+
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 
 import kornia
@@ -751,7 +753,7 @@ class EvalUtils(ControlFlow):
             # id[:3, 3] = -1.0*torch.tensor([0.00001,0.00001,0.00001],dtype=torch.float32, device='cuda')*cls.count
             # ac = id[None, None, :, :].expand(1,pred_horizion,4,4)
 
-            ac = train_batch(nets=nets, noise_scheduler=noise_scheduler, nbatch=agent_obs, device=cls.device,config=cls.config, optimizer=None, lr_scheduler=None,isTrain=False)
+            ac = test_batch(nets=nets, noise_scheduler=noise_scheduler, nbatch=agent_obs, device=cls.device,config=cls.config,isVisualEval=True)
             print(ac.shape, "ac?") # b Ha 4 4
             # if eval(str(cls.cfg.manually_close).title()) is True:
             #     for i in range(len(ac)):
