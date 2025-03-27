@@ -25,9 +25,13 @@ def main(cfg):
         "obs_horizon": cfg.obs_horizon,
         "action_horizon": cfg.action_horizon,
         "T_a": cfg.T_a,
+        "k_neighbours":cfg.k_neighbours*cfg.obs_horizon,
         "batch_size": cfg.batch_size,
         "diffusion_steps": cfg.diffusion_steps,
         "diffusion_mode": cfg.diffusion_mode,
+        "sigma_r":cfg.sigma_r,
+        "sigma_t": cfg.sigma_t,
+        'use_ddpm': cfg.use_ddpm,
         "checkpoint_path": cfg.training.ckpt,
     }
 
@@ -64,7 +68,13 @@ def main(cfg):
         # micromamba further complicates it by not introducing proper sys envs for cmakelists
     
     nets = init_model(device,config)
-    noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"],mode=config["diffusion_mode"],device=device)
+
+    if config['use_ddpm']:
+        from diffusers import DDPMScheduler
+        noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'])
+    else:
+        noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
+
     wandb.init(
         entity=cfg.wandb.entity,
         project=cfg.wandb.project,
@@ -75,10 +85,10 @@ def main(cfg):
             "pred_horizon": config["pred_horizon"],
             "obs_horizon": config["obs_horizon"],
             "batch_size": config["batch_size"],
-            "diffusion_num_steps": noise_scheduler.num_steps,
-            "diffusion_mode": noise_scheduler.mode,
-            "diffusion_sigma_r": noise_scheduler.sigma_r,
-            "diffusion_sigma_t": noise_scheduler.sigma_t
+            "diffusion_num_steps": config["diffusion_steps"],
+            "diffusion_mode": config["diffusion_mode"],
+            "diffusion_sigma_r": config["sigma_r"],
+            "diffusion_sigma_t": config["sigma_t"],
         }
     )
     test_losses = []
@@ -118,27 +128,45 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
         nxyz = nbatch['pc'][:, :, :, :3].to(device) # [B,Ho,num_pts,3]
         tgt_nxyz = nbatch['pc'][:, :, :, 3:6].to(device)
         naction = nbatch['action'].to(device) # [B,Ho,4by4]
-        #neefpose = nbatch['eef_pos'].to(device)
+        neefpose = nbatch['eef_pos'].to(device)
         bz = nxyz.shape[0]
+        ho = nxyz.shape[1]
+
         naction = naction.view(naction.size(0),naction.size(1),4,4) # naction: torch.Size([B, Ho, 4, 4])
         num_point = nxyz.shape[2]
         nxyz = nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
         tgt_nxyz = tgt_nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
+        neefpose=neefpose.view(bz,ho,-1) # ([B, Ho, num_eef * (pose gripper action etc)])
 
-        H_Identity = torch.eye(4)[None].expand(bz,config["pred_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
-        k=torch.full((bz,), noise_scheduler.num_steps - 1).long().to(device)
-        H_t_noise,_=noise_scheduler.add_noise(H_Identity, k, device=device)
-        
+        # Options
+        if config['use_ddpm']:
+            # ddpm
+            noise = torch.randn(naction.shape, device=device)
+            noisy_actions = noise_scheduler.add_noise(naction, noise, k)
+        else:
+            # the default
+            H_Identity = torch.eye(4)[None].expand(bz,config["pred_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
+            k=torch.full((bz,), config['diffusion_steps'] - 1).long().to(device)
+            noisy_actions, noise=noise_scheduler.add_noise(H_Identity, k, device=device)
+            
         if os.name == 'nt': # mock actions on windows 
             #actions=prepare_model_output(H_t_noise)
             return H_t_noise
                                                           
         # predict action instead of noise might due to https://github.com/lucidrains/denoising-diffusion-pytorch/issues/58#issuecomment-2676085515
         # but why does the predicted action at denoise_idx=num_steps already good, if not the best action?
-        for denoise_idx in range(noise_scheduler.num_steps - 1, -1, -1):
+        for denoise_idx in range(config['diffusion_steps'] - 1, -1, -1):
             g_step+=1
+
+            # Options
+
+            # the default
             k=torch.full((bz,), denoise_idx).long().to(device)
-            model_input = prepare_model_input(nxyz, tgt_nxyz, H_t_noise, k, num_point,config)
+            
+            # no diffusion, no denoising
+            k = torch.zeros((bz,)).long().to(device)
+
+            model_input = prepare_model_input(nxyz, tgt_nxyz, neefpose, k, num_point,config)
             
             # if (denoise_idx == 0): 
             #     test_equiv = True 
@@ -146,14 +174,28 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
             # else: 
             #     test_equiv = False 
             #     pred = nets["invariant_pred_net"](model_input,num_point,Inv=True)
-            pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
-            noise_pred = pred
+            model_output = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
+
+            # the default
             H_t_noise, H_0 = noise_scheduler.denoise(
-                model_output = noise_pred,
+                reconstructed_H_0 = model_output,
                 timestep = k,
                 sample = H_t_noise,
                 device = device
             )
+
+            # predict relative transformation
+            H_t_noise, H_0 = noise_scheduler.denoise(
+                reconstructed_H_0 = torch.einsum('bhij,bhjk->bhjk',model_output,noisy_actions,
+                timestep = k,
+                sample = H_t_noise,
+                device = device
+            )
+
+            # no diffusion, no denoising
+            H_0=model_output
+
+
             if not isVisualEval:
                 loss, dist_R, dist_T = compute_loss(H_0.view(-1,4,4), naction.view(-1,4,4))
                 # print("loss: ", loss)

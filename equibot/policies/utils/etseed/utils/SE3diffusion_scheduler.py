@@ -92,16 +92,16 @@ class DiffusionScheduler(torch.nn.Module):
         noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
             
         # perturbation part in eq 34
-        H_noise = se3.exp(noise) #  [B,Ho,4,4]
+        H_pure_noise = se3.exp(noise) #  [B,Ho,4,4]
 
         # perturbation + interpolation, see eq 34
-        H_t_noise = H_noise @ H_t #  [B,Ho,4,4]
+        noisy_interpolated_H_t = H_pure_noise @ H_t #  [B,Ho,4,4]
 
-        return H_t_noise, H_noise
+        return noisy_interpolated_H_t, H_pure_noise
     
     
     def denoise(self,
-                model_output, # [B,Ho,4,4]
+                reconstructed_H_0, # [B,Ho,4,4]
                 timestep, # [B]
                 sample, # [B,Ho,4,4]
                 device):
@@ -110,12 +110,10 @@ class DiffusionScheduler(torch.nn.Module):
         B = sample.shape[0]
         Ho = sample.shape[1]
         # see algorithm 2, but no longer use A^{k->0}A^k
-        # H_0 = (torch.inverse(model_output) @ sample)
-        H_0= model_output
         gamma0 = self.gamma0[timestep].to(device)
         gamma1 = self.gamma1[timestep].to(device)
-        sample = se3.exp(gamma0 * se3.log(H_0) + gamma1 * se3.log(sample))
-        return sample, H_0 # sample = A^{k-1}, H_0 = A^{k->0}A^k, see algorithm 2
+        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample))
+        return sample # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
     
     # see eq 10 in DiffusionReg paper, (exp are applied to both sides)
     def pre_compute_loss(self,

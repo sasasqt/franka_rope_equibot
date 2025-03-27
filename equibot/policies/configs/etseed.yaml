@@ -19,19 +19,25 @@ obs_horizon: 2
 action_horizon: 8
 T_a: ${pred_horizon}  # what is this???
 k_neighbours: 8
-use_ddpm: False
 batch_size: 16
 num_epochs: 100
-learning_rate: 0.001
+learning_rate: 0.0005
 weight_decay: 1e-6
 betas: [0.95, 0.999]
 eps: 1.0e-08
-sigma_r: 0.05
-sigma_t: 0.03
+sigma_r: 0.0015
+sigma_t: 0.001
 equiv_frac: 0.1
 save_freq: 3
 diffusion_steps: 100
 diffusion_mode: squaredcos_cap_v2
+
+
+dev:
+  use_ddpm: False
+  k_option: 0 # 0 diffusion steps as type 0 scalar; # 1 diffusion steps as type 0 rotation; 2 diffusion steps as type 1 rotation
+  diffusion_option: 0 # 0: the default, predict the gt H0;  1: predict relative transformation from Ht to H0; 2: no diffusion, no denoising
+
 
 training:
   ckpt: null

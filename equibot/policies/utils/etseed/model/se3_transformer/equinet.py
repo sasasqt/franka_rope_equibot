@@ -223,10 +223,26 @@ class SE3ManiNet_Fused_Separate(ExtendedModule):
 
 
 class SE3ManiNet_Fused(ExtendedModule):
-    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8):
+    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None):
         super().__init__()
         self.pred_horizon=pred_horizon
-        num_fib_in = [1,7] # 17 in total, 1 type0:binary gripper_action 7 type1: k1,k2; tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+
+        # Options
+        if config['k_option']==0:
+            # 0 diffusion steps as type 0 scalar
+            num_fib_in = [2,5] # 17 in total, 2 type0: k; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        elif config['k_option']==1:
+            # 1 diffusion steps as type 0 rotation
+            num_fib_in = [7,5] # 22 in total, 7 type0: k1,k2; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        elif config['k_option']==2:
+            # 2 diffusion steps as type 1 rotation
+            num_fib_in = [1,7] # 22 in total, 1 type0: binary gripper_action 7 type1: k1,k2; tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        else:
+            raise NotImplementedError(f"k_option {config['k_option']} not implemented")
+
+
+
+
         self.pos_ori_net = SE3Backbone(
             fiber_in=Fiber({
                 "0": num_fib_in[0], 

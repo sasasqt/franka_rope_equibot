@@ -28,7 +28,7 @@ def main(cfg):
         "obs_horizon": cfg.obs_horizon,
         "action_horizon": cfg.action_horizon,
         "T_a": cfg.T_a,
-        "k_neighbours":cfg.k_neighbours,
+        "k_neighbours*obs_horizon":cfg.k_neighbours*cfg.obs_horizon,
         "batch_size": cfg.batch_size,
         "num_epochs": cfg.num_epochs,
         "learning_rate": cfg.learning_rate,
@@ -41,7 +41,9 @@ def main(cfg):
         "save_freq": cfg.save_freq,
         "diffusion_steps": cfg.diffusion_steps,
         "diffusion_mode": cfg.diffusion_mode,
-        'use_ddpm': cfg.use_ddpm,
+        'use_ddpm': cfg.dev.use_ddpm,
+        'k_option':cfg.dev.k_option,
+        'diffusion_option':cfg.dev.diffusion_option,
     }
 
 
@@ -94,9 +96,9 @@ def main(cfg):
     if config['use_ddpm']:
         from diffusers import DDPMScheduler
         noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'])
-
     else:
         noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
+
     if config['use_ddpm']:
         _config={
             "learning_rate": config["learning_rate"],
@@ -164,8 +166,8 @@ def init_model_and_optimizer(device,config):
 
     # noise_pred_net_in = SE3ManiNet_Fused_Separate()
     # noise_pred_net_eq = SE3ManiNet_Fused_Separate()
-    noise_pred_net_in = SE3ManiNet_Fused(k_neighbours=config['k_neighbours'],pred_horizon=config['pred_horizon'])
-    noise_pred_net_eq = SE3ManiNet_Fused(k_neighbours=config['k_neighbours'],pred_horizon=config['pred_horizon'])
+    noise_pred_net_in = SE3ManiNet_Fused(k_neighbours=config['k_neighbours*obs_horizon'],pred_horizon=config['pred_horizon'],config=config)
+    noise_pred_net_eq = SE3ManiNet_Fused(k_neighbours=config['k_neighbours*obs_horizon'],pred_horizon=config['pred_horizon'],config=config)
     
     nets = nn.ModuleDict({
         'invariant_pred_net': noise_pred_net_in,
@@ -208,10 +210,6 @@ def prepare_model_input(nxyz, tgt_nxyz, neefpose, k, num_point,config):
     gravity=neefpose[...,9:12]
     gripper_pose=neefpose[...,12:13]
 
-
-    # k: [B]        
-    # tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
-
     vectors = torch.tensor([[1.0, 1.0, 1.0]] * B,device=nxyz.device)  # Shape: (B, 3)
     angles = k.clone().detach()*torch.pi/(1+config['diffusion_steps']+config['pred_horizon'])
 
@@ -236,12 +234,24 @@ def prepare_model_input(nxyz, tgt_nxyz, neefpose, k, num_point,config):
     k1=k1.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
     k2=k2.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
 
-    #  the order of inputs for se3 transformer:
-    # 1 type0: binary gripper_action 
-    # 9 type1: tensor_k;tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
-    #feature = torch.cat((tensor_k,gripper_pose,tgt_nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
     
-    feature = torch.cat((gripper_pose,k1,k2,tgt_nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+    # Options
+    if config['k_option']==0:
+        # # 0 diffusion steps as type 0 scalar
+        # num_fib_in = [2,5] # 17 in total, 2 type0: k; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        # k: [B]        
+        tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
+        feature = torch.cat((tensor_k,gripper_pose,tgt_nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+    elif config['k_option']==1:
+        # # 1 diffusion steps as type 0 rotation
+        # num_fib_in = [7,5] # 22 in total, 7 type0: k1,k2; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        feature = torch.cat((k1,k2,gripper_pose,tgt_nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+    elif config['k_option']==2:
+        # # 2 diffusion steps as type 1 rotation
+        # num_fib_in = [1,7] # 22 in total, 1 type0: binary gripper_action 7 type1: k1,k2; tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        feature = torch.cat((gripper_pose,k1,k2,tgt_nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+    else:
+        raise NotImplementedError(f"k_option {config['k_option']} not implemented")
     
     # ref_output=torch.cat((noisy_ori_actions,noisy_trans_actions), dim=-1)
 
@@ -306,20 +316,34 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     #     train_equiv = False
     #     k = torch.randint(1, noise_scheduler.num_steps, (bz,), device=device)
     # train_equiv = True
-    k = torch.randint(0, config["diffusion_steps"], (bz,), device=device)
+    
+        
+
     if config['use_ddpm']:
+        # ddpm
+        k = torch.randint(0, config["diffusion_steps"], (bz,), device=device)
         noise = torch.randn(naction.shape, device=device)
         noisy_actions = noise_scheduler.add_noise(naction, noise, k)
     else:
-        noisy_actions, noise = noise_scheduler.add_noise(naction, k, device=device)
+        # Options
+        if config['diffusion_option']==0 or config['diffusion_option']==1:
+            # 0: the default, predict the gt H0
+            # 1: predict relative transformation from Ht to H0
+            k = torch.randint(0, config["diffusion_steps"], (bz,), device=device)
+            noisy_actions, noise = noise_scheduler.add_noise(naction, k, device=device)
+        elif config['diffusion_option']==2:
+            # 2: no diffusion, no denoising
+            k = torch.zeros((bz,)).long().to(device)
+        else:
+            raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
+        
     model_input = prepare_model_input(nxyz, tgt_nxyz, neefpose, k, num_point,config)
     # if train_equiv:
     #     pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
     # else:
     #     pred = nets["invariant_pred_net"](model_input, num_point,Inv=True)
-    pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
+    model_output = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
 
-    noise_pred = pred
     # noise_pred: [B,Ho,4,4]
     # naction: torch.Size([B, Hp, 4, 4])
     # noise: [B,Ho,4,4]
@@ -332,10 +356,28 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     #     device = device)
     # loss, dist_r, dist_t = compute_loss(predicted.view(-1,4,4),(interpolated).view(noise.size(0)*noise.size(1),4,4))  
     if config['use_ddpm']:
-        loss=torch.nn.functional.mse_loss(noise_pred, noise)
+        # ddpm
+        loss=torch.nn.functional.mse_loss(model_output, noise)
     else:
-        # see algorithm 1, but no more naction @torch.inverse(noisy_actions)
-        loss, dist_r, dist_t = compute_loss(torch.einsum('bhij,bhjk->bhjk',noise_pred,noisy_actions).view(-1,4,4),(naction ).view(noise.size(0)*noise.size(1),4,4))  
+        # Options
+        if config['diffusion_option']==0:
+            # 0: the default, predict the gt H0
+            # see algorithm 1, but no more naction @torch.inverse(noisy_actions)
+            loss, dist_r, dist_t = compute_loss(model_output.view(-1,4,4),(naction ).view(-1,4,4))  
+        elif config['diffusion_option']==1:
+            # 1: predict relative transformation from Ht to H0
+            loss, dist_r, dist_t = compute_loss(torch.einsum('bhij,bhjk->bhjk',model_output,noisy_actions).view(-1,4,4),(naction ).view(-1,4,4))  
+        elif config['diffusion_option']==2:
+            # 2: no diffusion, no denoising
+            loss, dist_r, dist_t = compute_loss(model_output.view(-1,4,4),(naction ).view(-1,4,4))  
+        else:
+            raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
+
+        # the default, predict the gt H0
+
+        
+
+        # no diffusion, no denoising
 
 
     # weighted=torch.tensor(max(1.0,1.0 + (5-epoch_idx)/5), device=loss.device)
