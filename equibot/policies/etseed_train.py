@@ -108,6 +108,7 @@ def main(cfg):
             "epochs": config["num_epochs"],
             "diffusion_num_steps": config["diffusion_steps"],
             "diffusion_mode": config["diffusion_mode"],
+            'dev': cfg.dev,
         }
     else:
         _config={
@@ -119,7 +120,8 @@ def main(cfg):
             "diffusion_num_steps": noise_scheduler.num_steps,
             "diffusion_mode": noise_scheduler.mode,
             "diffusion_sigma_r": noise_scheduler.sigma_r,
-            "diffusion_sigma_t": noise_scheduler.sigma_t
+            "diffusion_sigma_t": noise_scheduler.sigma_t,
+            'dev': cfg.dev,
         }
 
     wandb.init(

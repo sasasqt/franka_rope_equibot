@@ -57,21 +57,23 @@ import torch
 torch.set_grad_enabled(False)
 from equibot.policies.utils.etseed.model.se3_transformer.equinet import  SE3ManiNet_Fused
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
+from equibot.policies.etseed_test import init_model
 import torch.nn as nn
 
 
-# Initialize the model and optimizer
-def init_model(device,config):
-    noise_pred_net_in = SE3ManiNet_Fused()
-    noise_pred_net_eq = SE3ManiNet_Fused()
-    nets = nn.ModuleDict({
-        'invariant_pred_net': noise_pred_net_in,
-        'equivariant_pred_net': noise_pred_net_eq
-    }).to(device)
-    checkpoint = torch.load(config["checkpoint_path"])
-    nets.load_state_dict(checkpoint['model_state_dict'])
-    nets.eval()
-    return nets
+# # Initialize the model and optimizer
+# def init_model(device,config):
+#     noise_pred_net_in = SE3ManiNet_Fused(k_neighbours=config['k_neighbours*obs_horizon'],pred_horizon=config['pred_horizon'],config=config)
+#     noise_pred_net_eq = SE3ManiNet_Fused(k_neighbours=config['k_neighbours*obs_horizon'],pred_horizon=config['pred_horizon'],config=config)
+    
+#     nets = nn.ModuleDict({
+#         'invariant_pred_net': noise_pred_net_in,
+#         'equivariant_pred_net': noise_pred_net_eq
+#     }).to(device)
+#     checkpoint = torch.load(config["checkpoint_path"])
+#     nets.load_state_dict(checkpoint['model_state_dict'])
+#     nets.eval()
+#     return nets
 
 @hydra.main(config_path="configs", config_name="etseed")
 def main(cfg):
@@ -82,10 +84,16 @@ def main(cfg):
         "obs_horizon": cfg.obs_horizon,
         "action_horizon": cfg.action_horizon,
         "T_a": cfg.T_a,
+        "k_neighbours*obs_horizon":cfg.k_neighbours*cfg.obs_horizon,
         "batch_size": cfg.batch_size,
         "diffusion_steps": cfg.diffusion_steps,
         "diffusion_mode": cfg.diffusion_mode,
-        "checkpoint_path": cfg.training.ckpt,  # replace with your checkpoint path
+        'use_ddpm': cfg.dev.use_ddpm,
+        'k_option':cfg.dev.k_option,
+        'diffusion_option':cfg.dev.diffusion_option,
+        "sigma_r":cfg.sigma_r,
+        "sigma_t": cfg.sigma_t,
+        "checkpoint_path": cfg.training.ckpt,
         "cfg":cfg
     }
 
@@ -94,7 +102,11 @@ def main(cfg):
         device = torch.device('cpu')
     nets = init_model(device,config)
 
-    noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"],mode=config["diffusion_mode"],device=device)
+    if config['use_ddpm']:
+        from diffusers import DDPMScheduler
+        noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'])
+    else:
+        noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
 
     config['nets']=nets
     config['noise_scheduler']=noise_scheduler

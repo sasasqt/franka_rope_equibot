@@ -25,13 +25,15 @@ def main(cfg):
         "obs_horizon": cfg.obs_horizon,
         "action_horizon": cfg.action_horizon,
         "T_a": cfg.T_a,
-        "k_neighbours":cfg.k_neighbours*cfg.obs_horizon,
+        "k_neighbours*obs_horizon":cfg.k_neighbours*cfg.obs_horizon,
         "batch_size": cfg.batch_size,
         "diffusion_steps": cfg.diffusion_steps,
         "diffusion_mode": cfg.diffusion_mode,
+        'use_ddpm': cfg.dev.use_ddpm,
+        'k_option':cfg.dev.k_option,
+        'diffusion_option':cfg.dev.diffusion_option,
         "sigma_r":cfg.sigma_r,
         "sigma_t": cfg.sigma_t,
-        'use_ddpm': cfg.use_ddpm,
         "checkpoint_path": cfg.training.ckpt,
     }
 
@@ -52,6 +54,7 @@ def main(cfg):
         num_workers=0 
 
     valid_dataset = get_dataset(cfg, "train", valid=True)
+
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset,
         batch_size=batch_size,
@@ -87,6 +90,9 @@ def main(cfg):
             "batch_size": config["batch_size"],
             "diffusion_num_steps": config["diffusion_steps"],
             "diffusion_mode": config["diffusion_mode"],
+            'use_ddpm': config["use_ddpm"],
+            'k_option':config["k_option"],
+            'diffusion_option':config["diffusion_option"],
             "diffusion_sigma_r": config["sigma_r"],
             "diffusion_sigma_t": config["sigma_t"],
         }
@@ -105,8 +111,9 @@ def main(cfg):
 
 
 def init_model(device,config):
-    noise_pred_net_in = SE3ManiNet_Fused()
-    noise_pred_net_eq = SE3ManiNet_Fused()
+    noise_pred_net_in = SE3ManiNet_Fused(k_neighbours=config['k_neighbours*obs_horizon'],pred_horizon=config['pred_horizon'],config=config)
+    noise_pred_net_eq = SE3ManiNet_Fused(k_neighbours=config['k_neighbours*obs_horizon'],pred_horizon=config['pred_horizon'],config=config)
+    
     nets = nn.ModuleDict({
         'invariant_pred_net': noise_pred_net_in,
         'equivariant_pred_net': noise_pred_net_eq
@@ -127,101 +134,139 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
     with torch.no_grad():
         nxyz = nbatch['pc'][:, :, :, :3].to(device) # [B,Ho,num_pts,3]
         tgt_nxyz = nbatch['pc'][:, :, :, 3:6].to(device)
-        naction = nbatch['action'].to(device) # [B,Ho,4by4]
+        if not isVisualEval:
+            naction = nbatch['action'].to(device) # [B,Ho,4by4]
         neefpose = nbatch['eef_pos'].to(device)
         bz = nxyz.shape[0]
         ho = nxyz.shape[1]
 
-        naction = naction.view(naction.size(0),naction.size(1),4,4) # naction: torch.Size([B, Ho, 4, 4])
+        if not isVisualEval:
+            naction = naction.view(naction.size(0),naction.size(1),4,4) # naction: torch.Size([B, Ho, 4, 4])
         num_point = nxyz.shape[2]
         nxyz = nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
         tgt_nxyz = tgt_nxyz.view(bz, -1, 3) # [B,Ho*num_pts,3]
         neefpose=neefpose.view(bz,ho,-1) # ([B, Ho, num_eef * (pose gripper action etc)])
 
-        # Options
+
+
+        H_Identity = torch.eye(4)[None].expand(bz,config["pred_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
+        k=torch.full((bz,), config['diffusion_steps'] - 1).long().to(device)
+
         if config['use_ddpm']:
-            # ddpm
-            noise = torch.randn(naction.shape, device=device)
-            noisy_actions = noise_scheduler.add_noise(naction, noise, k)
+            noise = torch.randn(H_Identity.shape, device=device)
+            noisy_actions = noise_scheduler.add_noise(H_Identity, noise, k)
         else:
-            # the default
-            H_Identity = torch.eye(4)[None].expand(bz,config["pred_horizon"], -1, -1).to(device) # H_T: [B,Ho,4,4]
-            k=torch.full((bz,), config['diffusion_steps'] - 1).long().to(device)
             noisy_actions, noise=noise_scheduler.add_noise(H_Identity, k, device=device)
-            
+        
         if os.name == 'nt': # mock actions on windows 
-            #actions=prepare_model_output(H_t_noise)
-            return H_t_noise
-                                                          
-        # predict action instead of noise might due to https://github.com/lucidrains/denoising-diffusion-pytorch/issues/58#issuecomment-2676085515
-        # but why does the predicted action at denoise_idx=num_steps already good, if not the best action?
-        for denoise_idx in range(config['diffusion_steps'] - 1, -1, -1):
-            g_step+=1
+            #actions=prepare_model_output(noisy_actions)
+            return noisy_actions
 
-            # Options
+        if config['use_ddpm']:
+            # ddpm, the huggingface diffuser way
+            noise_scheduler.set_timesteps(num_inference_steps=config['diffusion_steps'],device=device)
+            for k in noise_scheduler.timesteps: # shape [1]
+                model_input = prepare_model_input(nxyz, tgt_nxyz, neefpose, k.expand(bz), num_point,config)
+                model_output = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
 
-            # the default
-            k=torch.full((bz,), denoise_idx).long().to(device)
+                noisy_actions = noise_scheduler.step(model_output, k, noisy_actions).prev_sample      
+
+                if not isVisualEval:
+                    loss, dist_R, dist_T = compute_loss(noisy_actions.view(-1,4,4), naction.view(-1,4,4))
+
+                    loss_cpu = loss.item()
+
+                    wandb.log({"test_dist_R": dist_R},step=g_step)
+                    wandb.log({"test_dist_T": dist_T},step=g_step)
+                    wandb.log({"test_loss_cpu": loss_cpu},step=g_step)
+
+            if isVisualEval:
+                actions=noisy_actions
+                return actions
+            else:
+                return loss_cpu
             
-            # no diffusion, no denoising
-            k = torch.zeros((bz,)).long().to(device)
-
-            model_input = prepare_model_input(nxyz, tgt_nxyz, neefpose, k, num_point,config)
-            
-            # if (denoise_idx == 0): 
-            #     test_equiv = True 
-            #     pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
-            # else: 
-            #     test_equiv = False 
-            #     pred = nets["invariant_pred_net"](model_input,num_point,Inv=True)
-            model_output = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
-
-            # the default
-            H_t_noise, H_0 = noise_scheduler.denoise(
-                reconstructed_H_0 = model_output,
-                timestep = k,
-                sample = H_t_noise,
-                device = device
-            )
-
-            # predict relative transformation
-            H_t_noise, H_0 = noise_scheduler.denoise(
-                reconstructed_H_0 = torch.einsum('bhij,bhjk->bhjk',model_output,noisy_actions,
-                timestep = k,
-                sample = H_t_noise,
-                device = device
-            )
-
-            # no diffusion, no denoising
-            H_0=model_output
-
-
-            if not isVisualEval:
-                loss, dist_R, dist_T = compute_loss(H_0.view(-1,4,4), naction.view(-1,4,4))
-                # print("loss: ", loss)
-                loss_cpu = loss.item()
-                # if test_equiv:
-                #     dist_equiv_r = dist_R
-                #     dist_equiv_t = dist_T
-                # else:
-                #     dist_invar_r = dist_R
-                #     dist_invar_t = dist_T
-
-                wandb.log({"test_dist_R": dist_R},step=g_step)
-                wandb.log({"test_dist_T": dist_T},step=g_step)
-                wandb.log({"test_loss_cpu": loss_cpu},step=g_step)
-                # if test_equiv:
-                #     wandb.log({"test_dist_R_eq": dist_equiv_r},step=g_step)
-                #     wandb.log({"test_dist_T_eq": dist_equiv_t},step=g_step)
-                # else:
-                #     wandb.log({"test_dist_R_in": dist_invar_r},step=g_step)
-                #     wandb.log({"test_dist_T_in": dist_invar_t},step=g_step)
-
-        if isVisualEval:
-            actions=H_t_noise
-            return actions
         else:
-            return loss_cpu
+                                
+            # predict action instead of noise might due to https://github.com/lucidrains/denoising-diffusion-pytorch/issues/58#issuecomment-2676085515
+            # but why does the predicted action at denoise_idx=num_steps already good, if not the best action?
+            for denoise_idx in range(config['diffusion_steps'] - 1, -1, -1):
+                g_step+=1
+
+                # Options
+                if config['diffusion_option']==0 or config['diffusion_option']==1:
+                    # 0: the default, predict the gt H0
+                    # 1: predict relative transformation from Ht to H0
+                    k=torch.full((bz,), denoise_idx).long().to(device)
+                elif config['diffusion_option']==2:
+                    # 2: no diffusion, no denoising
+                    k = torch.zeros((bz,)).long().to(device)
+                else:
+                    raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
+                                
+
+                model_input = prepare_model_input(nxyz, tgt_nxyz, neefpose, k, num_point,config)
+                
+                # if (denoise_idx == 0): 
+                #     test_equiv = True 
+                #     pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
+                # else: 
+                #     test_equiv = False 
+                #     pred = nets["invariant_pred_net"](model_input,num_point,Inv=True)
+                model_output = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
+
+                # Options
+                if config['diffusion_option']==0:
+                    # 0: the default, predict the gt H0
+                    reconstructed_H_0 = model_output,
+                    noisy_actions = noise_scheduler.denoise(
+                        reconstructed_H_0=reconstructed_H_0,
+                        timestep = k,
+                        sample = noisy_actions,
+                        device = device
+                    )                
+                elif config['diffusion_option']==1:
+                    # 1: predict relative transformation from Ht to H0
+                    reconstructed_H_0 = torch.einsum('bhij,bhjk->bhjk',model_output,noisy_actions)
+                    noisy_actions = noise_scheduler.denoise(
+                        reconstructed_H_0=reconstructed_H_0,
+                        timestep = k,
+                        sample = noisy_actions,
+                        device = device
+                    )
+                elif config['diffusion_option']==2:
+                    # 2: no diffusion, no denoising
+                    reconstructed_H_0=model_output
+                else:
+                    raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
+
+
+                if not isVisualEval:
+                    loss, dist_R, dist_T = compute_loss(reconstructed_H_0.view(-1,4,4), naction.view(-1,4,4))
+                    # print("loss: ", loss)
+                    loss_cpu = loss.item()
+                    # if test_equiv:
+                    #     dist_equiv_r = dist_R
+                    #     dist_equiv_t = dist_T
+                    # else:
+                    #     dist_invar_r = dist_R
+                    #     dist_invar_t = dist_T
+
+                    wandb.log({"test_dist_R": dist_R},step=g_step)
+                    wandb.log({"test_dist_T": dist_T},step=g_step)
+                    wandb.log({"test_loss_cpu": loss_cpu},step=g_step)
+                    # if test_equiv:
+                    #     wandb.log({"test_dist_R_eq": dist_equiv_r},step=g_step)
+                    #     wandb.log({"test_dist_T_eq": dist_equiv_t},step=g_step)
+                    # else:
+                    #     wandb.log({"test_dist_R_in": dist_invar_r},step=g_step)
+                    #     wandb.log({"test_dist_T_in": dist_invar_t},step=g_step)
+
+            if isVisualEval:
+                actions=noisy_actions
+                return actions
+            else:
+                return loss_cpu
 
 
 

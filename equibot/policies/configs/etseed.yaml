@@ -104,7 +104,7 @@ data:
     pred_horizon:  ${data.dataset.pred_horizon}
     reduce_horizon_dim:  ${data.dataset.reduce_horizon_dim}
     min_demo_length:  ${data.dataset.min_demo_length}
-    keys_to_keep: ["pc", "action"]
+    keys_to_keep: ["pc","eef_pos", "action"]
 
 wandb:
   entity: ab36
