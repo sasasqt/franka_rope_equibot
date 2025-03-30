@@ -75,7 +75,8 @@ class DiffusionScheduler(torch.nn.Module):
     def add_noise(self,
         original_samples: torch.FloatTensor, # [B, Ho, 4, 4]
         timesteps: torch.IntTensor, # [B]
-        device):
+        device,
+        no_noise=False):
         B = original_samples.shape[0] # batch
         Ho = original_samples.size(1)  # horizon
         
@@ -93,10 +94,12 @@ class DiffusionScheduler(torch.nn.Module):
             
         # perturbation part in eq 34
         H_pure_noise = se3.exp(noise) #  [B,Ho,4,4]
-
+        if no_noise:
+            return H_t,H_pure_noise
+        
         # perturbation + interpolation, see eq 34
         noisy_interpolated_H_t = H_pure_noise @ H_t #  [B,Ho,4,4]
-
+            
         return noisy_interpolated_H_t, H_pure_noise
     
     

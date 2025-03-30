@@ -226,6 +226,7 @@ class SE3ManiNet_Fused(ExtendedModule):
     def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None):
         super().__init__()
         self.pred_horizon=pred_horizon
+        self.config=config
 
         # Options
         if config['k_option']==0:
@@ -278,12 +279,44 @@ class SE3ManiNet_Fused(ExtendedModule):
             # mag_feature=torch.mean(mag_feature, dim=0) # [Hp, 1]
             rot_mag_feature=batchi_type0_feature[:, :, 7:8]
             rot_feature=batchi_type0_feature[:, :, :6]
-            rot_feature=torch.mean(rot_feature * rot_mag_feature, dim=0) # [Hp, 6]
+
+            if self.config['rot_aggregation']=='mean':
+                rot_feature=torch.mean(rot_feature * rot_mag_feature, dim=0) # [Hp, 6]
+            elif self.config['rot_aggregation']=='separate_mean':
+                rot_feature=torch.mean(rot_feature, dim=0) * torch.mean(rot_mag_feature, dim=0) # [Hp, 6]    
+            elif self.config['rot_aggregation']=='min':
+                indices = torch.argmin(rot_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                rot_feature = rot_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 6]
+            elif self.config['rot_aggregation']=='abs_min':
+                indices = torch.argmin(torch.abs(rot_mag_feature).squeeze(-1), dim=0)  # [Hp]
+                rot_feature = rot_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 6]
+            elif self.config['rot_aggregation']=='max':
+                indices = torch.argmax(rot_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                rot_feature = rot_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 6]
+            else:
+                raise NotImplementedError(f"rot_aggregation {self.config['rot_aggregation']} not implemented")
+            
             type0_feature_list.append(rot_feature)
 
             batchi_type1_feature = pos_ori_net["feature"][i][:,(6+1+1)*self.pred_horizon:(6+1+1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]
             batchi_type1_feature=batchi_type1_feature.view(batchi_type1_feature.shape[0],self.pred_horizon,-1)
-            trans_feature=torch.mean(batchi_type1_feature* trans_mag_feature, dim=0) # [Hp, 3]
+            trans_feature=batchi_type1_feature
+            if self.config['trans_aggregation']=='mean':
+                trans_feature=torch.mean(batchi_type1_feature* trans_mag_feature, dim=0) # [Hp, 3]
+            elif self.config['trans_aggregation']=='separate_mean':
+                trans_feature=torch.mean(batchi_type1_feature, dim=0)* torch.mean(trans_mag_feature, dim=0) # [Hp, 3]
+            elif self.config['trans_aggregation']=='min':
+                indices = torch.argmin(trans_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                trans_feature = trans_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+            elif self.config['trans_aggregation']=='abs_min':
+                indices = torch.argmin(torch.abs(trans_mag_feature).squeeze(-1), dim=0)  # [Hp]
+                trans_feature = trans_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+            elif self.config['trans_aggregation']=='max':
+                indices = torch.argmax(trans_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                trans_feature = trans_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+            else:
+                raise NotImplementedError(f"trans_aggregation {self.config['trans_aggregation']} not implemented")
+            
             type1_feature_list.append(trans_feature)
 
         # TODO BUG first dim wont match if voxelized, thus cannot be stacked # [B, Hp, 3]

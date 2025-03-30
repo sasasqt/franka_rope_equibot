@@ -39,6 +39,10 @@ dev:
   diffusion_option: 0 # 0: the default, predict the gt H0;  1: predict relative transformation from Ht to H0; 2: no diffusion, no denoising
   early_return: False # for se3 diffusion option 0 and 2: set this to True might make sense
   sh_basis_compute_gradients: False
+  rot_aggregation: mean # mean/separate_mean/min/abs_min/max
+  trans_aggregation: mean # mean/separate_mean/min/abs_min/max
+  ddpm_predict_noise: True
+  no_noise: False # only for se3 diffusion
 
 training:
   ckpt: null

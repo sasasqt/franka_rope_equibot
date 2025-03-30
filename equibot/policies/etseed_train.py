@@ -45,6 +45,10 @@ def main(cfg):
         'k_option':cfg.dev.k_option,
         'diffusion_option':cfg.dev.diffusion_option,
         'sh_basis_compute_gradients':cfg.dev.sh_basis_compute_gradients,
+        'rot_aggregation':cfg.dev.rot_aggregation,
+        'trans_aggregation':cfg.dev.trans_aggregation,
+        'ddpm_predict_noise':cfg.dev.ddpm_predict_noise,
+        'no_noise':cfg.dev.no_noise,
     }
 
 
@@ -96,7 +100,10 @@ def main(cfg):
     nets, optimizer, lr_scheduler = init_model_and_optimizer(device,config)
     if config['use_ddpm']:
         from diffusers import DDPMScheduler
-        noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'])
+        prediction_type='epsilon'
+        if not config['ddpm_predict_noise']:
+            prediction_type='sample'
+        noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
     else:
         noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
 
@@ -335,7 +342,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             # 0: the default, predict the gt H0
             # 1: predict relative transformation from Ht to H0
             k = torch.randint(0, config["diffusion_steps"], (bz,), device=device)
-            noisy_actions, noise = noise_scheduler.add_noise(naction, k, device=device)
+            noisy_actions, noise = noise_scheduler.add_noise(naction, k, device=device,no_noise=config['no_noise'])
         elif config['diffusion_option']==2:
             # 2: no diffusion, no denoising
             k = torch.zeros((bz,)).long().to(device)
@@ -362,7 +369,11 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     # loss, dist_r, dist_t = compute_loss(predicted.view(-1,4,4),(interpolated).view(noise.size(0)*noise.size(1),4,4))  
     if config['use_ddpm']:
         # ddpm
-        loss=torch.nn.functional.mse_loss(model_output, noise)
+        target=noise
+        if not config['ddpm_predict_noise']:
+            target=noisy_actions
+        loss=torch.nn.functional.mse_loss(model_output, target)
+
     else:
         # Options
         if config['diffusion_option']==0:
