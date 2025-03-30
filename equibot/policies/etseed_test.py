@@ -32,6 +32,7 @@ def main(cfg):
         'use_ddpm': cfg.dev.use_ddpm,
         'k_option':cfg.dev.k_option,
         'diffusion_option':cfg.dev.diffusion_option,
+        'early_return':cfg.dev.early_return,
         "sigma_r":cfg.sigma_r,
         "sigma_t": cfg.sigma_t,
         "checkpoint_path": cfg.training.ckpt,
@@ -154,6 +155,8 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
 
         if config['use_ddpm']:
             noise = torch.randn(H_Identity.shape, device=device)
+            noise[:, :,:3, :3]=noise[:, :,:3, :3]*config["sigma_r"]
+            noise[:, :, :3, 3]=noise[:, :, :3, 3]*config["sigma_t"]
             noisy_actions = noise_scheduler.add_noise(H_Identity, noise, k)
         else:
             noisy_actions, noise=noise_scheduler.add_noise(H_Identity, k, device=device)
@@ -163,6 +166,7 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
             return noisy_actions
 
         if config['use_ddpm']:
+            g_step+=1
             # ddpm, the huggingface diffuser way
             noise_scheduler.set_timesteps(num_inference_steps=config['diffusion_steps'],device=device)
             for k in noise_scheduler.timesteps: # shape [1]
@@ -218,7 +222,7 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                 # Options
                 if config['diffusion_option']==0:
                     # 0: the default, predict the gt H0
-                    reconstructed_H_0 = model_output,
+                    reconstructed_H_0 = model_output
                     noisy_actions = noise_scheduler.denoise(
                         reconstructed_H_0=reconstructed_H_0,
                         timestep = k,
@@ -261,6 +265,9 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                     # else:
                     #     wandb.log({"test_dist_R_in": dist_invar_r},step=g_step)
                     #     wandb.log({"test_dist_T_in": dist_invar_t},step=g_step)
+
+                if config['early_return']:
+                    break
 
             if isVisualEval:
                 actions=noisy_actions

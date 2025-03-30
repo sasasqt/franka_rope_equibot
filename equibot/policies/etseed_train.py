@@ -325,6 +325,8 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         # ddpm
         k = torch.randint(0, config["diffusion_steps"], (bz,), device=device)
         noise = torch.randn(naction.shape, device=device)
+        noise[:, :,:3, :3]=noise[:, :,:3, :3]*config["sigma_r"]
+        noise[:, :, :3, 3] = noise[:, :, :3, 3]*config["sigma_t"]
         noisy_actions = noise_scheduler.add_noise(naction, noise, k)
     else:
         # Options

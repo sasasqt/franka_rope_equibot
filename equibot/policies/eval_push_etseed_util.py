@@ -782,7 +782,6 @@ class EvalUtils(ControlFlow):
             # ac = id[None, None, :, :].expand(1,pred_horizion,4,4)
 
             ac = test_batch(nets=nets, noise_scheduler=noise_scheduler, nbatch=agent_obs, device=cls.device,config=cls.config,isVisualEval=True)
-            print(ac[:, :, :3, 3],"?????????")
             # print(ac.shape, "ac?") # b Ha 4 4
             # if eval(str(cls.cfg.manually_close).title()) is True:
             #     for i in range(len(ac)):

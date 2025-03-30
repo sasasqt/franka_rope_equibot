@@ -37,7 +37,7 @@ dev:
   use_ddpm: False
   k_option: 0 # 0 diffusion steps as type 0 scalar; # 1 diffusion steps as type 0 rotation; 2 diffusion steps as type 1 rotation
   diffusion_option: 0 # 0: the default, predict the gt H0;  1: predict relative transformation from Ht to H0; 2: no diffusion, no denoising
-
+  early_return: False # for se3 diffusion option 0 and 2: set this to True might make sense
 
 training:
   ckpt: null
@@ -111,8 +111,8 @@ wandb:
   project: equibot
 
 franka_rope:
-  physics_dt: 1.0/30.0
-  rendering_dt: 1.0/30.0
+  physics_dt: 1.0/10.0
+  rendering_dt: 1.0/10.0
   _randomize: False
   _randomize_on_reset: False
   pusht_pos: [0.1,0.1,0] # [0,0,0] or [0.1,0.1,0]
@@ -129,7 +129,7 @@ franka_rope:
   from_demo: null
   start_time: 350
   manually_close: False
-  max_end: 360 # 600
+  max_end: 19999 #360 # 600
   seed: 42
   rel: True
   rpy: False
