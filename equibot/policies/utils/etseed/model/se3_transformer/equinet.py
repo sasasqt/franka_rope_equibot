@@ -259,6 +259,7 @@ class SE3ManiNet_Fused(ExtendedModule):
             channels_div= 2,
             voxelize = voxelize,
             k_neighbours=k_neighbours,
+            compute_gradients=config['sh_basis_compute_gradients'],
         )
 
     def forward(self, inputs,num_point,return_raw=False,Inv=False):

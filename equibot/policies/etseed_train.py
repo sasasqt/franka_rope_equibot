@@ -44,6 +44,7 @@ def main(cfg):
         'use_ddpm': cfg.dev.use_ddpm,
         'k_option':cfg.dev.k_option,
         'diffusion_option':cfg.dev.diffusion_option,
+        'sh_basis_compute_gradients':cfg.dev.sh_basis_compute_gradients,
     }
 
 

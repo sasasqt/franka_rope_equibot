@@ -38,6 +38,7 @@ dev:
   k_option: 0 # 0 diffusion steps as type 0 scalar; # 1 diffusion steps as type 0 rotation; 2 diffusion steps as type 1 rotation
   diffusion_option: 0 # 0: the default, predict the gt H0;  1: predict relative transformation from Ht to H0; 2: no diffusion, no denoising
   early_return: False # for se3 diffusion option 0 and 2: set this to True might make sense
+  sh_basis_compute_gradients: False
 
 training:
   ckpt: null

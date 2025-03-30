@@ -112,7 +112,7 @@ class EquivariantNet(ExtendedModule):
             graph_modules.append(NormSE3(fiber_out))
         self.graph_modules = Sequential(*graph_modules)
 
-    def forward(self, inputs, given_graph=None, given_basis=None, **kwargs):
+    def forward(self, inputs, given_graph=None, given_basis=None, compute_gradients=False, **kwargs):
         xyz = inputs["xyz"]
         feature = inputs["feature"]
         if isinstance(xyz, torch.Tensor):
@@ -131,7 +131,7 @@ class EquivariantNet(ExtendedModule):
  
         if not given_basis:
             # Compute bases in case they weren't precomputed as part of the data loading
-            basis = get_basis(batch_graph.edata['rel_pos'], max_degree=self.max_degree, compute_gradients=False,
+            basis = get_basis(batch_graph.edata['rel_pos'], max_degree=self.max_degree, compute_gradients=compute_gradients,
                                     use_pad_trick=self.tensor_cores and not self.low_memory,
                                     amp=torch.is_autocast_enabled())
 
@@ -200,6 +200,7 @@ class SE3Backbone(ExtendedModule):
         radius_threshold: float = 0.04,
         pooling: bool = False,
         k_neighbours=8,
+        compute_gradients=False,
     ):
         super().__init__()
         self.net = EquivariantNet(
@@ -215,7 +216,8 @@ class SE3Backbone(ExtendedModule):
             radius_threshold=radius_threshold,
             pooling=pooling,
             k_neighbours=k_neighbours,
-            use_knn=True
+            use_knn=True,
+            compute_gradients=compute_gradients,
         )
 
     
