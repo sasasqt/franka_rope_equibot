@@ -223,7 +223,7 @@ class SE3ManiNet_Fused_Separate(ExtendedModule):
 
 
 class SE3ManiNet_Fused(ExtendedModule):
-    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None):
+    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None,no_tgt_nxyz=False):
         super().__init__()
         self.pred_horizon=pred_horizon
         self.config=config
@@ -241,8 +241,18 @@ class SE3ManiNet_Fused(ExtendedModule):
         else:
             raise NotImplementedError(f"k_option {config['k_option']} not implemented")
 
-
-
+        if no_tgt_nxyz:
+            if config['k_option']==0:
+                # 0 diffusion steps as type 0 scalar
+                num_fib_in = [2,4] # 17 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+            elif config['k_option']==1:
+                # 1 diffusion steps as type 0 rotation
+                num_fib_in = [7,4] # 22 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+            elif config['k_option']==2:
+                # 2 diffusion steps as type 1 rotation
+                num_fib_in = [1,6] # 22 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
+            else:
+                raise NotImplementedError(f"k_option {config['k_option']} not implemented")
 
         self.pos_ori_net = SE3Backbone(
             fiber_in=Fiber({
@@ -339,12 +349,15 @@ class SE3VisionNet(ExtendedModule):
             extra_input_type_1_feat=0,         
             output_type_1_feat=2,
             num_layers= 2,
-            num_degrees= 3,
-            num_channels= 8,
+            num_degrees= 6,
+            num_channels= 16,
             num_heads= 2,
             channels_div= 2,
-            voxelize=False):
+            voxelize=False,
+            config=None
+            ):
         super().__init__()
+        self.config=config
         self.input_type_1_feat=input_type_1_feat
         self.extra_input_type_1_feat=extra_input_type_1_feat
         self.output_type_1_feat=output_type_1_feat
@@ -363,6 +376,8 @@ class SE3VisionNet(ExtendedModule):
             num_heads= num_heads,
             channels_div= channels_div,
             voxelize = voxelize,
+            k_neighbours=config['k_neighbours'],
+            compute_gradients=config['sh_basis_compute_gradients'],
         )
 
         
@@ -401,16 +416,18 @@ class SE3VisionNet(ExtendedModule):
 class SE3VisionNet_Hierarchical(ExtendedModule):
     def __init__(
             self,
-            hierarchy_layers=20,
+            hierarchy_layers=8,
             input_type_1_feat=1, 
             output_type_1_feat=3,            
             num_layers= 2,
-            num_degrees= 3,
-            num_channels= 8,
+            num_degrees= 6,
+            num_channels= 16,
             num_heads= 2,
             channels_div= 2,
-            voxelize=False):
+            voxelize=False,
+            config=None):
         super().__init__()
+        self.config=config
         self.hierarchy_layers=hierarchy_layers
         self.output_type_1_feat=output_type_1_feat
 
@@ -426,7 +443,8 @@ class SE3VisionNet_Hierarchical(ExtendedModule):
                 num_channels= num_channels,
                 num_heads= num_heads,
                 channels_div= channels_div,
-                voxelize=voxelize
+                voxelize=voxelize,
+                config=config,
             ))
 
         self.weights_nets = torch.nn.Sequential(*weights_nets)
@@ -451,9 +469,9 @@ class SE3VisionNet_Hierarchical(ExtendedModule):
 
             _N=outputs['feature'].shape[1]
             _expanded = global_feat.unsqueeze(1).expand(-1, _N, -1)  # [B,max(N//2,1),output_type_1_feat*3]
-            print(outputs['feature'].shape)
+            # print(outputs['feature'].shape)
             outputs['feature'] = torch.cat((outputs['feature'], _expanded), dim=-1) # [B,max(N//2,1), output_type_1_feat*3 + output_type_1_feat*3 ] 
-            print(layer+1,outputs['feature'].shape[-1],_expanded.shape,)
+            # print(layer+1,outputs['feature'].shape[-1],_expanded.shape,)
             inputs=outputs
 
         return torch.einsum('lbf->blf',global_feats)
