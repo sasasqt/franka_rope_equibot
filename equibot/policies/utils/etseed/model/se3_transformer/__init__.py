@@ -1,1 +1,1 @@
-from .equinet import SE3ManiNet_Invariant_Separate, SE3ManiNet_Equivariant_Separate, SE3ManiNet_Fused_Separate, SE3VisionNet, SE3VisionNet_Hierarchical
+from .equinet import SE3ManiNet_Fused, SE3ManiNet_ori_pos_sep, SE3VisionNet, SE3VisionNet_Hierarchical

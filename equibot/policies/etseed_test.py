@@ -9,7 +9,7 @@ from .etseed_train import prepare_model_input
 from tqdm.auto import tqdm
 
 # env import
-from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant_Separate, SE3ManiNet_Equivariant_Separate, SE3ManiNet_Fused_Separate, SE3ManiNet_Fused
+from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Fused
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 
 import hydra
@@ -32,10 +32,18 @@ def main(cfg):
         'use_ddpm': cfg.dev.use_ddpm,
         'k_option':cfg.dev.k_option,
         'diffusion_option':cfg.dev.diffusion_option,
+        'sh_basis_compute_gradients':cfg.dev.sh_basis_compute_gradients,
+        'rot_aggregation':cfg.dev.rot_aggregation,
+        'trans_aggregation':cfg.dev.trans_aggregation,
+        'ddpm_predict_noise':cfg.dev.ddpm_predict_noise,
+        'no_noise':cfg.dev.no_noise,
         'early_return':cfg.dev.early_return,
         "sigma_r":cfg.sigma_r,
         "sigma_t": cfg.sigma_t,
         "checkpoint_path": cfg.training.ckpt,
+        'low_memory':cfg.dev.low_memory,
+        'se3':cfg.dev.se3,
+
     }
 
 
@@ -112,12 +120,17 @@ def main(cfg):
 
 
 def init_model(device,config):
-    noise_pred_net_in = SE3ManiNet_Fused(k_neighbours=config['k_neighbours*obs_horizon'],pred_horizon=config['pred_horizon'],config=config)
-    noise_pred_net_eq = SE3ManiNet_Fused(k_neighbours=config['k_neighbours*obs_horizon'],pred_horizon=config['pred_horizon'],config=config)
+    if config['se3']==0:
+        noise_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config)
+    elif config['se3']==1:
+        from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
+        noise_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config)
+    else:
+        raise NotImplementedError(f"k_option {config['se3']} not implemented")
     
     nets = nn.ModuleDict({
-        'invariant_pred_net': noise_pred_net_in,
-        'equivariant_pred_net': noise_pred_net_eq
+        # 'invariant_pred_net': noise_pred_net,
+        'equivariant_pred_net': noise_pred_net,
     }).to(device)
     checkpoint = torch.load(config["checkpoint_path"])
     nets.load_state_dict(checkpoint['model_state_dict'])
@@ -183,6 +196,9 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                     wandb.log({"test_dist_R": dist_R},step=g_step)
                     wandb.log({"test_dist_T": dist_T},step=g_step)
                     wandb.log({"test_loss_cpu": loss_cpu},step=g_step)
+
+                if config['early_return']:
+                    break
 
             if isVisualEval:
                 actions=noisy_actions

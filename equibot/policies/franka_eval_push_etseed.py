@@ -95,6 +95,14 @@ def main(cfg):
         "sigma_r":cfg.sigma_r,
         "sigma_t": cfg.sigma_t,
         "checkpoint_path": cfg.training.ckpt,
+        'sh_basis_compute_gradients':cfg.dev.sh_basis_compute_gradients,
+        'rot_aggregation':cfg.dev.rot_aggregation,
+        'trans_aggregation':cfg.dev.trans_aggregation,
+        'ddpm_predict_noise':cfg.dev.ddpm_predict_noise,
+        'no_noise':cfg.dev.no_noise,
+        'low_memory':cfg.dev.low_memory,
+        'se3':cfg.dev.se3,
+
         "cfg":cfg
     }
 

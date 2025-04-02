@@ -51,6 +51,8 @@ def main(cfg):
         'trans_aggregation':cfg.dev.trans_aggregation,
         'ddpm_predict_noise':cfg.dev.ddpm_predict_noise,
         'no_noise':cfg.dev.no_noise,
+        'low_memory':cfg.dev.low_memory,
+        'se3':cfg.dev.se3,
     }
 
 
@@ -178,8 +180,13 @@ def init_model_and_optimizer(device,config):
 
     # TODO do not hardcode
     pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=config['pred_horizon*obs_horizon'],output_type_1_feat=1,config=config)
-    se3_transformer=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True)
-
+    if config['se3']==0:
+        se3_transformer=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True)
+    elif config['se3']==1:
+        from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
+        se3_transformer=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True)
+    else:
+        raise NotImplementedError(f"k_option {config['se3']} not implemented")
     nets = nn.ModuleDict({
         'pointcloud_encoder': pointcloud_encoder,
         'equivariant_pred_net': se3_transformer
@@ -261,6 +268,8 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config):
     k1=k1.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
     k2=k2.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
 
+    k1=k1.to(device)
+    k2=k2.to(device)
     
     # Options
     if config['k_option']==0:

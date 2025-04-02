@@ -1,5 +1,6 @@
 import os
-from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant_Separate, SE3ManiNet_Equivariant_Separate, SE3ManiNet_Fused_Separate, SE3VisionNet, SE3VisionNet_Hierarchical
+from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Invariant_Separate, SE3ManiNet_Equivariant_Separate, SE3ManiNet_Fused, SE3VisionNet, SE3VisionNet_Hierarchical
+from equibot.policies.utils.diffusion.conditional_unet1d import ConditionalUnet1D
 from equibot.policies.utils.etseed.utils.group_utils import bgs, bgdR
 import torch
 from scipy.spatial.transform import Rotation as R
@@ -520,13 +521,112 @@ def check_hierarchical_vision_model(num_trials=10, threshold=0.01):
 
 
 
+def check_condunet1d(num_trials=10, threshold=0.01):
+    success_record = []
+    for test_inv_trial in tqdm.tqdm(range(num_trials)):
+        rot = R.random()
+        pts = np.random.rand(100,3)
+
+        rotated_pts = rot.apply(pts) + np.random.rand(3)
+        xyz = np.stack([pts, rotated_pts], axis=0)
+
+        feature1 = np.random.rand(100,7)
+        feature2=np.random.rand(100,3)
+        feature3=np.random.rand(100,3)
+        
+        feature=np.concatenate([feature1,feature2,feature3],axis=-1)
+        rot_feature=np.concatenate([feature1,rot.apply(feature2),rot.apply(feature3)],axis=-1)
+        feature = np.stack([feature, rot_feature], axis=0)  # (2, 100, 13)
+                        
+        xyz = torch.tensor(xyz, dtype=torch.float32).cuda()
+        feature = torch.tensor(feature, dtype=torch.float32).cuda()
+        data = {}
+        
+        data['xyz'] = xyz
+        data['feature'] = feature
+        model = SE3ManiNet_Invariant_Separate().cuda()
+        result = model(data)
+
+        arot = rot#R.random()
+        apts = np.random.rand(100,3)
+
+        arotated_pts = rot.apply(apts) + np.random.rand(3)
+        axyz = np.stack([apts, arotated_pts], axis=0)
+
+        afeature1 = np.random.rand(100,7)
+        afeature2=np.random.rand(100,3)
+        afeature3=np.random.rand(100,3)
+        
+        afeature=np.concatenate([afeature1,afeature2,afeature3],axis=-1)
+        arot_feature=np.concatenate([afeature1,arot.apply(afeature2),arot.apply(afeature3)],axis=-1)
+        afeature = np.stack([afeature, arot_feature], axis=0)  # (2, 100, 13)
+                        
+        axyz = torch.tensor(axyz, dtype=torch.float32).cuda()
+        afeature = torch.tensor(afeature, dtype=torch.float32).cuda()
+        adata = {}
+        
+        adata['xyz'] = axyz
+        adata['feature'] = afeature
+        amodel = SE3ManiNet_Invariant_Separate().cuda()
+        aresult = amodel(adata)
+
+
+        result_np = []
+        for i in range(len(result)):
+            result_np.append(result[i].detach().cpu().numpy())
+        result_np = np.array(result_np)
+        
+        difference = result_np[0] - result_np[1]
+        # print("difference",difference)
+        
+        if (np.allclose(result_np[0], result_np[1], atol=threshold)):
+            # print('Invariant model is correct')
+            success_record.append(1)
+        else:
+            # print('!!!!!!!Invariant model is wrong')
+            success_record.append(0)
+
+
+        unet = ConditionalUnet1D(
+            input_dim=16,
+            diffusion_step_embed_dim=1600, #hierarchy_layers*output_type_1_feat*3
+            global_cond_dim=1600,
+            cond_predict_scale=True
+        ).cuda()
+
+        k = torch.randint(0, 1, (2,), device='cuda')
+
+        # aresult=torch.rand((100,16), device='cuda')
+        # aresult=aresult.unsqueeze(0).unsqueeze(0).expand(result.shape[0],result.shape[1],-1)
+        uout=unet(result.view(result.shape[0],result.shape[1],-1),k,global_cond=aresult.view(aresult.shape[0],-1))
+        result_np = []
+        for i in range(len(uout)):
+            result_np.append(uout[i].detach().cpu().numpy())
+        result_np = np.array(result_np)
+        difference = result_np[0] - result_np[1]
+        print("difference",difference)
+        
+        if (np.allclose(result_np[0], result_np[1], atol=threshold)):
+            print('condunet1d Invariant model is correct')
+            success_record.append(1)
+        else:
+            print('!!!!!!!condunet1d Invariant model is wrong')
+            success_record.append(0)
+
+    print('Inv test pass rate:', np.mean(success_record)*100, '%')
+    return np.mean(success_record)
+
+
+
+
 # check_invariant_model(num_trials=100, threshold=0.01)
 # check_equivariant_model(num_trials=100,threshold=0.01)
-check_fused_model(num_trials=100,threshold=0.000001)
-check_fused_model2(num_trials=100,threshold=0.000001)
+# check_fused_model(num_trials=100,threshold=0.000001)
+# check_fused_model2(num_trials=100,threshold=0.000001)
 # check_vision_model(num_trials=10,threshold=0.01)
 # check_hierarchical_vision_model(num_trials=10,threshold=0.01)
 
+check_condunet1d(num_trials=10,threshold=0.01)
 
 #!! test Schimidt
 # a = torch.tensor(np.random.rand(10000,3,2)).cuda()

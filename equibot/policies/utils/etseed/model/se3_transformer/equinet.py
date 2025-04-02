@@ -148,77 +148,77 @@ class SE3ManiNet_Invariant_Separate(ExtendedModule):
 
 
 
-class SE3ManiNet_Fused_Separate(ExtendedModule):
-    def __init__(self, voxelize=False):
-        super().__init__()
-        num_fib_in = [7,2] # 13 in total, 7 type0:tensor_k,noisy_ori_actions, 2 type1: noisy_trans_actions,tgt_nxyz
-        num_fib_out = [6]
-        self.pos_net = SE3Backbone(
-            fiber_in=Fiber({
-                "0": num_fib_in[0], 
-                "1": num_fib_in[1], 
-            }),
-            fiber_out=Fiber({
-                "0": 3, # offset/translation
-                "1": 1, # offset/translation
-            }),
-            num_layers= 4,
-            num_degrees= 4,
-            num_channels= 8,
-            num_heads= 2,
-            channels_div= 2,
-            voxelize = voxelize,
-        )
-        self.ori_net = SE3Backbone(
-            fiber_in=Fiber({
-                "0": num_fib_in[0], 
-                "1": num_fib_in[1], 
-            }),
-            fiber_out=Fiber({
-                "0": 6, # 2 cols of rotation
-            }),
-            num_layers= 4,
-            num_degrees= 4,
-            num_channels= 8,
-            num_heads= 2,
-            channels_div= 2,
-            voxelize = voxelize,
-        )
+# class SE3ManiNet_Fused_Separate(ExtendedModule):
+#     def __init__(self, voxelize=False):
+#         super().__init__()
+#         num_fib_in = [7,2] # 13 in total, 7 type0:tensor_k,noisy_ori_actions, 2 type1: noisy_trans_actions,tgt_nxyz
+#         num_fib_out = [6]
+#         self.pos_net = SE3Backbone(
+#             fiber_in=Fiber({
+#                 "0": num_fib_in[0], 
+#                 "1": num_fib_in[1], 
+#             }),
+#             fiber_out=Fiber({
+#                 "0": 3, # offset/translation
+#                 "1": 1, # offset/translation
+#             }),
+#             num_layers= 4,
+#             num_degrees= 4,
+#             num_channels= 8,
+#             num_heads= 2,
+#             channels_div= 2,
+#             voxelize = voxelize,
+#         )
+#         self.ori_net = SE3Backbone(
+#             fiber_in=Fiber({
+#                 "0": num_fib_in[0], 
+#                 "1": num_fib_in[1], 
+#             }),
+#             fiber_out=Fiber({
+#                 "0": 6, # 2 cols of rotation
+#             }),
+#             num_layers= 4,
+#             num_degrees= 4,
+#             num_channels= 8,
+#             num_heads= 2,
+#             channels_div= 2,
+#             voxelize = voxelize,
+#         )
 
-    def forward(self, inputs,num_point,return_raw=False,Inv=True):
-        bs = inputs["xyz"].shape[0]
-        pos_output = self.pos_net(inputs)        
-        ori_output = self.ori_net(inputs)
+#     def forward(self, inputs,num_point,return_raw=False,Inv=True):
+#         bs = inputs["xyz"].shape[0]
+#         pos_output = self.pos_net(inputs)        
+#         ori_output = self.ori_net(inputs)
 
-        # process translation
-        feature_list = list()
-        for i in range(bs):
-            if Inv:
-                batchi_feature = pos_output["feature"][i][:,:3] # [Horizon, 3]
-            else: # Equiv
-                batchi_feature = pos_output["feature"][i][:,3:] # [Horizon, 3]
+#         # process translation
+#         feature_list = list()
+#         for i in range(bs):
+#             if Inv:
+#                 batchi_feature = pos_output["feature"][i][:,:3] # [Horizon, 3]
+#             else: # Equiv
+#                 batchi_feature = pos_output["feature"][i][:,3:] # [Horizon, 3]
 
-            #actioni_raw = torch.mean(batchi_feature,dim = 0)
-            feature_list.append(batchi_feature)
-        output_pos = torch.stack(feature_list,dim = 0) 
-        output_pos=torch.mean(output_pos.view(bs,-1,num_point,3),dim=2) # [B, Horizon, 3]
+#             #actioni_raw = torch.mean(batchi_feature,dim = 0)
+#             feature_list.append(batchi_feature)
+#         output_pos = torch.stack(feature_list,dim = 0) 
+#         output_pos=torch.mean(output_pos.view(bs,-1,num_point,3),dim=2) # [B, Horizon, 3]
 
-        # process orientation
-        feature_list = list()
-        for i in range(bs):
-            batchi_feature = ori_output["feature"][i] # [Horizon, 6]
-            feature_list.append(batchi_feature)
-        action = torch.stack(feature_list,dim = 0)
-        action=torch.mean(action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
+#         # process orientation
+#         feature_list = list()
+#         for i in range(bs):
+#             batchi_feature = ori_output["feature"][i] # [Horizon, 6]
+#             feature_list.append(batchi_feature)
+#         action = torch.stack(feature_list,dim = 0)
+#         action=torch.mean(action.view(bs,-1,num_point,6),dim=2) # [B, Horizon, 6]
 
-        if return_raw:
-            return{
-                'pos':output_pos,
-                'ori':action
-            }
+#         if return_raw:
+#             return{
+#                 'pos':output_pos,
+#                 'ori':action
+#             }
     
-        action = process_action(action.view(-1,6), output_pos.view(-1,3),follow_rot_trans_convention=True).view(bs,-1,4,4) # orthogonalization
-        return action # [B, Ho, 4, 4]
+#         action = process_action(action.view(-1,6), output_pos.view(-1,3),follow_rot_trans_convention=True).view(bs,-1,4,4) # orthogonalization
+#         return action # [B, Ho, 4, 4]
     
 
 
@@ -271,6 +271,7 @@ class SE3ManiNet_Fused(ExtendedModule):
             voxelize = voxelize,
             k_neighbours=k_neighbours,
             compute_gradients=config['sh_basis_compute_gradients'],
+            low_memory=config['low_memory'],
         )
 
     def forward(self, inputs,num_point,return_raw=False,Inv=False):
@@ -342,6 +343,159 @@ class SE3ManiNet_Fused(ExtendedModule):
         output_ori = process_action(output_ori.view(-1,6), output_pos.view(-1,3),follow_rot_trans_convention=True).view(bs,-1,4,4) # orthogonalization
         return output_ori # [B, Ho, 4, 4]
 
+
+
+
+
+
+
+class SE3ManiNet_ori_pos_sep(ExtendedModule):
+    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None,no_tgt_nxyz=False):
+        super().__init__()
+        self.pred_horizon=pred_horizon
+        self.config=config
+
+        # Options
+        if config['k_option']==0:
+            # 0 diffusion steps as type 0 scalar
+            num_fib_in = [2,5] # 17 in total, 2 type0: k; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        elif config['k_option']==1:
+            # 1 diffusion steps as type 0 rotation
+            num_fib_in = [7,5] # 22 in total, 7 type0: k1,k2; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        elif config['k_option']==2:
+            # 2 diffusion steps as type 1 rotation
+            num_fib_in = [1,7] # 22 in total, 1 type0: binary gripper_action 7 type1: k1,k2; tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        else:
+            raise NotImplementedError(f"k_option {config['k_option']} not implemented")
+
+        if no_tgt_nxyz:
+            if config['k_option']==0:
+                # 0 diffusion steps as type 0 scalar
+                num_fib_in = [2,4] # 17 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+            elif config['k_option']==1:
+                # 1 diffusion steps as type 0 rotation
+                num_fib_in = [7,4] # 22 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+            elif config['k_option']==2:
+                # 2 diffusion steps as type 1 rotation
+                num_fib_in = [1,6] # 22 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
+            else:
+                raise NotImplementedError(f"k_option {config['k_option']} not implemented")
+
+        self.ori_net = SE3Backbone(
+            fiber_in=Fiber({
+                "0": num_fib_in[0], 
+                "1": num_fib_in[1], 
+            }),
+            fiber_out=Fiber({
+                "0": (6+1)*pred_horizon, # 2 cols of rotation + magnitude of offset + weights of each rot cand.
+            }),
+            num_layers= 8,
+            num_degrees= 6,
+            num_channels= 16,
+            num_heads= 2,
+            channels_div= 2,
+            voxelize = voxelize,
+            k_neighbours=k_neighbours,
+            compute_gradients=config['sh_basis_compute_gradients'],
+            low_memory=config['low_memory'],
+        )
+
+
+        self.pos_net = SE3Backbone(
+            fiber_in=Fiber({
+                "0": num_fib_in[0], 
+                "1": num_fib_in[1], 
+            }),
+            fiber_out=Fiber({
+                "0": (1)*pred_horizon, # magnitude of offset
+                "1": (1)*pred_horizon, # offset/translation (not unit direction)
+            }),
+            num_layers= 8,
+            num_degrees= 6,
+            num_channels= 16,
+            num_heads= 2,
+            channels_div= 2,
+            voxelize = voxelize,
+            k_neighbours=k_neighbours,
+            compute_gradients=config['sh_basis_compute_gradients'],
+            low_memory=config['low_memory'],
+        )
+
+    def forward(self, inputs,num_point,return_raw=False,Inv=False):
+        bs = inputs["xyz"].shape[0]
+        ori_net = self.ori_net(inputs)
+        pos_net = self.pos_net(inputs)
+        
+        # ori "0": (6+1)*pred_horizon, # 2 cols of rotation + magnitude of offset + weights of each rot cand.
+
+        type0_feature_list = []
+        type1_feature_list = []
+        for i in range(bs):
+            batchi_type0_feature = ori_net["feature"][i] # [Ho*num_point, Hp*n]
+            batchi_type0_feature=batchi_type0_feature.view(batchi_type0_feature.shape[0],self.pred_horizon,-1)
+            rot_mag_feature=batchi_type0_feature[:, :, 6:7]
+            rot_feature=batchi_type0_feature[:, :, :6]
+
+            if self.config['rot_aggregation']=='mean':
+                rot_feature=torch.mean(rot_feature * rot_mag_feature, dim=0) # [Hp, 6]
+            elif self.config['rot_aggregation']=='separate_mean':
+                rot_feature=torch.mean(rot_feature, dim=0) * torch.mean(rot_mag_feature, dim=0) # [Hp, 6]    
+            elif self.config['rot_aggregation']=='min':
+                indices = torch.argmin(rot_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                rot_feature = rot_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 6]
+            elif self.config['rot_aggregation']=='abs_min':
+                indices = torch.argmin(torch.abs(rot_mag_feature).squeeze(-1), dim=0)  # [Hp]
+                rot_feature = rot_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 6]
+            elif self.config['rot_aggregation']=='max':
+                indices = torch.argmax(rot_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                rot_feature = rot_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 6]
+            else:
+                raise NotImplementedError(f"rot_aggregation {self.config['rot_aggregation']} not implemented")
+            
+            type0_feature_list.append(rot_feature)
+
+        # pos "0": (1)*pred_horizon, # magnitude of offset
+        # pos "1": (1)*pred_horizon, # offset/translation (not unit direction)
+        for i in range(bs):
+            batchi_type0_feature = pos_net["feature"][i] # [Ho*num_point, Hp*n]
+            batchi_type0_feature=batchi_type0_feature.view(batchi_type0_feature.shape[0],self.pred_horizon,-1)
+            trans_mag_feature=batchi_type0_feature[:, :, 0:1]
+
+            batchi_type1_feature = pos_net["feature"][i][:,(1)*self.pred_horizon:(1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]
+            batchi_type1_feature=batchi_type1_feature.view(batchi_type1_feature.shape[0],self.pred_horizon,-1)
+            trans_feature=batchi_type1_feature
+            if self.config['trans_aggregation']=='mean':
+                trans_feature=torch.mean(batchi_type1_feature* trans_mag_feature, dim=0) # [Hp, 3]
+            elif self.config['trans_aggregation']=='separate_mean':
+                trans_feature=torch.mean(batchi_type1_feature, dim=0)* torch.mean(trans_mag_feature, dim=0) # [Hp, 3]
+            elif self.config['trans_aggregation']=='min':
+                indices = torch.argmin(trans_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                trans_feature = trans_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+            elif self.config['trans_aggregation']=='abs_min':
+                indices = torch.argmin(torch.abs(trans_mag_feature).squeeze(-1), dim=0)  # [Hp]
+                trans_feature = trans_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+            elif self.config['trans_aggregation']=='max':
+                indices = torch.argmax(trans_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                trans_feature = trans_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+            else:
+                raise NotImplementedError(f"trans_aggregation {self.config['trans_aggregation']} not implemented")
+            
+            type1_feature_list.append(trans_feature)
+
+
+        # TODO BUG first dim wont match if voxelized, thus cannot be stacked # [B, Hp, 3]
+        output_ori = torch.stack(type0_feature_list,dim = 0) # [B, Hp, 6]
+        output_pos = torch.stack(type1_feature_list,dim = 0) # [B, Hp, 3]
+
+        if return_raw:
+            return{
+                'pos':output_pos,
+                'ori':output_ori
+            }
+    
+        output_ori = process_action(output_ori.view(-1,6), output_pos.view(-1,3),follow_rot_trans_convention=True).view(bs,-1,4,4) # orthogonalization
+        return output_ori # [B, Ho, 4, 4]
+    
 
 class SE3VisionNet(ExtendedModule):
     def __init__(self,  
@@ -453,7 +607,7 @@ class SE3VisionNet_Hierarchical(ExtendedModule):
         bs = inputs["xyz"].shape[0]
         hierarchy_layers=self.hierarchy_layers
         weights_nets=self.weights_nets
-        global_feats=torch.zeros(hierarchy_layers,bs,self.output_type_1_feat*3)
+        global_feats=torch.zeros(hierarchy_layers,bs,self.output_type_1_feat*3,device=self.device)
         
         for layer in range(hierarchy_layers):
             outputs,global_feat=weights_nets[layer](inputs,return_raw=False)

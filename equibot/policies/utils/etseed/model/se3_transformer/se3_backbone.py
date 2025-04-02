@@ -201,6 +201,8 @@ class SE3Backbone(ExtendedModule):
         pooling: bool = False,
         k_neighbours=8,
         compute_gradients=False,
+        low_memory=True,
+
     ):
         super().__init__()
         self.net = EquivariantNet(
@@ -218,6 +220,7 @@ class SE3Backbone(ExtendedModule):
             k_neighbours=k_neighbours,
             use_knn=True,
             compute_gradients=compute_gradients,
+            low_memory=low_memory,
         )
 
     
