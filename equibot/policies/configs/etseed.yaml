@@ -46,6 +46,7 @@ dev:
   low_memory: False
   se3: 0 # 0=SE3ManiNet_Fused 1=SE3ManiNet_ori_pos_sep
   unet: False
+  unet_film: False
   Ho_in_B: False
   arch: 0 # 0: one se3 for pc enc + action prediction; 2: two sep. se3, potentially w/ unet  
   bugfix: 0000000000000001 # last bit: knn in se3 vision

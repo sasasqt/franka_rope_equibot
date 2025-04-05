@@ -104,6 +104,9 @@ def main(cfg):
         'low_memory':cfg.dev.low_memory,
         'se3':cfg.dev.se3,
         'unet':cfg.dev.unet,
+        'unet_film':cfg.dev.unet_film,
+        'Ho_in_B':cfg.dev.Ho_in_B,
+        'bugfix':cfg.dev.bugfix,
         'arch':cfg.dev.arch,
         "cfg":cfg
     }

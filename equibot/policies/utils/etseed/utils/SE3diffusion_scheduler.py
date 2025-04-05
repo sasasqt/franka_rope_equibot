@@ -115,6 +115,9 @@ class DiffusionScheduler(torch.nn.Module):
         # see algorithm 2, but no longer use A^{k->0}A^k
         gamma0 = self.gamma0[timestep].to(device)
         gamma1 = self.gamma1[timestep].to(device)
+        print(reconstructed_H_0)
+        print(se3.log(reconstructed_H_0))
+        print("^^^^^")
         sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample))
         return sample # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
     

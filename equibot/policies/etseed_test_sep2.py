@@ -46,6 +46,9 @@ def main(cfg):
         'low_memory':cfg.dev.low_memory,
         'se3':cfg.dev.se3,
         'unet':cfg.dev.unet,
+        'unet_film':cfg.dev.unet_film,
+        'Ho_in_B':cfg.dev.Ho_in_B,
+        'bugfix':cfg.dev.bugfix,
         'arch':cfg.dev.arch,
     }
 
@@ -136,7 +139,7 @@ def init_model(device,config):
     if  config['unet']:
         from equibot.policies.utils.diffusion.conditional_unet1d import ConditionalUnet1D
         unet = ConditionalUnet1D(
-            input_dim=16, #flattened 4x4
+            input_dim=9, # ori pos
             diffusion_step_embed_dim=config['pred_horizon*obs_horizon']*9, #hierarchy_layers*output_type_1_feat*3
             global_cond_dim=config['pred_horizon*obs_horizon']*9,
         )
@@ -189,7 +192,6 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
             noisy_actions = noise_scheduler.add_noise(H_Identity, noise, k)
         else:
             noisy_actions, noise=noise_scheduler.add_noise(H_Identity, k, device=device)
-        
         if os.name == 'nt': # mock actions on windows 
             #actions=prepare_model_output(noisy_actions)
             return noisy_actions
@@ -206,10 +208,10 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                 num_point = config['pred_horizon']
 
                 model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
-                model_output = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
+                model_output = nets["equivariant_pred_net"](model_input,num_point)
 
                 if config['unet']:
-                    model_output= nets['unet'](model_output.reshape(model_output.shape[0],model_output.shape[1],16), k, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
+                    model_output= nets['unet'](model_output.reshape(model_output.shape[0],model_output.shape[1],9), k, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
 
                 if not config['early_return']:
                     noisy_actions = noise_scheduler.step(model_output.view(model_output.shape[0],model_output.shape[1],4,4), k, noisy_actions).prev_sample      
@@ -258,10 +260,14 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                 num_point = config['pred_horizon']
 
                 model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
-                model_output = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
+                model_output = nets["equivariant_pred_net"](model_input,num_point)
 
                 if config['unet']:
-                    model_output= nets['unet'](model_output.reshape(model_output.shape[0],model_output.shape[1],16), k, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
+                    model_output=nets['unet'](model_output.reshape(model_output.shape[0],model_output.shape[1],9), k, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
+                    #process_action 
+                    raise NotImplementedError # TODO
+                
+                # TODO assert last 2 dim 4x4
 
                 # Options
                 if config['diffusion_option']==0:
@@ -288,9 +294,11 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                 else:
                     raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 
+                assert not torch.any(torch.isnan(model_output)), model_output
+                assert not torch.any(torch.isnan(noisy_actions)), noisy_actions
 
                 if not isVisualEval:
-                    loss, dist_R, dist_T = compute_loss(reconstructed_H_0.view(-1,4,4), naction.view(-1,4,4))
+                    loss, dist_R, dist_T = compute_loss(reconstructed_H_0.reshape(-1,4,4), naction.reshape(-1,4,4))
                     # print("loss: ", loss)
                     loss_cpu = loss.item()
                     # if test_equiv:

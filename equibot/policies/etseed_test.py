@@ -129,7 +129,7 @@ def init_model(device,config):
         raise NotImplementedError(f"k_option {config['se3']} not implemented")
     
     nets = nn.ModuleDict({
-        # 'invariant_pred_net': noise_pred_net,
+        'invariant_pred_net': noise_pred_net,
         'equivariant_pred_net': noise_pred_net,
     }).to(device)
     checkpoint = torch.load(config["checkpoint_path"])
@@ -184,7 +184,7 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
             noise_scheduler.set_timesteps(num_inference_steps=config['diffusion_steps'],device=device)
             for k in noise_scheduler.timesteps: # shape [1]
                 model_input = prepare_model_input(nxyz, tgt_nxyz, neefpose, k.expand(bz), num_point,config)
-                model_output = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
+                model_output = nets["equivariant_pred_net"](model_input,num_point)
 
                 if not config['early_return']:
                     noisy_actions = noise_scheduler.step(model_output.view(model_output.shape[0],model_output.shape[1],4,4), k, noisy_actions).prev_sample      
@@ -236,7 +236,7 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                 # else: 
                 #     test_equiv = False 
                 #     pred = nets["invariant_pred_net"](model_input,num_point,Inv=True)
-                model_output = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
+                model_output = nets["equivariant_pred_net"](model_input,num_point)
 
                 # Options
                 if config['diffusion_option']==0:
@@ -263,6 +263,11 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                 else:
                     raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 
+                print(reconstructed_H_0,'RRRRRRRRRRRRRR')
+                print(naction,"NNNNNN")
+
+                assert not torch.any(torch.isnan(model_output)), model_output
+                assert not torch.any(torch.isnan(noisy_actions)), noisy_actions
 
                 if not isVisualEval:
                     loss, dist_R, dist_T = compute_loss(reconstructed_H_0.view(-1,4,4), naction.view(-1,4,4))

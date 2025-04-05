@@ -11,6 +11,7 @@ from tqdm.auto import tqdm
 # env import
 from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Fused, SE3VisionNet_Hierarchical
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
+from equibot.policies.utils.etseed.utils.group_utils import process_action #, orthogonalization
 
 import hydra
 import logging
@@ -54,6 +55,7 @@ def main(cfg):
         'low_memory':cfg.dev.low_memory,
         'se3':cfg.dev.se3,
         'unet':cfg.dev.unet,
+        'unet_film':cfg.dev.unet_film,
         'Ho_in_B':cfg.dev.Ho_in_B,
         'bugfix':cfg.dev.bugfix,
     }
@@ -84,7 +86,7 @@ def main(cfg):
     )
 
     config["num_training_steps"]=cfg.data.dataset.num_training_steps = (
-        3500 #max(1,2 * len(train_dataset) // (batch_size))
+        1500 #max(1,2 * len(train_dataset) // (batch_size))
     )
 
     valid_dataset = get_dataset(cfg, "train", valid=True)
@@ -196,9 +198,10 @@ def init_model_and_optimizer(device,config):
     if  config['unet']:
         from equibot.policies.utils.diffusion.conditional_unet1d import ConditionalUnet1D
         unet = ConditionalUnet1D(
-            input_dim=16, #flattened 4x4
+            input_dim=9, #cat ori, pos
             diffusion_step_embed_dim=config['pred_horizon*obs_horizon']*9, #hierarchy_layers*output_type_1_feat*3
             global_cond_dim=config['pred_horizon*obs_horizon']*9,
+            cond_predict_scale=config['unet_film']
         )
 
     nets = nn.ModuleDict({
@@ -410,11 +413,18 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     if config['Ho_in_B']:
         num_point = config['pred_horizon*obs_horizon']
     model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
-    model_output = nets["equivariant_pred_net"](model_input,num_point,Ho_in_B=config['Ho_in_B'])
-
+    model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=config['unet'],Ho_in_B=config['Ho_in_B'])
 
     if config['unet']:
-        model_output= nets['unet'](model_output.reshape(model_output.shape[0],model_output.shape[1],16), k, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
+        ori=model_output['ori']
+        pos=model_output['pos']
+
+        model_output=torch.cat((ori, pos), dim=-1) # [B,Hp,6+3]
+        model_output= nets['unet'](model_output, k, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
+        output_ori=model_output[...,0:6].reshape(-1,6)
+        output_pos=model_output[...,6:9].reshape(-1,3)
+        
+        model_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
 
     # noise_pred: [B,Ho,4,4]
     # naction: torch.Size([B, Hp, 4, 4])
@@ -426,7 +436,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         if not config['ddpm_predict_noise']:
             target=noisy_actions
 
-        loss=torch.nn.functional.mse_loss(model_output, target.reshape(target.shape[0],target.shape[1],-1))
+        loss=torch.nn.functional.mse_loss(model_output.reshape(target.shape[0],target.shape[1],-1), target.reshape(target.shape[0],target.shape[1],-1))
 
     else:
         # Options

@@ -834,6 +834,7 @@ class EvalUtils(ControlFlow):
 def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,update_ori=True):
     translations = agent_ac[:, :, :3, 3][0][0]
     rotations=agent_ac[:, :,:3, :3][0][0]
+    print(rotations,translations)
     quaternions = R.from_matrix(rotations).as_quat(scalar_first=True,canonical=False) #kornia.geometry.conversions.rotation_matrix_to_quaternion(rotations)
     agent_ac=agent_ac[0][0]
     # # TODO CLIP in TRAIN + INFERENCE
