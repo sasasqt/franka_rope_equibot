@@ -35,7 +35,7 @@ diffusion_mode: squaredcos_cap_v2
 
 dev:
   use_ddpm: False
-  k_option: 0 # 0 diffusion steps as type 0 scalar; # 1 diffusion steps as type 0 rotation; 2 diffusion steps as type 1 rotation
+  k_option: 0 # 0 diffusion steps as type 0 scalar; # 1 diffusion steps as type 0 rotation; 2 diffusion steps as type 1 rotation; 3 no k in se3
   diffusion_option: 0 # 0: the default, predict the gt H0;  1: predict relative transformation from Ht to H0; 2: no diffusion, no denoising
   early_return: True # for se3 diffusion option 0 and 2: set this to True ~~might~~ make sense, actually for all predict sample objective or no diffusion at all
   sh_basis_compute_gradients: False
@@ -46,7 +46,9 @@ dev:
   low_memory: False
   se3: 0 # 0=SE3ManiNet_Fused 1=SE3ManiNet_ori_pos_sep
   unet: False
-  
+  Ho_in_B: False
+  arch: 0 # 0: one se3 for pc enc + action prediction; 2: two sep. se3, potentially w/ unet  
+  bugfix: 0000000000000001 # last bit: knn in se3 vision
 training:
   ckpt: null
 
@@ -135,9 +137,9 @@ franka_rope:
   _rope_damping: 0.6
   _rope_stiffness: 0.1
   from_demo: null
-  start_time: 350
+  start_time: 150
   manually_close: False
-  max_end: 11111 #360 # 600
+  max_end: 111 #360 # 600
   seed: 42
   rel: True
   rpy: False

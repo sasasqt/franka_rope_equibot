@@ -57,7 +57,6 @@ import torch
 torch.set_grad_enabled(False)
 from equibot.policies.utils.etseed.model.se3_transformer.equinet import  SE3ManiNet_Fused
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
-from equibot.policies.etseed_test import init_model
 import torch.nn as nn
 
 
@@ -82,8 +81,10 @@ def main(cfg):
         "mode": cfg.mode,
         "pred_horizon": cfg.pred_horizon,
         "obs_horizon": cfg.obs_horizon,
+        "pred_horizon*obs_horizon":cfg.pred_horizon*cfg.obs_horizon,
         "action_horizon": cfg.action_horizon,
         "T_a": cfg.T_a,
+        "k_neighbours":cfg.k_neighbours,
         "k_neighbours*obs_horizon":cfg.k_neighbours*cfg.obs_horizon,
         "batch_size": cfg.batch_size,
         "diffusion_steps": cfg.diffusion_steps,
@@ -102,13 +103,23 @@ def main(cfg):
         'no_noise':cfg.dev.no_noise,
         'low_memory':cfg.dev.low_memory,
         'se3':cfg.dev.se3,
-
+        'unet':cfg.dev.unet,
+        'arch':cfg.dev.arch,
         "cfg":cfg
     }
 
     device = torch.device('cuda')
     if not torch.cuda.is_available():
         device = torch.device('cpu')
+
+    if config['arch']==0:
+        from equibot.policies.etseed_test import init_model
+    # elif config['arch']==1:
+    #     pass
+    elif config['arch']==2:
+        from equibot.policies.etseed_test_sep2 import init_model
+    else:
+        raise NotImplementedError
     nets = init_model(device,config)
 
     if config['use_ddpm']:

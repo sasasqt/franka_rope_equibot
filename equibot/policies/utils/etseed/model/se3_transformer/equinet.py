@@ -238,19 +238,25 @@ class SE3ManiNet_Fused(ExtendedModule):
         elif config['k_option']==2:
             # 2 diffusion steps as type 1 rotation
             num_fib_in = [1,7] # 22 in total, 1 type0: binary gripper_action 7 type1: k1,k2; tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        elif config['k_option']==3:
+            # no k
+            num_fib_in = [1,5] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
         else:
             raise NotImplementedError(f"k_option {config['k_option']} not implemented")
 
         if no_tgt_nxyz:
             if config['k_option']==0:
                 # 0 diffusion steps as type 0 scalar
-                num_fib_in = [2,4] # 17 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+                num_fib_in = [2,4] # 14 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
             elif config['k_option']==1:
                 # 1 diffusion steps as type 0 rotation
-                num_fib_in = [7,4] # 22 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+                num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
             elif config['k_option']==2:
                 # 2 diffusion steps as type 1 rotation
-                num_fib_in = [1,6] # 22 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
+                num_fib_in = [1,6] # 19 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
+            elif config['k_option']==3:
+            # no k
+                num_fib_in = [1,4] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
             else:
                 raise NotImplementedError(f"k_option {config['k_option']} not implemented")
 
@@ -274,17 +280,22 @@ class SE3ManiNet_Fused(ExtendedModule):
             low_memory=config['low_memory'],
         )
 
-    def forward(self, inputs,num_point,return_raw=False,Inv=False):
+    def forward(self, inputs,num_point,return_raw=False,Ho_in_B=False):
         bs = inputs["xyz"].shape[0]
-        pos_ori_net = self.pos_ori_net(inputs)
-        
+        pos_ori_net_features = self.pos_ori_net(inputs)["feature"]
+
+        if Ho_in_B:
+            bs=bs//num_point
+            assert bs*num_point==inputs["xyz"].shape[0]
+            pos_ori_net_features=torch.stack(pos_ori_net_features, dim=0).view(bs,num_point,-1)
+
         # process type 0 orientation + type 0 offset/translation magnitude # "0": (6+1+1)*pred_horizon, # 2 cols of rotation + magnitude of offset
         # process type 1 offset/translation direction
 
         type0_feature_list = []
         type1_feature_list = []
         for i in range(bs):
-            batchi_type0_feature = pos_ori_net["feature"][i] # [Ho*num_point, Hp*7]
+            batchi_type0_feature = pos_ori_net_features[i] # [Ho*num_point, Hp*7]
             batchi_type0_feature=batchi_type0_feature.view(batchi_type0_feature.shape[0],self.pred_horizon,-1)
             trans_mag_feature=batchi_type0_feature[:, :, 6:7]
             # mag_feature=torch.mean(mag_feature, dim=0) # [Hp, 1]
@@ -309,7 +320,7 @@ class SE3ManiNet_Fused(ExtendedModule):
             
             type0_feature_list.append(rot_feature)
 
-            batchi_type1_feature = pos_ori_net["feature"][i][:,(6+1+1)*self.pred_horizon:(6+1+1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]
+            batchi_type1_feature = pos_ori_net_features[i][:,(6+1+1)*self.pred_horizon:(6+1+1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]
             batchi_type1_feature=batchi_type1_feature.view(batchi_type1_feature.shape[0],self.pred_horizon,-1)
             trans_feature=batchi_type1_feature
             if self.config['trans_aggregation']=='mean':
@@ -365,19 +376,26 @@ class SE3ManiNet_ori_pos_sep(ExtendedModule):
         elif config['k_option']==2:
             # 2 diffusion steps as type 1 rotation
             num_fib_in = [1,7] # 22 in total, 1 type0: binary gripper_action 7 type1: k1,k2; tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        elif config['k_option']==3:
+            # no k
+            num_fib_in = [1,5] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
         else:
             raise NotImplementedError(f"k_option {config['k_option']} not implemented")
 
         if no_tgt_nxyz:
             if config['k_option']==0:
                 # 0 diffusion steps as type 0 scalar
-                num_fib_in = [2,4] # 17 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+                num_fib_in = [2,4] # 14 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
             elif config['k_option']==1:
                 # 1 diffusion steps as type 0 rotation
-                num_fib_in = [7,4] # 22 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+                num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
             elif config['k_option']==2:
                 # 2 diffusion steps as type 1 rotation
-                num_fib_in = [1,6] # 22 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
+                num_fib_in = [1,6] # 19 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
+            elif config['k_option']==3:
+                # no k
+                num_fib_in = [1,4] # 13 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+            
             else:
                 raise NotImplementedError(f"k_option {config['k_option']} not implemented")
 
@@ -421,17 +439,24 @@ class SE3ManiNet_ori_pos_sep(ExtendedModule):
             low_memory=config['low_memory'],
         )
 
-    def forward(self, inputs,num_point,return_raw=False,Inv=False):
+    def forward(self, inputs,num_point,return_raw=False,Ho_in_B=False):
         bs = inputs["xyz"].shape[0]
-        ori_net = self.ori_net(inputs)
-        pos_net = self.pos_net(inputs)
+        ori_net_features = self.ori_net(inputs)["feature"]
+        pos_net_features = self.pos_net(inputs)["feature"]
         
+        if Ho_in_B:
+            bs=bs//num_point
+            assert bs*num_point==inputs["xyz"].shape[0]
+            ori_net_features=torch.stack(ori_net_features, dim=0).view(bs,num_point,-1)
+            pos_net_features=torch.stack(pos_net_features, dim=0).view(bs,num_point,-1)
+
+
         # ori "0": (6+1)*pred_horizon, # 2 cols of rotation + magnitude of offset + weights of each rot cand.
 
         type0_feature_list = []
         type1_feature_list = []
         for i in range(bs):
-            batchi_type0_feature = ori_net["feature"][i] # [Ho*num_point, Hp*n]
+            batchi_type0_feature = ori_net_features[i] # [Ho*num_point, Hp*n]
             batchi_type0_feature=batchi_type0_feature.view(batchi_type0_feature.shape[0],self.pred_horizon,-1)
             rot_mag_feature=batchi_type0_feature[:, :, 6:7]
             rot_feature=batchi_type0_feature[:, :, :6]
@@ -457,11 +482,11 @@ class SE3ManiNet_ori_pos_sep(ExtendedModule):
         # pos "0": (1)*pred_horizon, # magnitude of offset
         # pos "1": (1)*pred_horizon, # offset/translation (not unit direction)
         for i in range(bs):
-            batchi_type0_feature = pos_net["feature"][i] # [Ho*num_point, Hp*n]
+            batchi_type0_feature = pos_net_features["feature"][i] # [Ho*num_point, Hp*n]
             batchi_type0_feature=batchi_type0_feature.view(batchi_type0_feature.shape[0],self.pred_horizon,-1)
             trans_mag_feature=batchi_type0_feature[:, :, 0:1]
 
-            batchi_type1_feature = pos_net["feature"][i][:,(1)*self.pred_horizon:(1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]
+            batchi_type1_feature = pos_net_features["feature"][i][:,(1)*self.pred_horizon:(1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]
             batchi_type1_feature=batchi_type1_feature.view(batchi_type1_feature.shape[0],self.pred_horizon,-1)
             trans_feature=batchi_type1_feature
             if self.config['trans_aggregation']=='mean':
@@ -515,6 +540,10 @@ class SE3VisionNet(ExtendedModule):
         self.input_type_1_feat=input_type_1_feat
         self.extra_input_type_1_feat=extra_input_type_1_feat
         self.output_type_1_feat=output_type_1_feat
+        k_neighbours=config['k_neighbours']
+        if config['bugfix'] % 10 == 1:
+            k_neighbours=config['k_neighbours*obs_horizon']
+
         self.weights_net = SE3Backbone(
             fiber_in=Fiber({
                 #"0": 3, # rgb
@@ -530,7 +559,7 @@ class SE3VisionNet(ExtendedModule):
             num_heads= num_heads,
             channels_div= channels_div,
             voxelize = voxelize,
-            k_neighbours=config['k_neighbours'],
+            k_neighbours=k_neighbours, # BUG FIXED 1 should be 'k_neighbours*obs_horizon'
             compute_gradients=config['sh_basis_compute_gradients'],
         )
 

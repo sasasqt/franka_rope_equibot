@@ -5,11 +5,11 @@ import time
 import torch.nn as nn
 import wandb
 from equibot.policies.utils.etseed.utils.loss_utils import compute_loss
-from .etseed_train import prepare_model_input
+from .etseed_train_sep2 import prepare_model_input1,prepare_model_input2
 from tqdm.auto import tqdm
 
 # env import
-from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Fused
+from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Fused, SE3VisionNet_Hierarchical
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 
 import hydra
@@ -23,8 +23,10 @@ def main(cfg):
         "mode": cfg.mode,
         "pred_horizon": cfg.pred_horizon,
         "obs_horizon": cfg.obs_horizon,
+        "pred_horizon*obs_horizon":cfg.pred_horizon*cfg.obs_horizon,
         "action_horizon": cfg.action_horizon,
         "T_a": cfg.T_a,
+        "k_neighbours":cfg.k_neighbours,
         "k_neighbours*obs_horizon":cfg.k_neighbours*cfg.obs_horizon,
         "batch_size": cfg.batch_size,
         "diffusion_steps": cfg.diffusion_steps,
@@ -43,7 +45,8 @@ def main(cfg):
         "checkpoint_path": cfg.training.ckpt,
         'low_memory':cfg.dev.low_memory,
         'se3':cfg.dev.se3,
-
+        'unet':cfg.dev.unet,
+        'arch':cfg.dev.arch,
     }
 
 
@@ -120,18 +123,31 @@ def main(cfg):
 
 
 def init_model(device,config):
+    pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=config['pred_horizon*obs_horizon'],output_type_1_feat=3,config=config)
     if config['se3']==0:
-        noise_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config)
+        noise_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True)
     elif config['se3']==1:
         from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
-        noise_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config)
+        noise_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True)
     else:
         raise NotImplementedError(f"k_option {config['se3']} not implemented")
     
+    unet=None
+    if  config['unet']:
+        from equibot.policies.utils.diffusion.conditional_unet1d import ConditionalUnet1D
+        unet = ConditionalUnet1D(
+            input_dim=16, #flattened 4x4
+            diffusion_step_embed_dim=config['pred_horizon*obs_horizon']*9, #hierarchy_layers*output_type_1_feat*3
+            global_cond_dim=config['pred_horizon*obs_horizon']*9,
+        )
+
     nets = nn.ModuleDict({
-        # 'invariant_pred_net': noise_pred_net,
+        'pointcloud_encoder': pointcloud_encoder,
         'equivariant_pred_net': noise_pred_net,
+        'unet': unet,
     }).to(device)
+
+
     checkpoint = torch.load(config["checkpoint_path"])
     nets.load_state_dict(checkpoint['model_state_dict'])
     nets.eval()
@@ -183,8 +199,17 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
             # ddpm, the huggingface diffuser way
             noise_scheduler.set_timesteps(num_inference_steps=config['diffusion_steps'],device=device)
             for k in noise_scheduler.timesteps: # shape [1]
-                model_input = prepare_model_input(nxyz, tgt_nxyz, neefpose, k.expand(bz), num_point,config)
+
+                pc= prepare_model_input1(nxyz, tgt_nxyz)
+                latent_pc=nets["pointcloud_encoder"](pc) # b,l,f (l:x*Hp; f:3x)
+
+                num_point = config['pred_horizon']
+
+                model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
                 model_output = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
+
+                if config['unet']:
+                    model_output= nets['unet'](model_output.reshape(model_output.shape[0],model_output.shape[1],16), k, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
 
                 if not config['early_return']:
                     noisy_actions = noise_scheduler.step(model_output.view(model_output.shape[0],model_output.shape[1],4,4), k, noisy_actions).prev_sample      
@@ -227,16 +252,16 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                 else:
                     raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
                                 
+                pc= prepare_model_input1(nxyz, tgt_nxyz)
+                latent_pc=nets["pointcloud_encoder"](pc) # b,l,f (l:x*Hp; f:3x)
 
-                model_input = prepare_model_input(nxyz, tgt_nxyz, neefpose, k, num_point,config)
-                
-                # if (denoise_idx == 0): 
-                #     test_equiv = True 
-                #     pred = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
-                # else: 
-                #     test_equiv = False 
-                #     pred = nets["invariant_pred_net"](model_input,num_point,Inv=True)
+                num_point = config['pred_horizon']
+
+                model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
                 model_output = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
+
+                if config['unet']:
+                    model_output= nets['unet'](model_output.reshape(model_output.shape[0],model_output.shape[1],16), k, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
 
                 # Options
                 if config['diffusion_option']==0:

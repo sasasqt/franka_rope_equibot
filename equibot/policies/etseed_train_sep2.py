@@ -54,6 +54,8 @@ def main(cfg):
         'low_memory':cfg.dev.low_memory,
         'se3':cfg.dev.se3,
         'unet':cfg.dev.unet,
+        'Ho_in_B':cfg.dev.Ho_in_B,
+        'bugfix':cfg.dev.bugfix,
     }
 
 
@@ -252,11 +254,6 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config):
     # selected_trans_actions = [noisy_actions[:, :, i, j] for i, j in trans_indices]
     # noisy_ori_actions = torch.stack(selected_ori_actions, dim=-1) #.repeat_interleave(num_point,dim=1) # [B,Hp,6]
     # noisy_trans_actions = torch.stack(selected_trans_actions, dim=-1)  #.repeat_interleave(num_point,dim=1) # [B,Hp,3]
-    right_eef_world_pos=neefpose[...,0:3]
-    col1=neefpose[...,3:6]
-    col2=neefpose[...,6:9]
-    gravity=neefpose[...,9:12]
-    gripper_pose=neefpose[...,12:13]
     device='cuda'
     vectors = torch.tensor([[1.0, 1.0, 1.0]] * B,device=nxyz.device)  # Shape: (B, 3)
     angles = k.clone().detach()*torch.pi/(1+config['diffusion_steps']+config['pred_horizon'])
@@ -284,22 +281,40 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config):
 
     k1=k1.to(device)
     k2=k2.to(device)
+
+    tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
+
+    if config['Ho_in_B']:
+        nxyz=nxyz.reshape(B*Ho_num_point,-1).unsqueeze(1)
+        neefpose=neefpose.reshape(B*Ho_num_point,-1).unsqueeze(1)
+        tensor_k=tensor_k.reshape(B*Ho_num_point,-1).unsqueeze(1)
+        k1=k1.reshape(B*Ho_num_point,-1).unsqueeze(1)
+        k2=k2.reshape(B*Ho_num_point,-1).unsqueeze(1)
+
+    right_eef_world_pos=neefpose[...,0:3]
+    col1=neefpose[...,3:6]
+    col2=neefpose[...,6:9]
+    gravity=neefpose[...,9:12]
+    gripper_pose=neefpose[...,12:13]
+
     
     # Options
     if config['k_option']==0:
         # # 0 diffusion steps as type 0 scalar
-        # num_fib_in = [2,5] # 17 in total, 2 type0: k; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        # num_fib_in = [2,4] # 14 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
         # k: [B]        
-        tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
         feature = torch.cat((tensor_k,gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
     elif config['k_option']==1:
         # # 1 diffusion steps as type 0 rotation
-        # num_fib_in = [7,5] # 22 in total, 7 type0: k1,k2; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        # num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
         feature = torch.cat((k1,k2,gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
     elif config['k_option']==2:
         # # 2 diffusion steps as type 1 rotation
-        # num_fib_in = [1,7] # 22 in total, 1 type0: binary gripper_action 7 type1: k1,k2; tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        # num_fib_in = [1,6] # 19 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
         feature = torch.cat((gripper_pose,k1,k2,right_eef_world_pos,col1,col2,gravity), dim=-1)
+    elif config['k_option']==3:
+        # no k
+        feature = torch.cat((gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
     else:
         raise NotImplementedError(f"k_option {config['k_option']} not implemented")
     
@@ -392,9 +407,10 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     latent_pc=nets["pointcloud_encoder"](pc) # b,l,f (l:x*Hp; f:3x)
 
     num_point = config['pred_horizon']
-
+    if config['Ho_in_B']:
+        num_point = config['pred_horizon*obs_horizon']
     model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
-    model_output = nets["equivariant_pred_net"](model_input,num_point,Inv=False)
+    model_output = nets["equivariant_pred_net"](model_input,num_point,Ho_in_B=config['Ho_in_B'])
 
 
     if config['unet']:

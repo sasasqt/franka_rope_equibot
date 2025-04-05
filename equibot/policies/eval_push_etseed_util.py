@@ -25,7 +25,6 @@ from pxr import Gf, UsdGeom
 import omni.usd
 
 from equibot.policies.etseed_train import init_model_and_optimizer, prepare_model_input, prepare_model_output
-from equibot.policies.etseed_test import test_batch
 
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 
@@ -481,6 +480,15 @@ class EvalUtils(ControlFlow):
 
     @classmethod
     def _post_reset(cls,nets, noise_scheduler,step_size=None,_onDone_async=None):
+        if cls.config['arch']==0:
+            from equibot.policies.etseed_test import test_batch
+        # elif config['arch']==1:
+        #     pass
+        elif cls.config['arch']==2:
+            from equibot.policies.etseed_test_sep2 import test_batch
+        else:
+            raise NotImplementedError
+        
         print("---")
         if step_size is None:
             pass # return
@@ -806,7 +814,7 @@ class EvalUtils(ControlFlow):
         cls.reduce_horizon_dim=reduce_horizon_dim
         cls.config=config
         cls.cfg=cfg
-        
+
         cls.simulation_app=simulation_app
         cls.obs_horizon = config['obs_horizon']
         cls.ac_horizon = config['action_horizon']
