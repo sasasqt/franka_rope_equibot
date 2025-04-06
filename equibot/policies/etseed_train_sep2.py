@@ -436,7 +436,9 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         if not config['ddpm_predict_noise']:
             target=noisy_actions
 
-        loss=torch.nn.functional.mse_loss(model_output.reshape(target.shape[0],target.shape[1],-1), target.reshape(target.shape[0],target.shape[1],-1))
+        # loss=torch.nn.functional.mse_loss(model_output.reshape(target.shape[0],target.shape[1],-1), target.reshape(target.shape[0],target.shape[1],-1))
+        # TODO 2 cols and 1 trans from target
+        loss, dist_r, dist_t = compute_loss(model_output.reshape(-1,4,4),(target).reshape(-1,4,4))  
 
     else:
         # Options
@@ -458,9 +460,9 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     optimizer.zero_grad()
     lr_scheduler.step()
     loss_cpu = loss.item()
-    if not config['use_ddpm']:
-        wandb.log({"dist_R": dist_r},step=g_step)
-        wandb.log({"dist_T": dist_t},step=g_step)
+    # if not config['use_ddpm']:
+    wandb.log({"dist_R": dist_r},step=g_step)
+    wandb.log({"dist_T": dist_t},step=g_step)
     wandb.log({"loss_cpu": loss_cpu},step=g_step)
     wandb.log({'learning_rate': optimizer.param_groups[0]['lr']},step=g_step)
 

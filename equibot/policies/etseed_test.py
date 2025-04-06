@@ -263,8 +263,8 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                 else:
                     raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 
-                print(reconstructed_H_0,'RRRRRRRRRRRRRR')
-                print(naction,"NNNNNN")
+                # print(reconstructed_H_0,'RRRRRRRRRRRRRR')
+                # print(naction,"NNNNNN")
 
                 assert not torch.any(torch.isnan(model_output)), model_output
                 assert not torch.any(torch.isnan(noisy_actions)), noisy_actions
