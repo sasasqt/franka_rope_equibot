@@ -57,6 +57,7 @@ def main(cfg):
         'unet':cfg.dev.unet,
         'unet_film':cfg.dev.unet_film,
         'Ho_in_B':cfg.dev.Ho_in_B,
+        'diff': cfg.dev.diff,
         'bugfix':cfg.dev.bugfix,
         'sanity_check': cfg.dev.sanity_check,
         'testing': cfg.dev.testing,
@@ -231,11 +232,13 @@ def init_model_and_optimizer(device,config):
 
 
 # Prepare the input for the model
-def prepare_model_input1(nxyz, tgt_nxyz):
+def prepare_model_input1(nxyz, tgt_nxyz,diff=False):
     B = nxyz.shape[0]
     Ho_num_point=nxyz.shape[1]
     # nxyz[B,Ho*num_pts,3]
     feature=tgt_nxyz
+    if diff:
+        feature=tgt_nxyz-nxyz
 
     model_input = {
         'xyz': nxyz.to(device='cuda',dtype=torch.float32),
@@ -496,7 +499,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         else:
             raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
     
-    pc= prepare_model_input1(nxyz, tgt_nxyz)
+    pc= prepare_model_input1(nxyz, tgt_nxyz,diff=config['diff'])
     latent_pc=nets["pointcloud_encoder"](pc) # b,l,f (l:x*Hp; f:3x)
 
     num_point = config['pred_horizon']

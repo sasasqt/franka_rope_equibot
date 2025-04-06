@@ -107,6 +107,8 @@ def main(cfg):
         'unet_film':cfg.dev.unet_film,
         'Ho_in_B':cfg.dev.Ho_in_B,
         'bugfix':cfg.dev.bugfix,
+        'sanity_check': cfg.dev.sanity_check,
+        'testing': cfg.dev.testing,
         'arch':cfg.dev.arch,
         "cfg":cfg
     }

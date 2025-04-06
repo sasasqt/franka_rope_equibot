@@ -5,7 +5,7 @@ import time
 import torch.nn as nn
 import wandb
 from equibot.policies.utils.etseed.utils.loss_utils import compute_loss
-from .etseed_train_sep2 import prepare_model_input1,prepare_model_input2
+from .etseed_train_sep2 import prepare_model_input1,prepare_model_input2,prepare_model_input3
 from tqdm.auto import tqdm
 
 # env import
@@ -50,6 +50,7 @@ def main(cfg):
         'unet_film':cfg.dev.unet_film,
         'Ho_in_B':cfg.dev.Ho_in_B,
         'bugfix':cfg.dev.bugfix,
+        'testing': cfg.dev.testing,
         'arch':cfg.dev.arch,
     }
 
@@ -129,10 +130,10 @@ def main(cfg):
 def init_model(device,config):
     pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=config['pred_horizon*obs_horizon'],output_type_1_feat=3,config=config)
     if config['se3']==0:
-        noise_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True)
+        noise_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1)
     elif config['se3']==1:
         from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
-        noise_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True)
+        noise_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1)
     else:
         raise NotImplementedError(f"k_option {config['se3']} not implemented")
     
@@ -192,7 +193,7 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
             noise[:, :, :3, 3]=noise[:, :, :3, 3]*config["sigma_t"]
             noisy_actions = noise_scheduler.add_noise(H_Identity, noise, k)
         else:
-            noisy_actions, noise=noise_scheduler.add_noise(H_Identity, k, device=device)
+            noisy_actions, noise=noise_scheduler.add_noise(H_Identity, k, device=device,no_noise=config['no_noise'])
         if os.name == 'nt': # mock actions on windows 
             #actions=prepare_model_output(noisy_actions)
             return noisy_actions
@@ -207,9 +208,12 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                 latent_pc=nets["pointcloud_encoder"](pc) # b,l,f (l:x*Hp; f:3x)
 
                 num_point = config['pred_horizon']
+                model_input = prepare_model_input2(latent_pc, neefpose, denoise_idx.expand(bz), num_point,config)
+                if config['testing']==1:
+                    model_input = prepare_model_input3(latent_pc,neefpose, k,num_point,config)
+
                 if config['Ho_in_B']:
                     num_point = config['pred_horizon*obs_horizon']
-                model_input = prepare_model_input2(latent_pc, neefpose, denoise_idx.expand(bz), num_point,config)
                 model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=config['unet'],Ho_in_B=config['Ho_in_B'])
 
                 if config['unet']:
@@ -218,29 +222,39 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
 
                     model_output=torch.cat((ori, pos), dim=-1) # [B,Hp,6+3]
                     model_output= nets['unet'](model_output, denoise_idx, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
-                    output_ori=model_output[...,0:6].reshape(-1,6)
-                    output_pos=model_output[...,6:9].reshape(-1,3)
+                    # output_ori=model_output[...,0:6].reshape(-1,6)
+                    # output_pos=model_output[...,6:9].reshape(-1,3)
                     
-                    model_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
+                    # model_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
 
-                rot=model_output.reshape(-1,4,4)[...,:3,:3]
-                print(torch.det(rot),'MMMMMMMMMM')
-                assert torch.all(torch.det(rot)>=0.0), rot
+                # rot=model_output.reshape(-1,4,4)[...,:3,:3]
+                # print(torch.det(rot),'MMMMMMMMMM')
+                # assert torch.all(torch.det(rot)>=0.0), rot # actually allclose 1.0
 
+
+                noisy_ori=noisy_actions[...,0:6]
+                noisy_pos=noisy_actions[...,6:9]
+                noisy=torch.cat((noisy_ori, noisy_pos), dim=-1) 
                 if not config['early_return']:
-                    noisy_actions = noise_scheduler.step(model_output.view(model_output.shape[0],model_output.shape[1],4,4), denoise_idx, noisy_actions).prev_sample      
+                    #noisy_actions = noise_scheduler.step(model_output.view(model_output.shape[0],model_output.shape[1],4,4), denoise_idx, noisy_actions).prev_sample      
+                    noisy_actions = noise_scheduler.step(model_output, denoise_idx, noisy).prev_sample      
+                
                 else:
-                    noisy_actions = noise_scheduler.step(model_output.view(model_output.shape[0],model_output.shape[1],4,4), denoise_idx, noisy_actions).pred_original_sample
+                    #noisy_actions = noise_scheduler.step(model_output.view(model_output.shape[0],model_output.shape[1],4,4), denoise_idx, noisy_actions).pred_original_sample
+                    noisy_actions = noise_scheduler.step(model_output, denoise_idx, noisy).pred_original_sample
 
-                assert not torch.any(torch.isnan(model_output)), model_output
-                assert not torch.any(torch.isnan(noisy_actions)), noisy_actions
 
                 rot=noisy_actions.reshape(-1,4,4)[...,:3,:3]
                 print(torch.det(rot),'AAAAAAAAAAA')
                 assert torch.all(torch.det(rot)>=0.0), rot
 
                 if not isVisualEval:
-                    loss, dist_R, dist_T = compute_loss(noisy_actions.view(-1,4,4), naction.view(-1,4,4))
+                    pred_original_sample=noise_scheduler.step(model_output, denoise_idx, noisy).pred_original_sample
+                    output_ori=pred_original_sample[...,0:6].reshape(-1,6)
+                    output_pos=pred_original_sample[...,6:9].reshape(-1,3)
+                    final_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(bz,-1,4,4)
+                    
+                    loss, dist_R, dist_T = compute_loss(final_output.view(-1,4,4), naction.view(-1,4,4))
 
                     loss_cpu = loss.item()
 
@@ -251,8 +265,13 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                 if config['early_return']:
                     break
 
+            output_ori=noisy_actions[...,0:6].reshape(-1,6)
+            output_pos=noisy_actions[...,6:9].reshape(-1,3)
+            final_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(bz,-1,4,4)
+
+            assert not torch.any(torch.isnan(final_output)), final_output
             if isVisualEval:
-                actions=noisy_actions
+                actions=final_output
                 return actions
             else:
                 return loss_cpu
