@@ -223,42 +223,49 @@ class SE3ManiNet_Invariant_Separate(ExtendedModule):
 
 
 class SE3ManiNet_Fused(ExtendedModule):
-    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None,no_tgt_nxyz=False):
+    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None,no_tgt_nxyz=False,eef_abs_position_as_node=False):
         super().__init__()
         self.pred_horizon=pred_horizon
         self.config=config
 
+        type1_cnt=0
+        if eef_abs_position_as_node:
+            type1_cnt+=1
+
+        if no_tgt_nxyz:
+            type1_cnt+=1
+
         # Options
         if config['k_option']==0:
             # 0 diffusion steps as type 0 scalar
-            num_fib_in = [2,5] # 17 in total, 2 type0: k; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+            num_fib_in = [2,5-type1_cnt] # 17 in total, 2 type0: k; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
         elif config['k_option']==1:
             # 1 diffusion steps as type 0 rotation
-            num_fib_in = [7,5] # 22 in total, 7 type0: k1,k2; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+            num_fib_in = [7,5-type1_cnt] # 22 in total, 7 type0: k1,k2; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
         elif config['k_option']==2:
             # 2 diffusion steps as type 1 rotation
-            num_fib_in = [1,7] # 22 in total, 1 type0: binary gripper_action 7 type1: k1,k2; tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+            num_fib_in = [1,7-type1_cnt] # 22 in total, 1 type0: binary gripper_action 7 type1: k1,k2; tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
         elif config['k_option']==3:
             # no k
-            num_fib_in = [1,5] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+            num_fib_in = [1,5-type1_cnt] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
         else:
             raise NotImplementedError(f"k_option {config['k_option']} not implemented")
 
-        if no_tgt_nxyz:
-            if config['k_option']==0:
-                # 0 diffusion steps as type 0 scalar
-                num_fib_in = [2,4] # 14 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-            elif config['k_option']==1:
-                # 1 diffusion steps as type 0 rotation
-                num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-            elif config['k_option']==2:
-                # 2 diffusion steps as type 1 rotation
-                num_fib_in = [1,6] # 19 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
-            elif config['k_option']==3:
-            # no k
-                num_fib_in = [1,4] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-            else:
-                raise NotImplementedError(f"k_option {config['k_option']} not implemented")
+        # if no_tgt_nxyz:
+        #     if config['k_option']==0:
+        #         # 0 diffusion steps as type 0 scalar
+        #         num_fib_in = [2,4] # 14 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+        #     elif config['k_option']==1:
+        #         # 1 diffusion steps as type 0 rotation
+        #         num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+        #     elif config['k_option']==2:
+        #         # 2 diffusion steps as type 1 rotation
+        #         num_fib_in = [1,6] # 19 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
+        #     elif config['k_option']==3:
+        #     # no k
+        #         num_fib_in = [1,4] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+        #     else:
+        #         raise NotImplementedError(f"k_option {config['k_option']} not implemented")
 
         self.pos_ori_net = SE3Backbone(
             fiber_in=Fiber({
@@ -361,44 +368,34 @@ class SE3ManiNet_Fused(ExtendedModule):
 
 
 class SE3ManiNet_ori_pos_sep(ExtendedModule):
-    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None,no_tgt_nxyz=False):
+    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None,no_tgt_nxyz=False,eef_abs_position_as_node=False):
         super().__init__()
         self.pred_horizon=pred_horizon
         self.config=config
 
+        type1_cnt=0
+        if eef_abs_position_as_node:
+            type1_cnt+=1
+
+        if no_tgt_nxyz:
+            type1_cnt+=1
+
         # Options
         if config['k_option']==0:
             # 0 diffusion steps as type 0 scalar
-            num_fib_in = [2,5] # 17 in total, 2 type0: k; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+            num_fib_in = [2,5-type1_cnt] # 17 in total, 2 type0: k; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
         elif config['k_option']==1:
             # 1 diffusion steps as type 0 rotation
-            num_fib_in = [7,5] # 22 in total, 7 type0: k1,k2; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+            num_fib_in = [7,5-type1_cnt] # 22 in total, 7 type0: k1,k2; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
         elif config['k_option']==2:
             # 2 diffusion steps as type 1 rotation
-            num_fib_in = [1,7] # 22 in total, 1 type0: binary gripper_action 7 type1: k1,k2; tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+            num_fib_in = [1,7-type1_cnt] # 22 in total, 1 type0: binary gripper_action 7 type1: k1,k2; tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
         elif config['k_option']==3:
             # no k
-            num_fib_in = [1,5] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+            num_fib_in = [1,5-type1_cnt] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
         else:
             raise NotImplementedError(f"k_option {config['k_option']} not implemented")
-
-        if no_tgt_nxyz:
-            if config['k_option']==0:
-                # 0 diffusion steps as type 0 scalar
-                num_fib_in = [2,4] # 14 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-            elif config['k_option']==1:
-                # 1 diffusion steps as type 0 rotation
-                num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-            elif config['k_option']==2:
-                # 2 diffusion steps as type 1 rotation
-                num_fib_in = [1,6] # 19 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
-            elif config['k_option']==3:
-                # no k
-                num_fib_in = [1,4] # 13 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-            
-            else:
-                raise NotImplementedError(f"k_option {config['k_option']} not implemented")
-
+     
         self.ori_net = SE3Backbone(
             fiber_in=Fiber({
                 "0": num_fib_in[0], 
