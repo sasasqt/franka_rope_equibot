@@ -485,6 +485,18 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         noise = torch.randn(naction.shape, device=device)
         noise[:, :,:3, :3]=noise[:, :,:3, :3]*config["sigma_r"]
         noise[:, :, :3, 3] = noise[:, :, :3, 3]*config["sigma_t"]
+        noise[:, :, 3, :3]=0.0
+        noise[:, :, 3, 3]=1.0
+
+        noisy_ori=noise[:, :,:3, :2].flatten(start_dim=-2)*config["sigma_r"]
+        noisy_tran= noise[:, :, :3, 3]*config["sigma_t"]
+        
+        ori=naction[:, :,:3, :2].flatten(start_dim=-2)
+        tran= naction[:, :, :3, 3]
+
+        noise=torch.cat((noisy_ori,noisy_tran), dim=-1)
+        naction=torch.cat((ori,tran), dim=-1)
+    
         noisy_actions = noise_scheduler.add_noise(naction, noise, k)
     else:
         # Options
@@ -513,7 +525,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
 
     if config['Ho_in_B']:
         num_point = config['pred_horizon*obs_horizon']
-    model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=config['unet'],Ho_in_B=config['Ho_in_B'])
+    model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=config['use_ddpm'],Ho_in_B=config['Ho_in_B'])
     
     if config['sanity_check']:
         if config['sanity_check']==1: # se3 pc enc + unet only
@@ -528,14 +540,6 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
 
             model_output=torch.cat((ori, pos), dim=-1) # [B,Hp,6+3]
             model_output= nets['unet'](model_output, k, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
-            output_ori=model_output[...,0:6].reshape(-1,6)
-            output_pos=model_output[...,6:9].reshape(-1,3)
-            
-            model_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
-
-        # noise_pred: [B,Ho,4,4]
-        # naction: torch.Size([B, Hp, 4, 4])
-        # noise: [B,Ho,4,4]
 
         if config['use_ddpm']:
             # ddpm
@@ -546,10 +550,29 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             # loss=torch.nn.functional.mse_loss(model_output.reshape(target.shape[0],target.shape[1],-1), target.reshape(target.shape[0],target.shape[1],-1))
             # TODO 2 cols and 1 trans from target
 
-            
-            loss, dist_r, dist_t = compute_loss(model_output.reshape(-1,4,4),(target).reshape(-1,4,4))  
+
+            if isinstance(model_output, dict):
+                ori=model_output['ori']
+                pos=model_output['pos']
+
+                model_output=torch.cat((ori, pos), dim=-1) # [B,Hp,6+3]
+
+            loss = nn.functional.mse_loss(model_output,target)
+            reconstructed_ori=model_output[...,0:6].reshape(-1,6)
+            reconstructed_pos=model_output[...,6:9].reshape(-1,3)
+            reconstructed_model_output=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
+
+            reconstructed_ori=target[...,0:6].reshape(-1,6)
+            reconstructed_pos=target[...,6:9].reshape(-1,3)
+            reconstructed_target=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
+            _, dist_r, dist_t = compute_loss(reconstructed_model_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4))  
 
         else:
+            output_ori=model_output[...,0:6].reshape(-1,6)
+            output_pos=model_output[...,6:9].reshape(-1,3)
+            
+            model_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
+            
             # Options
             if config['diffusion_option']==0:
                 # 0: the default, predict the gt H0
