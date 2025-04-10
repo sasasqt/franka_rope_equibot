@@ -525,7 +525,10 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
 
     if config['Ho_in_B']:
         num_point = config['pred_horizon*obs_horizon']
-    model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=config['use_ddpm'],Ho_in_B=config['Ho_in_B'])
+    return_raw=False
+    if config['use_ddpm'] or config['unet']:
+        return_raw=True
+    model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=return_raw,Ho_in_B=config['Ho_in_B'])
     
     if config['sanity_check']:
         if config['sanity_check']==1: # se3 pc enc + unet only
@@ -551,7 +554,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             # TODO 2 cols and 1 trans from target
 
 
-            if isinstance(model_output, dict):
+            if isinstance(model_output,dict):
                 ori=model_output['ori']
                 pos=model_output['pos']
 
@@ -568,10 +571,11 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             _, dist_r, dist_t = compute_loss(reconstructed_model_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4))  
 
         else:
-            output_ori=model_output[...,0:6].reshape(-1,6)
-            output_pos=model_output[...,6:9].reshape(-1,3)
-            
-            model_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
+            if return_raw:
+                output_ori=model_output[...,0:6].reshape(-1,6)
+                output_pos=model_output[...,6:9].reshape(-1,3)
+                
+                model_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
             
             # Options
             if config['diffusion_option']==0:
