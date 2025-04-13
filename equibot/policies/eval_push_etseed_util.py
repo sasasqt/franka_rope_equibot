@@ -290,7 +290,7 @@ class EvalUtils(ControlFlow):
                 "hbar_world_orientation": cls._sample._target_hbar.get_world_pose()[1].tolist(),
                 "hbar_world_scale": cls._sample._target_hbar.get_world_scale().tolist(), 
             }
-            #tgt_pc=[]
+            tgt_pc=[]
 
             values = [1, -1]
             dominant_values=np.linspace(-1, 1, num=5).tolist()
@@ -310,10 +310,10 @@ class EvalUtils(ControlFlow):
                     quat_p=mu.mul(mu.inverse(ori),quat_p)
                     quat_p=mu.mul(quat_p,(ori))
                     p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
-                    #tgt_pc.append((center+p).tolist())
+                    tgt_pc.append((center+p).tolist())
 
-            #tgt_pc=np.array(tgt_pc)
-            pc=np.concatenate((pc,tgt_pc),axis=1)
+            tgt_pc=np.array(tgt_pc)
+            pc=np.concatenate((pc,tgt_pc-pc),axis=1)
             # if eval(str(cls.cfg.flow).title()):
             #     pc=np.concatenate((pc,tgt_pc-pc),axis=1) # [ 1.57756746e-01  9.57879238e-03  5.00003956e-02 -7.45579600e-04 -6.01215288e-04 -4.09781933e-07]
             # else:
@@ -694,7 +694,7 @@ class EvalUtils(ControlFlow):
             "hbar_world_orientation": cls._sample._target_hbar.get_world_pose()[1].tolist(),
             "hbar_world_scale": cls._sample._target_hbar.get_world_scale().tolist(), 
         }
-        #tgt_pc=[]
+        tgt_pc=[]
 
         values = [1, -1]
         dominant_values=np.linspace(-1, 1, num=5).tolist()
@@ -714,10 +714,10 @@ class EvalUtils(ControlFlow):
                 quat_p=mu.mul(mu.inverse(ori),quat_p)
                 quat_p=mu.mul(quat_p,(ori))
                 p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
-                #tgt_pc.append((center+p).tolist())
+                tgt_pc.append((center+p).tolist())
                 # cls._sample._add_sphere(center+p,prim_path=f"/tgt{component}sphere{i}")
-        #tgt_pc=np.array(tgt_pc)
-        pc=np.concatenate((pc,tgt_pc),axis=1)
+        tgt_pc=np.array(tgt_pc)
+        pc=np.concatenate((pc,tgt_pc-pc),axis=1)
 
         # if eval(str(cls.cfg.flow).title()):
         #     pc=np.concatenate((pc,tgt_pc-pc),axis=1) # [ 1.57756746e-01  9.57879238e-03  5.00003956e-02 -7.45579600e-04 -6.01215288e-04 -4.09781933e-07]
@@ -832,14 +832,14 @@ class EvalUtils(ControlFlow):
 
         
 def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,update_ori=True):
-    translations = agent_ac[:, :, :3, 3][0][0]*50
+    translations = agent_ac[:, :, :3, 3][0][0]
 
     norm = np.linalg.norm(translations)
     print(norm)
-    if norm>=0.005:
-        translations=0.005*translations/norm
-    if norm<=0.0015:
-        translations=0.0015*translations/norm
+    # if norm>=0.005:
+    #     translations=0.005*translations/norm
+    # if norm<=0.0005:
+    #     translations=0.0015*translations/norm
 
     rotations=agent_ac[:, :,:3, :3][0][0]
     print(rotations,translations)

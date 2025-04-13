@@ -5,5 +5,9 @@ se3 diffusion type 1 predict 0 in tranlation
 
 TODO
 
-ddpm scaling factor test?
-min/max instead of mean in equinet?
+ddpm scaling factor test(unet_film)?
+diff vs no-diff
+abs xyz as feat for pc encoder
+diffusion steps: 30 10
+no noise diffusion?
+

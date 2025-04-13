@@ -129,7 +129,10 @@ def main(cfg):
 
     if config['use_ddpm']:
         from diffusers import DDPMScheduler
-        noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'])
+        prediction_type='epsilon'
+        if not config['ddpm_predict_noise']:
+            prediction_type='sample'
+        noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
     else:
         noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
 

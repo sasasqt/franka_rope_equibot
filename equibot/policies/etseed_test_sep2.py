@@ -90,7 +90,10 @@ def main(cfg):
 
     if config['use_ddpm']:
         from diffusers import DDPMScheduler
-        noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'])
+        prediction_type='epsilon'
+        if not config['ddpm_predict_noise']:
+            prediction_type='sample'
+        noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
     else:
         noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
 
@@ -222,17 +225,22 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
 
                 model_input = prepare_model_input2(latent_pc, neefpose, denoise_idx.expand(bz), num_point,config)
                 if config['testing']==1:
-                    model_input = prepare_model_input3(latent_pc,neefpose, k,num_point,config)
+                    model_input = prepare_model_input3(latent_pc,neefpose, denoise_idx.expand(bz),num_point,config)
 
                 if config['Ho_in_B']:
                     num_point = config['pred_horizon*obs_horizon']
-                model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=config['unet'],Ho_in_B=config['Ho_in_B'])
+                return_raw=True
+                # return_raw=False
+                # if config['use_ddpm'] or config['unet']:
+                #     return_raw=True
+                model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=return_raw,Ho_in_B=config['Ho_in_B'])
 
+                ori=model_output['ori']
+                pos=model_output['pos']
+                gripper=model_output['gripper']
+                model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
+                
                 if config['unet']:
-                    ori=model_output['ori']
-                    pos=model_output['pos']
-
-                    model_output=torch.cat((ori, pos), dim=-1) # [B,Hp,6+3]
                     model_output= nets['unet'](model_output, denoise_idx, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
                     # output_ori=model_output[...,0:6].reshape(-1,6)
                     # output_pos=model_output[...,6:9].reshape(-1,3)
@@ -296,9 +304,10 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                 g_step+=1
 
                 # Options
-                if config['diffusion_option']==0 or config['diffusion_option']==1:
+                if config['diffusion_option']==0 or config['diffusion_option']==1 or config['diffusion_option']==3:
                     # 0: the default, predict the gt H0
                     # 1: predict relative transformation from Ht to H0
+                    # 3: no diffusion during inference
                     k=torch.full((bz,), denoise_idx).long().to(device)
                 elif config['diffusion_option']==2:
                     # 2: no diffusion, no denoising
@@ -310,19 +319,28 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
 
                 model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
 
-                model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=config['unet'],Ho_in_B=config['Ho_in_B'])
+                if config['Ho_in_B']:
+                    num_point = config['pred_horizon*obs_horizon']
+                return_raw=True
+                # return_raw=False
+                # if config['use_ddpm'] or config['unet']:
+                #     return_raw=True
+                model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=return_raw,Ho_in_B=config['Ho_in_B'])
 
+                ori=model_output['ori']
+                pos=model_output['pos']
+                gripper=model_output['gripper']
+                model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
+                
                 if config['unet']:
-                    ori=model_output['ori']
-                    pos=model_output['pos']
-
-                    model_output=torch.cat((ori, pos), dim=-1) # [B,Hp,6+3]
                     model_output= nets['unet'](model_output, denoise_idx, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
+                    
                     output_ori=model_output[...,0:6].reshape(-1,6)
                     output_pos=model_output[...,6:9].reshape(-1,3)
-                    
                     model_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
                 
+                    output_gripper_action=model_output[...,9:10]
+
                 # TODO assert last 2 dim 4x4
 
                 # Options
@@ -347,6 +365,10 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                 elif config['diffusion_option']==2:
                     # 2: no diffusion, no denoising
                     reconstructed_H_0=model_output
+                elif config['diffusion_option']==3:
+                    # no diffusion during inference
+                    noisy_actions=model_output
+                    config['early_return']=True
                 else:
                     raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 

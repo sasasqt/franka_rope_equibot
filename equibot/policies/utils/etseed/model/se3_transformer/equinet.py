@@ -223,7 +223,8 @@ class SE3ManiNet_Invariant_Separate(ExtendedModule):
 
 
 class SE3ManiNet_Fused(ExtendedModule):
-    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None,no_tgt_nxyz=False,eef_abs_position_as_node=False):
+    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None,no_tgt_nxyz=False,eef_abs_position_as_node=False,eef_xyz_feat=False):
+        assert not config==None
         super().__init__()
         self.pred_horizon=pred_horizon
         self.config=config
@@ -234,6 +235,9 @@ class SE3ManiNet_Fused(ExtendedModule):
 
         if no_tgt_nxyz:
             type1_cnt+=1
+
+        if eef_xyz_feat:
+            type1_cnt-=1
 
         # Options
         if config['k_option']==0:
@@ -273,7 +277,7 @@ class SE3ManiNet_Fused(ExtendedModule):
                 "1": num_fib_in[1], 
             }),
             fiber_out=Fiber({
-                "0": (6+1+1)*pred_horizon, # 2 cols of rotation + magnitude of offset + weights of each rot cand.
+                "0": (6+1+1+1)*pred_horizon, # 2 cols of rotation + magnitude of offset + weights of each rot cand. + gripper open(1)/close(0)
                 "1": (1)*pred_horizon, # offset/translation (not unit direction)
             }),
             num_layers= 8,
@@ -296,17 +300,19 @@ class SE3ManiNet_Fused(ExtendedModule):
             assert bs*num_point==inputs["xyz"].shape[0]
             pos_ori_net_features=torch.stack(pos_ori_net_features, dim=0).view(bs,num_point,-1)
 
-        # process type 0 orientation + type 0 offset/translation magnitude # "0": (6+1+1)*pred_horizon, # 2 cols of rotation + magnitude of offset
+        # process type 0 orientation + type 0 offset/translation magnitude # "0": (6+1+1+1)*pred_horizon, # 2 cols of rotation + magnitude of offset + weights of each rot cand. + gripper open(1)/close(0)
         # process type 1 offset/translation direction
 
-        type0_feature_list = []
-        type1_feature_list = []
+        rot_type0_feature_list = []
+        gripper_type0_feature_list = []
+        pos_type1_feature_list = []
         for i in range(bs):
             batchi_type0_feature = pos_ori_net_features[i] # [Ho*num_point, Hp*7]
             batchi_type0_feature=batchi_type0_feature.view(batchi_type0_feature.shape[0],self.pred_horizon,-1)
             trans_mag_feature=batchi_type0_feature[:, :, 6:7]
             # mag_feature=torch.mean(mag_feature, dim=0) # [Hp, 1]
             rot_mag_feature=batchi_type0_feature[:, :, 7:8]
+            gripper=batchi_type0_feature[:, :, 8:9]
             rot_feature=batchi_type0_feature[:, :, :6]
 
             if self.config['rot_aggregation']=='mean':
@@ -325,9 +331,10 @@ class SE3ManiNet_Fused(ExtendedModule):
             else:
                 raise NotImplementedError(f"rot_aggregation {self.config['rot_aggregation']} not implemented")
             
-            type0_feature_list.append(rot_feature)
+            rot_type0_feature_list.append(rot_feature)
+            gripper_type0_feature_list.append(gripper)
 
-            batchi_type1_feature = pos_ori_net_features[i][:,(6+1+1)*self.pred_horizon:(6+1+1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]
+            batchi_type1_feature = pos_ori_net_features[i][:,(6+1+1+1)*self.pred_horizon:(6+1+1+1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]
             batchi_type1_feature=batchi_type1_feature.view(batchi_type1_feature.shape[0],self.pred_horizon,-1)
             trans_feature=batchi_type1_feature
             if self.config['trans_aggregation']=='mean':
@@ -346,16 +353,17 @@ class SE3ManiNet_Fused(ExtendedModule):
             else:
                 raise NotImplementedError(f"trans_aggregation {self.config['trans_aggregation']} not implemented")
             
-            type1_feature_list.append(trans_feature)
+            pos_type1_feature_list.append(trans_feature)
 
         # TODO BUG first dim wont match if voxelized, thus cannot be stacked # [B, Hp, 3]
-        output_ori = torch.stack(type0_feature_list,dim = 0) # [B, Hp, 6]
-        output_pos = torch.stack(type1_feature_list,dim = 0) # [B, Hp, 3]
-
+        output_ori = torch.stack(rot_type0_feature_list,dim = 0) # [B, Hp, 6]
+        output_pos = torch.stack(pos_type1_feature_list,dim = 0) # [B, Hp, 3]
+        output_gripper = torch.stack(gripper_type0_feature_list,dim = 0) # B, Hp, 1]
         if return_raw:
             return{
                 'pos':output_pos,
-                'ori':output_ori
+                'ori':output_ori,
+                'gripper':output_gripper,
             }
     
         output_ori = process_action(output_ori.view(-1,6), output_pos.view(-1,3),follow_rot_trans_convention=True).view(bs,-1,4,4) # orthogonalization

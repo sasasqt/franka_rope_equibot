@@ -36,7 +36,7 @@ diffusion_mode: squaredcos_cap_v2
 dev:
   use_ddpm: False
   k_option: 0 # 0 diffusion steps as type 0 scalar; # 1 diffusion steps as type 0 rotation; 2 diffusion steps as type 1 rotation; 3 no k in se3
-  diffusion_option: 0 # 0: the default, predict the gt H0;  1: predict relative transformation from Ht to H0; 2: no diffusion, no denoising
+  diffusion_option: 0 # 0: the default, predict the gt H0;  1: predict relative transformation from Ht to H0; 2: no diffusion, no denoising; 3: no diffusion during inference,early_return will be set to True
   early_return: True # for se3 diffusion option 0 and 2: set this to True ~~might~~ make sense, actually for all predict sample objective or no diffusion at all
   sh_basis_compute_gradients: False
   rot_aggregation: mean # mean/separate_mean/min/abs_min/max
@@ -53,6 +53,9 @@ dev:
   bugfix: 0000000000000001 # last bit: knn in se3 vision
   testing: 0 #1: prepare_model_input3 instead of prepare_model_input2
   sanity_check: 0 # 1: se3 pc enc + unet;
+  pc_xyz_feat: False # use xyz position of pc explicitly as features
+  eef_xyz_feat: False # use xyz position of end effector explicitly as features # only works w/ testing
+  
 training:
   ckpt: null
 
@@ -143,7 +146,7 @@ franka_rope:
   from_demo: null
   start_time: 150
   manually_close: False
-  max_end: 300 #360 # 600
+  max_end: 1000 #360 # 600
   seed: 42
   rel: True
   rpy: False

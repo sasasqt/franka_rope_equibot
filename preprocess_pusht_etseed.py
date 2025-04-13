@@ -279,7 +279,7 @@ def main(cfg):
                 curr = fut
                 if (
                     curr["Right"]["applied_joint_positions"][-1] < 0.025
-                ):  # 0/-0.3 is closed, ~0.5 is opened
+                ):  # 0/-0.3 is closed, ~0.05 is opened
                     gripper_action = 0
                     gripper_pose = 0
                 else:
@@ -288,7 +288,6 @@ def main(cfg):
 
                 continue
 
-            gripper_pose = gripper_action
             # franka_joints = np.array(
             #     curr["Right"]["Right_joint_positions"]
             # )  # not exposed to the algorithm
@@ -341,6 +340,7 @@ def main(cfg):
             mat4x4 = np.eye(4)
             mat4x4[:3, :3] = ori
             mat4x4[:3, 3] = delta_pos
+            mat4x4[3,3]=gripper_action
 
             # print(normalize_quat(delta_rot), rmat2q(ori)) should be close
             action = np.array(
@@ -387,8 +387,10 @@ def main(cfg):
                 pc=np.array(pc), # (40, 6) = (num_points, src + tgt)
                 eef_pos=np.array(eef_pos), #  (13,)
                 action=np.array(action[np.newaxis, :]), #  (1, 4, 4)
+
             )
 
+            gripper_pose = gripper_action
             curr = fut
 
 

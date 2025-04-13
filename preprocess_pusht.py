@@ -200,7 +200,6 @@ def main(cfg):
 
                 continue
 
-            gripper_pose = gripper_action
             franka_joints = np.array(
                 curr["Right"]["Right_joint_positions"]
             )  # not exposed to the algorithm
@@ -262,7 +261,7 @@ def main(cfg):
 
                     action = np.array(
                         [
-                            gripper_pose,
+                            gripper_action,
                             delta_pos[0],
                             delta_pos[1],
                             delta_pos[2],
@@ -284,7 +283,7 @@ def main(cfg):
                     # should be like (2, 7)
                     action = np.array(
                         [
-                            gripper_pose,
+                            gripper_action,
                             delta_pos[0],
                             delta_pos[1],
                             delta_pos[2],
@@ -301,7 +300,7 @@ def main(cfg):
                 if rpy:
                     action = np.array(
                         [
-                            gripper_pose,
+                            gripper_action,
                             abs_pos[0],
                             abs_pos[1],
                             abs_pos[2],
@@ -317,7 +316,7 @@ def main(cfg):
                     aa=axis*angle
                     action = np.array(
                         [
-                            gripper_pose,
+                            gripper_action,
                             abs_pos[0],
                             abs_pos[1],
                             abs_pos[2],
