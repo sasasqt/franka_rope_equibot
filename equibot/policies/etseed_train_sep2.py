@@ -45,7 +45,7 @@ def main(cfg):
         "diffusion_steps": cfg.diffusion_steps,
         "diffusion_mode": cfg.diffusion_mode,
         'use_ddpm': cfg.dev.use_ddpm,
-        'k_option':cfg.dev.k_option,
+        'k_option':3,
         'diffusion_option':cfg.dev.diffusion_option,
         'sh_basis_compute_gradients':cfg.dev.sh_basis_compute_gradients,
         'rot_aggregation':cfg.dev.rot_aggregation,
@@ -54,7 +54,7 @@ def main(cfg):
         'no_noise':cfg.dev.no_noise,
         'low_memory':cfg.dev.low_memory,
         'se3':cfg.dev.se3,
-        'unet':cfg.dev.unet,
+        'unet':True,
         'unet_film':cfg.dev.unet_film,
         'Ho_in_B':cfg.dev.Ho_in_B,
         'diff': cfg.dev.diff,
@@ -115,25 +115,35 @@ def main(cfg):
     
     nets, optimizer, lr_scheduler = init_model_and_optimizer(device,config)
     if config['use_ddpm']:
+        raise NotImplementedError
+        # from diffusers import DDPMScheduler
+        # prediction_type='epsilon'
+        # if not config['ddpm_predict_noise']:
+        #     prediction_type='sample'
+        # noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
+    else:
+        # noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
+
+        noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
+
         from diffusers import DDPMScheduler
         prediction_type='epsilon'
         if not config['ddpm_predict_noise']:
             prediction_type='sample'
-        noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
-    else:
-        noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
+        gripper_noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
 
     if config['use_ddpm']:
-        _config={
-            "learning_rate": config["learning_rate"],
-            "pred_horizon": config["pred_horizon"],
-            "obs_horizon": config["obs_horizon"],
-            "batch_size": config["batch_size"],
-            "epochs": config["num_epochs"],
-            "diffusion_num_steps": config["diffusion_steps"],
-            "diffusion_mode": config["diffusion_mode"],
-            'dev': cfg.dev,
-        }
+        raise NotImplementedError 
+        # _config={
+        #     "learning_rate": config["learning_rate"],
+        #     "pred_horizon": config["pred_horizon"],
+        #     "obs_horizon": config["obs_horizon"],
+        #     "batch_size": config["batch_size"],
+        #     "epochs": config["num_epochs"],
+        #     "diffusion_num_steps": config["diffusion_steps"],
+        #     "diffusion_mode": config["diffusion_mode"],
+        #     'dev': cfg.dev,
+        # }
     else:
         _config={
             "learning_rate": config["learning_rate"],
@@ -163,7 +173,7 @@ def main(cfg):
             epoch_loss = []
             with tqdm(train_dataloader, desc='Batch', position=1, leave=False) as tepoch:
                 for nbatch in tepoch:
-                    loss_cpu = train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx, device,config=config)
+                    loss_cpu = train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx, device,gripper_noise_scheduler,config=config)
                     epoch_loss.append(loss_cpu)
                     tepoch.set_postfix(loss=loss_cpu)
             tglobal.set_postfix(loss=np.mean(epoch_loss))
@@ -194,26 +204,28 @@ def init_model_and_optimizer(device,config):
     SE3VisionNet_Hierarchical_input_type_1_feat=2 if config['pc_xyz_feat'] else 1
     pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=config['pred_horizon*obs_horizon'],input_type_1_feat=SE3VisionNet_Hierarchical_input_type_1_feat,output_type_1_feat=3,config=config)
     if config['se3']==0:
-        noise_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
+        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
     elif config['se3']==1:
-        from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
-        noise_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
+        raise NotImplementedError
+        # from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
+        # action_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
     else:
         raise NotImplementedError(f"k_option {config['se3']} not implemented")
     
     unet=None
-    if  config['unet']:
+    assert config['unet']==True,'unet needed for diffusion'
+    if config['unet']:
         from equibot.policies.utils.diffusion.conditional_unet1d import ConditionalUnet1D
         unet = ConditionalUnet1D(
-            input_dim=9, #cat ori, pos
-            diffusion_step_embed_dim=config['pred_horizon*obs_horizon']*9, #hierarchy_layers*output_type_1_feat*3
-            global_cond_dim=config['pred_horizon*obs_horizon']*9,
+            input_dim=10, #cat: ori, pos, gripper o/c
+            diffusion_step_embed_dim=config['pred_horizon']*10, # last two dim of action_pred_net
+            global_cond_dim=config['pred_horizon']*10,
             cond_predict_scale=config['unet_film']
         )
 
     nets = nn.ModuleDict({
         'pointcloud_encoder': pointcloud_encoder,
-        'equivariant_pred_net': noise_pred_net,
+        'equivariant_pred_net': action_pred_net,
         'unet': unet,
     }).to(device)
 
@@ -260,7 +272,7 @@ def prepare_model_input1(nxyz, tgt_nxyz,diff=False,pc_xyz_feat=False):
 def prepare_model_input2(nxyz, neefpose, k, num_point,config):
     B = nxyz.shape[0]
     Ho_num_point=nxyz.shape[1]
-    # nxyz[B,Ho*num_pts,3]
+    # nxyz is the latent pc, [B,Ho*num_pts,type_1_feat*3]
     neefpose=neefpose.repeat(1,num_point, 1)# neefpose ([B, Ho*num_point, num_eef * (pose gripper action etc = 13)])
     #   the order: 3d world position, 3d ori col1, 3d ori col2, 3d gravity, 1d gripper action
     # ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
@@ -270,39 +282,40 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config):
     # noisy_ori_actions = torch.stack(selected_ori_actions, dim=-1) #.repeat_interleave(num_point,dim=1) # [B,Hp,6]
     # noisy_trans_actions = torch.stack(selected_trans_actions, dim=-1)  #.repeat_interleave(num_point,dim=1) # [B,Hp,3]
     device='cuda'
-    vectors = torch.tensor([[1.0, 1.0, 1.0]] * B,device=nxyz.device)  # Shape: (B, 3)
-    angles = k.clone().detach()*torch.pi/(1+config['diffusion_steps']+config['pred_horizon'])
-    angles=angles.to(nxyz.device)
-    axes = vectors / torch.norm(vectors, dim=1, keepdim=True)  # Shape: (batch_size, 3)
 
-    # Rodrigues' formula
-    K = torch.zeros(B, 3, 3,device=nxyz.device)
-    K[:, 0, 1] = -axes[:, 2]
-    K[:, 0, 2] = axes[:, 1]
-    K[:, 1, 0] = axes[:, 2]
-    K[:, 1, 2] = -axes[:, 0]
-    K[:, 2, 0] = -axes[:, 1]
-    K[:, 2, 1] = axes[:, 0]
+    # vectors = torch.tensor([[1.0, 1.0, 1.0]] * B,device=nxyz.device)  # Shape: (B, 3)
+    # angles = k.clone().detach()*torch.pi/(1+config['diffusion_steps']+config['pred_horizon'])
+    # angles=angles.to(nxyz.device)
+    # axes = vectors / torch.norm(vectors, dim=1, keepdim=True)  # Shape: (batch_size, 3)
 
-    I = torch.eye(3,device=nxyz.device).unsqueeze(0).repeat(B, 1, 1)
-    angles = angles.unsqueeze(-1).unsqueeze(-1)
+    # # Rodrigues' formula
+    # K = torch.zeros(B, 3, 3,device=nxyz.device)
+    # K[:, 0, 1] = -axes[:, 2]
+    # K[:, 0, 2] = axes[:, 1]
+    # K[:, 1, 0] = axes[:, 2]
+    # K[:, 1, 2] = -axes[:, 0]
+    # K[:, 2, 0] = -axes[:, 1]
+    # K[:, 2, 1] = axes[:, 0]
 
-    # Compute rotation matrices
-    rotation_matrices = I + torch.sin(angles) * K + (1 - torch.cos(angles)) * torch.bmm(K, K)
-    k1=rotation_matrices[:, :, 0] # [B,3] first col
-    k2=rotation_matrices[:, :, 1] # [B,3] second col
-    k1=k1.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
-    k2=k2.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
+    # I = torch.eye(3,device=nxyz.device).unsqueeze(0).repeat(B, 1, 1)
+    # angles = angles.unsqueeze(-1).unsqueeze(-1)
 
-    k1=k1.to(device)
-    k2=k2.to(device)
+    # # Compute rotation matrices
+    # rotation_matrices = I + torch.sin(angles) * K + (1 - torch.cos(angles)) * torch.bmm(K, K)
+    # k1=rotation_matrices[:, :, 0] # [B,3] first col
+    # k2=rotation_matrices[:, :, 1] # [B,3] second col
+    # k1=k1.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
+    # k2=k2.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
 
-    tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
+    # k1=k1.to(device)
+    # k2=k2.to(device)
+
+    # tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
 
     if config['Ho_in_B']:
         nxyz=nxyz.reshape(B*Ho_num_point,-1).unsqueeze(1)
         neefpose=neefpose.reshape(B*Ho_num_point,-1).unsqueeze(1)
-        tensor_k=tensor_k.reshape(B*Ho_num_point,-1).unsqueeze(1)
+        # tensor_k=tensor_k.reshape(B*Ho_num_point,-1).unsqueeze(1)
         k1=k1.reshape(B*Ho_num_point,-1).unsqueeze(1)
         k2=k2.reshape(B*Ho_num_point,-1).unsqueeze(1)
 
@@ -313,27 +326,29 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config):
     gripper_pose=neefpose[...,12:13]
 
     
-    # Options
-    if config['k_option']==0:
-        # # 0 diffusion steps as type 0 scalar
-        # num_fib_in = [2,4] # 14 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-        # k: [B]        
-        feature = torch.cat((tensor_k,gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
-    elif config['k_option']==1:
-        # # 1 diffusion steps as type 0 rotation
-        # num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-        feature = torch.cat((k1,k2,gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
-    elif config['k_option']==2:
-        # # 2 diffusion steps as type 1 rotation
-        # num_fib_in = [1,6] # 19 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
-        feature = torch.cat((gripper_pose,k1,k2,right_eef_world_pos,col1,col2,gravity), dim=-1)
-    elif config['k_option']==3:
-        # no k
-        feature = torch.cat((gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
-    else:
-        raise NotImplementedError(f"k_option {config['k_option']} not implemented")
+    # # Options
+    # if config['k_option']==0:
+    #     # # 0 diffusion steps as type 0 scalar
+    #     # num_fib_in = [2,4] # 14 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+    #     # k: [B]        
+    #     feature = torch.cat((tensor_k,gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
+    # elif config['k_option']==1:
+    #     # # 1 diffusion steps as type 0 rotation
+    #     # num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+    #     feature = torch.cat((k1,k2,gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
+    # elif config['k_option']==2:
+    #     # # 2 diffusion steps as type 1 rotation
+    #     # num_fib_in = [1,6] # 19 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
+    #     feature = torch.cat((gripper_pose,k1,k2,right_eef_world_pos,col1,col2,gravity), dim=-1)
+    # elif config['k_option']==3:
+    #     # no k
+    #     feature = torch.cat((gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
+    # else:
+    #     raise NotImplementedError(f"k_option {config['k_option']} not implemented")
 
     # ref_output=torch.cat((noisy_ori_actions,noisy_trans_actions), dim=-1)
+
+    feature = torch.cat((gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
 
     model_input = {
         'xyz': nxyz.to(device='cuda',dtype=torch.float32),
@@ -345,51 +360,48 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config):
     return model_input #,ref_output
 
 
-
-
-
 # Prepare the input for the model
 def prepare_model_input3(nxyz,neefpose, k,num_point,config):
     B = nxyz.shape[0]
     Ho_num_point=nxyz.shape[1]
-    # nxyz[B,Ho*num_pts,3]
+    # nxyz is the latent pc, [B,Ho*num_pts,type_1_feat*3]
     neefpose=neefpose.repeat(1,num_point, 1)# neefpose ([B, Ho*num_point, num_eef * (pose gripper action etc = 13)])
 
-    device='cuda'
-    vectors = torch.tensor([[1.0, 1.0, 1.0]] * B,device=nxyz.device)  # Shape: (B, 3)
-    angles = k.clone().detach()*torch.pi/(1+config['diffusion_steps']+config['pred_horizon'])
-    angles=angles.to(nxyz.device)
-    axes = vectors / torch.norm(vectors, dim=1, keepdim=True)  # Shape: (batch_size, 3)
+    # device='cuda'
+    # vectors = torch.tensor([[1.0, 1.0, 1.0]] * B,device=nxyz.device)  # Shape: (B, 3)
+    # angles = k.clone().detach()*torch.pi/(1+config['diffusion_steps']+config['pred_horizon'])
+    # angles=angles.to(nxyz.device)
+    # axes = vectors / torch.norm(vectors, dim=1, keepdim=True)  # Shape: (batch_size, 3)
 
-    # Rodrigues' formula
-    K = torch.zeros(B, 3, 3,device=nxyz.device)
-    K[:, 0, 1] = -axes[:, 2]
-    K[:, 0, 2] = axes[:, 1]
-    K[:, 1, 0] = axes[:, 2]
-    K[:, 1, 2] = -axes[:, 0]
-    K[:, 2, 0] = -axes[:, 1]
-    K[:, 2, 1] = axes[:, 0]
+    # # Rodrigues' formula
+    # K = torch.zeros(B, 3, 3,device=nxyz.device)
+    # K[:, 0, 1] = -axes[:, 2]
+    # K[:, 0, 2] = axes[:, 1]
+    # K[:, 1, 0] = axes[:, 2]
+    # K[:, 1, 2] = -axes[:, 0]
+    # K[:, 2, 0] = -axes[:, 1]
+    # K[:, 2, 1] = axes[:, 0]
 
-    I = torch.eye(3,device=nxyz.device).unsqueeze(0).repeat(B, 1, 1)
-    angles = angles.unsqueeze(-1).unsqueeze(-1)
+    # I = torch.eye(3,device=nxyz.device).unsqueeze(0).repeat(B, 1, 1)
+    # angles = angles.unsqueeze(-1).unsqueeze(-1)
 
-    # Compute rotation matrices
-    rotation_matrices = I + torch.sin(angles) * K + (1 - torch.cos(angles)) * torch.bmm(K, K)
-    k1=rotation_matrices[:, :, 0] # [B,3] first col
-    k2=rotation_matrices[:, :, 1] # [B,3] second col
-    k1=k1.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
-    k2=k2.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
+    # # Compute rotation matrices
+    # rotation_matrices = I + torch.sin(angles) * K + (1 - torch.cos(angles)) * torch.bmm(K, K)
+    # k1=rotation_matrices[:, :, 0] # [B,3] first col
+    # k2=rotation_matrices[:, :, 1] # [B,3] second col
+    # k1=k1.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
+    # k2=k2.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
 
-    k1=k1.to(device)
-    k2=k2.to(device)
+    # k1=k1.to(device)
+    # k2=k2.to(device)
 
-    tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
+    # tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
 
     if config['Ho_in_B']:
         neefpose=neefpose.reshape(B*Ho_num_point,-1).unsqueeze(1)
-        tensor_k=tensor_k.reshape(B*Ho_num_point,-1).unsqueeze(1)
-        k1=k1.reshape(B*Ho_num_point,-1).unsqueeze(1)
-        k2=k2.reshape(B*Ho_num_point,-1).unsqueeze(1)
+        # tensor_k=tensor_k.reshape(B*Ho_num_point,-1).unsqueeze(1)
+        # k1=k1.reshape(B*Ho_num_point,-1).unsqueeze(1)
+        # k2=k2.reshape(B*Ho_num_point,-1).unsqueeze(1)
     nxyz=neefpose[...,0:3]
     col1=neefpose[...,3:6]
     col2=neefpose[...,6:9]
@@ -397,44 +409,50 @@ def prepare_model_input3(nxyz,neefpose, k,num_point,config):
     gripper_pose=neefpose[...,12:13]
     
     # Options
+
     if not config['eef_xyz_feat']:
-        if config['k_option']==0:
-            # # 0 diffusion steps as type 0 scalar
-            # num_fib_in = [2,4] # 14 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-            # k: [B]        
-            feature = torch.cat((tensor_k,gripper_pose,col1,col2,gravity), dim=-1)
-        elif config['k_option']==1:
-            # # 1 diffusion steps as type 0 rotation
-            # num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-            feature = torch.cat((k1,k2,gripper_pose,col1,col2,gravity), dim=-1)
-        elif config['k_option']==2:
-            # # 2 diffusion steps as type 1 rotation
-            # num_fib_in = [1,6] # 19 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
-            feature = torch.cat((gripper_pose,k1,k2,col1,col2,gravity), dim=-1)
-        elif config['k_option']==3:
-            # no k
-            feature = torch.cat((gripper_pose,col1,col2,gravity), dim=-1)
-        else:
-            raise NotImplementedError(f"k_option {config['k_option']} not implemented")
+        feature = torch.cat((gripper_pose,col1,col2,gravity), dim=-1)
     else:
-        if config['k_option']==0:
-            # # 0 diffusion steps as type 0 scalar
-            # num_fib_in = [2,4] # 14 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-            # k: [B]        
-            feature = torch.cat((tensor_k,gripper_pose,nxyz,col1,col2,gravity), dim=-1)
-        elif config['k_option']==1:
-            # # 1 diffusion steps as type 0 rotation
-            # num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-            feature = torch.cat((k1,k2,gripper_pose,nxyz,col1,col2,gravity), dim=-1)
-        elif config['k_option']==2:
-            # # 2 diffusion steps as type 1 rotation
-            # num_fib_in = [1,6] # 19 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
-            feature = torch.cat((gripper_pose,k1,k2,nxyz,col1,col2,gravity), dim=-1)
-        elif config['k_option']==3:
-            # no k
-            feature = torch.cat((gripper_pose,nxyz,col1,col2,gravity), dim=-1)
-        else:
-            raise NotImplementedError(f"k_option {config['k_option']} not implemented")
+        feature = torch.cat((gripper_pose,nxyz,col1,col2,gravity), dim=-1)
+        
+    # if not config['eef_xyz_feat']:
+    #     if config['k_option']==0:
+    #         # # 0 diffusion steps as type 0 scalar
+    #         # num_fib_in = [2,4] # 14 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+    #         # k: [B]        
+    #         feature = torch.cat((tensor_k,gripper_pose,col1,col2,gravity), dim=-1)
+    #     elif config['k_option']==1:
+    #         # # 1 diffusion steps as type 0 rotation
+    #         # num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+    #         feature = torch.cat((k1,k2,gripper_pose,col1,col2,gravity), dim=-1)
+    #     elif config['k_option']==2:
+    #         # # 2 diffusion steps as type 1 rotation
+    #         # num_fib_in = [1,6] # 19 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
+    #         feature = torch.cat((gripper_pose,k1,k2,col1,col2,gravity), dim=-1)
+    #     elif config['k_option']==3:
+    #         # no k
+    #         feature = torch.cat((gripper_pose,col1,col2,gravity), dim=-1)
+    #     else:
+    #         raise NotImplementedError(f"k_option {config['k_option']} not implemented")
+    # else:
+    #     if config['k_option']==0:
+    #         # # 0 diffusion steps as type 0 scalar
+    #         # num_fib_in = [2,4] # 14 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+    #         # k: [B]        
+    #         feature = torch.cat((tensor_k,gripper_pose,nxyz,col1,col2,gravity), dim=-1)
+    #     elif config['k_option']==1:
+    #         # # 1 diffusion steps as type 0 rotation
+    #         # num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+    #         feature = torch.cat((k1,k2,gripper_pose,nxyz,col1,col2,gravity), dim=-1)
+    #     elif config['k_option']==2:
+    #         # # 2 diffusion steps as type 1 rotation
+    #         # num_fib_in = [1,6] # 19 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
+    #         feature = torch.cat((gripper_pose,k1,k2,nxyz,col1,col2,gravity), dim=-1)
+    #     elif config['k_option']==3:
+    #         # no k
+    #         feature = torch.cat((gripper_pose,nxyz,col1,col2,gravity), dim=-1)
+    #     else:
+    #         raise NotImplementedError(f"k_option {config['k_option']} not implemented")
 
     # ref_output=torch.cat((noisy_ori_actions,noisy_trans_actions), dim=-1)
 
@@ -475,14 +493,14 @@ def prepare_model_output(actions):
 
 
 # Train a single batch of data
-def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx, device,config):
+def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx, device,gripper_noise_scheduler=None,config=None):
     global g_step
     g_step+=1
     nets.train()
     nxyz = nbatch['pc'][:, :, :, :3].to(device) # [B,Ho,num_pts,3]
     tgt_nxyz = nbatch['pc'][:, :, :, 3:6].to(device)
     naction = nbatch['action'].to(device) # [B,Hp,4by4]
-    gripper_action=naction[...,-1]
+    gt_gripper_action=naction[...,-1].unsqueeze(-1) # [B,Hp,1]
     naction[...,-1]=1
     neefpose = nbatch['eef_pos'].to(device) # ([B, Ho, num_eef, pose gripper action etc])
     
@@ -508,46 +526,25 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         
 
     if config['use_ddpm']:
-        # ddpm
-        k = torch.randint(0, config["diffusion_steps"], (bz,), device=device)
-        noise = torch.randn(naction.shape, device=device)
-        noise[:, :,:3, :3]=noise[:, :,:3, :3]*config["sigma_r"]
-        noise[:, :, :3, 3] = noise[:, :, :3, 3]*config["sigma_t"]
-        noise[:, :, 3, :3]=0.0
-        noise[:, :, 3, 3]=1.0
+        raise NotImplementedError
+        # # ddpm
+        # k = torch.randint(0, config["diffusion_steps"], (bz,), device=device)
 
-        noisy_ori=noise[:, :,:3, :2].flatten(start_dim=-2)*config["sigma_r"]
-        noisy_tran= noise[:, :, :3, 3]*config["sigma_t"]
-        
-        ori=naction[:, :,:3, :2].flatten(start_dim=-2)
-        tran= naction[:, :, :3, 3]
-
-        noise=torch.cat((noisy_ori,noisy_tran), dim=-1)
-        naction=torch.cat((ori,tran), dim=-1)
-    
-        noisy_actions = noise_scheduler.add_noise(naction, noise, k)
     else:
         # Options
         if config['diffusion_option']==0 or config['diffusion_option']==1:
             # 0: the default, predict the gt H0
             # 1: predict relative transformation from Ht to H0
             k = torch.randint(0, config["diffusion_steps"], (bz,), device=device)
-            noisy_actions, noise = noise_scheduler.add_noise(naction, k, device=device,no_noise=config['no_noise'])
-        elif config['diffusion_option']==2:
-            # 2: no diffusion, no denoising
-            k = torch.zeros((bz,)).long().to(device)
         else:
             raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
     
     pc= prepare_model_input1(nxyz, tgt_nxyz,diff=config['diff'],pc_xyz_feat=config['pc_xyz_feat'])
     latent_pc=nets["pointcloud_encoder"](pc) # b,l,f (l:x*Hp; f:3x)
 
-    num_point = config['pred_horizon']
-    # if config['Ho_in_B']:
-    #     num_point = config['pred_horizon*obs_horizon']
-
-    
+    num_point = config['pred_horizon']    
     model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
+
     if config['testing']==1:
         model_input = prepare_model_input3(latent_pc,neefpose, k,num_point,config)
 
@@ -564,62 +561,105 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         if config['sanity_check']==1: # se3 pc enc + unet only
             pass
 
-
     else:
         ori=model_output['ori']
         pos=model_output['pos']
         gripper=model_output['gripper']
         model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
-        
-        if config['unet']:
-            model_output= nets['unet'](model_output, k, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
+
+        # must use unet, required for diffusion
+        # if config['unet']:
+        #     model_output= nets['unet'](model_output, k, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
 
         if config['use_ddpm']:
-            # ddpm
-            target=noise
-            if not config['ddpm_predict_noise']:
-                target=noisy_actions
+            raise NotImplementedError
+            # TODO
+            # # ddpm
+            # noise = torch.randn(naction.shape, device=device)
+            # noise[:, :,:3, :3]=noise[:, :,:3, :3]*config["sigma_r"]
+            # noise[:, :, :3, 3] = noise[:, :, :3, 3]*config["sigma_t"]
+            # noise[:, :, 3, :3]=0.0
+            # noise[:, :, 3, 3]=1.0
 
-            # loss=torch.nn.functional.mse_loss(model_output.reshape(target.shape[0],target.shape[1],-1), target.reshape(target.shape[0],target.shape[1],-1))
-            # TODO 2 cols and 1 trans from target
+            # noisy_ori=noise[:, :,:3, :2].flatten(start_dim=-2)*config["sigma_r"]
+            # noisy_tran= noise[:, :, :3, 3]*config["sigma_t"]
+            
+            # ori=naction[:, :,:3, :2].flatten(start_dim=-2)
+            # tran= naction[:, :, :3, 3]
+
+            # noise=torch.cat((noisy_ori,noisy_tran), dim=-1)
+            # naction=torch.cat((ori,tran), dim=-1)
+        
+            # noisy_actions = noise_scheduler.add_noise(naction, noise, k)
+
+        else:
+
+            # Options
+            if config['diffusion_option']==0 or config['diffusion_option']==1:
+                # 0: the default, predict the gt H0
+                # 1: predict relative transformation from Ht to H0
+                # [B,Ho,4,4]
+                noisy_actions, actions_noise = noise_scheduler.add_noise(naction, k, device=device,no_noise=config['no_noise'])
+
+                gripper_noise = torch.randn(gt_gripper_action.shape, device=device)
+                noisy_gripper = gripper_noise_scheduler.add_noise(gt_gripper_action, gripper_noise, k)
+
+                ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
+                selected_ori_actions = [noisy_actions[:, :, i, j] for i, j in ori_indices]
+                trans_indices = [(0, 3), (1, 3), (2, 3)]
+                selected_trans_actions = [noisy_actions[:, :, i, j] for i, j in trans_indices]
+                noisy_ori_actions = torch.stack(selected_ori_actions, dim=-1)
+                noisy_trans_actions = torch.stack(selected_trans_actions, dim=-1)
+                unet_input=torch.cat((noisy_ori_actions,noisy_trans_actions,noisy_gripper),dim=-1) # [B,Hp,10]
+            else:
+                raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
+            
+            unet_output= nets['unet'](unet_input, k, global_cond=model_output.reshape(model_output.shape[0],-1))
+
+        if config['use_ddpm']:
+            raise NotImplementedError
+            # TODO
+            # # ddpm
+            # target=noise
+            # if not config['ddpm_predict_noise']:
+            #     target=noisy_actions
+
+            # # loss=torch.nn.functional.mse_loss(model_output.reshape(target.shape[0],target.shape[1],-1), target.reshape(target.shape[0],target.shape[1],-1))
+            # # TODO 2 cols and 1 trans from target
 
 
-            if isinstance(model_output,dict):
-                ori=model_output['ori']
-                pos=model_output['pos']
-                gripper=model_output['gripper']
+            # if isinstance(model_output,dict):
+            #     ori=model_output['ori']
+            #     pos=model_output['pos']
+            #     gripper=model_output['gripper']
 
-                model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
+            #     model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
 
-            loss = nn.functional.mse_loss(model_output,target)
-            reconstructed_ori=model_output[...,0:6].reshape(-1,6)
-            reconstructed_pos=model_output[...,6:9].reshape(-1,3)
-            reconstructed_model_output=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
+            # loss = nn.functional.mse_loss(model_output,target)
+            # reconstructed_ori=model_output[...,0:6].reshape(-1,6)
+            # reconstructed_pos=model_output[...,6:9].reshape(-1,3)
+            # reconstructed_model_output=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
 
-            reconstructed_ori=target[...,0:6].reshape(-1,6)
-            reconstructed_pos=target[...,6:9].reshape(-1,3)
-            reconstructed_target=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
-            _, dist_r, dist_t,dist_g = compute_loss(reconstructed_model_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4))  
-            if dist_g is not None:
-                loss=loss+dist_g
+            # reconstructed_ori=target[...,0:6].reshape(-1,6)
+            # reconstructed_pos=target[...,6:9].reshape(-1,3)
+            # reconstructed_target=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
+            # _, dist_r, dist_t,dist_g = compute_loss(reconstructed_model_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4))  
+            # if dist_g is not None:
+            #     loss=loss+dist_g
         else:
             if return_raw:
-                output_ori=model_output[...,0:6].reshape(-1,6)
-                output_pos=model_output[...,6:9].reshape(-1,3)
-                action=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
-                output_gripper_action=model_output[...,9:10]
-                gt_gripper_action=gripper_action
+                output_ori=unet_output[...,0:6].reshape(-1,6)
+                output_pos=unet_output[...,6:9].reshape(-1,3)
+                final_action=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
+                output_gripper_action=unet_output[...,9:10]
             # Options
             if config['diffusion_option']==0:
                 # 0: the default, predict the gt H0
                 # see algorithm 1, but no more naction @torch.inverse(noisy_actions)
-                loss, dist_r, dist_t, dist_g = compute_loss(action.reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action)  
+                loss, dist_r, dist_t, dist_g = compute_loss(final_action.reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action)  
             elif config['diffusion_option']==1:
                 # 1: predict relative transformation from Ht to H0
-                loss, dist_r, dist_t, dist_g = compute_loss(torch.einsum('bhij,bhjk->bhjk',action,noisy_actions).reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action)  
-            elif config['diffusion_option']==2:
-                # 2: no diffusion, no denoising
-                loss, dist_r, dist_t, dist_g = compute_loss(action.reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action)  
+                loss, dist_r, dist_t, dist_g = compute_loss(torch.einsum('bhij,bhjk->bhjk',final_action,noisy_actions).reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action)  
             else:
                 raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 
@@ -629,11 +669,10 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     optimizer.zero_grad()
     lr_scheduler.step()
     loss_cpu = loss.item()
-    # if not config['use_ddpm']:
     wandb.log({"dist_R": dist_r},step=g_step)
     wandb.log({"dist_T": dist_t},step=g_step)
     if dist_g is not None:
-        wandb.log({"dist_T": dist_g},step=g_step)
+        wandb.log({"dist_G": dist_g},step=g_step)
     wandb.log({"loss_cpu": loss_cpu},step=g_step)
     wandb.log({'learning_rate': optimizer.param_groups[0]['lr']},step=g_step)
 

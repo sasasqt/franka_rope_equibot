@@ -173,6 +173,8 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
         tgt_nxyz = nbatch['pc'][:, :, :, 3:6].to(device)
         if not isVisualEval:
             naction = nbatch['action'].to(device) # [B,Ho,4by4]
+            gripper_action=naction[...,-1] # [B,Hp]
+            naction[...,-1]=1 # TODO BUG?
         neefpose = nbatch['eef_pos'].to(device)
         bz = nxyz.shape[0]
         ho = nxyz.shape[1]
@@ -213,7 +215,8 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
             return noisy_actions
 
 
-        pc= prepare_model_input1(nxyz, tgt_nxyz)
+        pc= prepare_model_input1(nxyz, tgt_nxyz,diff=config['diff'],pc_xyz_feat=config['pc_xyz_feat'])
+
         latent_pc=nets["pointcloud_encoder"](pc) # b,l,f (l:x*Hp; f:3x)
         num_point = config['pred_horizon']
     
@@ -337,16 +340,17 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                     
                     output_ori=model_output[...,0:6].reshape(-1,6)
                     output_pos=model_output[...,6:9].reshape(-1,3)
-                    model_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
+                    action=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
                 
-                    output_gripper_action=model_output[...,9:10]
+                    
+                output_gripper_action=model_output[...,9:10]
 
                 # TODO assert last 2 dim 4x4
 
                 # Options
                 if config['diffusion_option']==0:
                     # 0: the default, predict the gt H0
-                    reconstructed_H_0 = model_output
+                    reconstructed_H_0 = action
                     noisy_actions = noise_scheduler.denoise(
                         reconstructed_H_0=reconstructed_H_0,
                         timestep = k,
@@ -355,7 +359,7 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                     )                
                 elif config['diffusion_option']==1:
                     # 1: predict relative transformation from Ht to H0
-                    reconstructed_H_0 = torch.einsum('bhij,bhjk->bhjk',model_output,noisy_actions)
+                    reconstructed_H_0 = torch.einsum('bhij,bhjk->bhjk',action,noisy_actions)
                     noisy_actions = noise_scheduler.denoise(
                         reconstructed_H_0=reconstructed_H_0,
                         timestep = k,
@@ -364,16 +368,17 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                     )
                 elif config['diffusion_option']==2:
                     # 2: no diffusion, no denoising
-                    reconstructed_H_0=model_output
+                    reconstructed_H_0=action
                 elif config['diffusion_option']==3:
                     # no diffusion during inference
-                    noisy_actions=model_output
+                    noisy_actions=action
                     config['early_return']=True
                 else:
                     raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 
                 assert not torch.any(torch.isnan(model_output)), model_output
                 assert not torch.any(torch.isnan(noisy_actions)), noisy_actions
+                assert not torch.any(torch.isnan(action)), action
 
                 rot=noisy_actions.reshape(-1,4,4)[...,:3,:3]
                 tran=noisy_actions.reshape(-1,4,4)[...,:3,3]
@@ -384,7 +389,7 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
                 assert not torch.any(torch.isnan(tran)), tran
 
                 if not isVisualEval:
-                    loss, dist_R, dist_T = compute_loss(reconstructed_H_0.reshape(-1,4,4), naction.reshape(-1,4,4))
+                    loss, dist_R, dist_T, dist_G = compute_loss(reconstructed_H_0.reshape(-1,4,4), naction.reshape(-1,4,4))
                     # print("loss: ", loss)
                     loss_cpu = loss.item()
                     # if test_equiv:
@@ -396,6 +401,9 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
 
                     wandb.log({"test_dist_R": dist_R},step=g_step)
                     wandb.log({"test_dist_T": dist_T},step=g_step)
+                    if dist_G is not None:
+                        wandb.log({"test_dist_G": dist_G},step=g_step)
+
                     wandb.log({"test_loss_cpu": loss_cpu},step=g_step)
                     # if test_equiv:
                     #     wandb.log({"test_dist_R_eq": dist_equiv_r},step=g_step)
@@ -409,6 +417,8 @@ def test_batch(nets, noise_scheduler, nbatch, device,config,isVisualEval=False):
 
             if isVisualEval:
                 actions=noisy_actions
+                # TODO BUG?
+                noisy_actions[...,3,3]=output_gripper_action
                 return actions
             else:
                 return loss_cpu

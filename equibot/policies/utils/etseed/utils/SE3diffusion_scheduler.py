@@ -68,7 +68,6 @@ class DiffusionScheduler(torch.nn.Module):
             self.gamma1[t] = (1. - alpha_prod_t_prev) * torch.sqrt(alpha_prod_t) / (1. - alpha_prod_t)
             self.gamma2[t] = (1. - alpha_prod_t_prev) * self.betas[t] / (1. - alpha_prod_t)
 
-
     def set_timesteps(self,num_steps):
         self.num_steps = num_steps
     
@@ -99,7 +98,8 @@ class DiffusionScheduler(torch.nn.Module):
         
         # perturbation + interpolation, see eq 34
         noisy_interpolated_H_t = H_pure_noise @ H_t #  [B,Ho,4,4]
-            
+        
+
         return noisy_interpolated_H_t, H_pure_noise
     
     

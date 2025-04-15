@@ -14,3 +14,13 @@ x=torch.tensor(        [[-2.9545e-02, -6.2394e-01, -7.8091e-01, -5.6330e-02],
 s=Se3.from_matrix(x)
 print(s)
 print(s.log())
+
+noisy_actions=torch.randn((2,3,4,4))
+ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
+selected_ori_actions = [noisy_actions[:, :, i, j] for i, j in ori_indices]
+trans_indices = [(0, 3), (1, 3), (2, 3)]
+selected_trans_actions = [noisy_actions[:, :, i, j] for i, j in trans_indices]
+noisy_ori_actions = torch.stack(selected_ori_actions, dim=-1) #.repeat_interleave(num_point,dim=1) # [B,Hp,6]
+noisy_trans_actions = torch.stack(selected_trans_actions, dim=-1)  #.repeat_interleave(num_point,dim=1) # [B,Hp,3]
+print(len(selected_ori_actions),selected_ori_actions[0].shape)
+print(noisy_ori_actions.shape,noisy_trans_actions.shape,)
