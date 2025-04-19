@@ -86,7 +86,7 @@ def main(cfg):
         batch_size=batch_size,
         num_workers=num_workers,
         shuffle=True,
-        drop_last=False, # was True
+        drop_last=True, # was True
         pin_memory=True,
     )
 
@@ -100,7 +100,7 @@ def main(cfg):
         batch_size=64,
         num_workers=num_workers,
         shuffle=True,
-        drop_last=False, # was True
+        drop_last=True, # was True
         pin_memory=True,
     )
 
@@ -114,7 +114,17 @@ def main(cfg):
     
     nets, optimizer, lr_scheduler = init_model_and_optimizer(device,config)
     if config['use_ddpm']:
-        raise NotImplementedError
+
+        from diffusers import DDPMScheduler
+        prediction_type='epsilon'
+        if not config['ddpm_predict_noise']:
+            prediction_type='sample'
+
+        noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"], beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
+        gripper_noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
+
+
+        # raise NotImplementedError
         # from diffusers import DDPMScheduler
         # prediction_type='epsilon'
         # if not config['ddpm_predict_noise']:
@@ -132,17 +142,17 @@ def main(cfg):
         gripper_noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
 
     if config['use_ddpm']:
-        raise NotImplementedError 
-        # _config={
-        #     "learning_rate": config["learning_rate"],
-        #     "pred_horizon": config["pred_horizon"],
-        #     "obs_horizon": config["obs_horizon"],
-        #     "batch_size": config["batch_size"],
-        #     "epochs": config["num_epochs"],
-        #     "diffusion_num_steps": config["diffusion_steps"],
-        #     "diffusion_mode": config["diffusion_mode"],
-        #     'dev': cfg.dev,
-        # }
+        # raise NotImplementedError 
+        _config={
+            "learning_rate": config["learning_rate"],
+            "pred_horizon": config["pred_horizon"],
+            "obs_horizon": config["obs_horizon"],
+            "batch_size": config["batch_size"],
+            "epochs": config["num_epochs"],
+            "diffusion_num_steps": config["diffusion_steps"],
+            "diffusion_mode": config["diffusion_mode"],
+            'dev': cfg.dev,
+        }
     else:
         _config={
             "learning_rate": config["learning_rate"],
@@ -531,9 +541,9 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         
 
     if config['use_ddpm']:
-        raise NotImplementedError
-        # # ddpm
-        # k = torch.randint(0, config["diffusion_steps"], (bz,), device=device)
+        # raise NotImplementedError
+        # ddpm
+        k = torch.randint(0, config["diffusion_steps"], (bz,), device=device)
 
     else:
         # Options
@@ -577,25 +587,31 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         #     model_output= nets['unet'](model_output, k, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
 
         if config['use_ddpm']:
-            raise NotImplementedError
-            # TODO
-            # # ddpm
-            # noise = torch.randn(naction.shape, device=device)
-            # noise[:, :,:3, :3]=noise[:, :,:3, :3]*config["sigma_r"]
-            # noise[:, :, :3, 3] = noise[:, :, :3, 3]*config["sigma_t"]
-            # noise[:, :, 3, :3]=0.0
-            # noise[:, :, 3, 3]=1.0
+            # raise NotImplementedError
+            # # TODO
+            # ddpm
+            noise = torch.randn(naction.shape, device=device)
+            noise[:, :,:3, :3]=noise[:, :,:3, :3]
+            noise[:, :, :3, 3] = noise[:, :, :3, 3]
+            noise[:, :, 3, :3]=0.0
+            noise[:, :, 3, 3]=1.0
 
-            # noisy_ori=noise[:, :,:3, :2].flatten(start_dim=-2)*config["sigma_r"]
-            # noisy_tran= noise[:, :, :3, 3]*config["sigma_t"]
+            noisy_ori=noise[:, :,:3, :2].flatten(start_dim=-2)
+            noisy_tran= noise[:, :, :3, 3]*config["sigma_t"]
             
-            # ori=naction[:, :,:3, :2].flatten(start_dim=-2)
-            # tran= naction[:, :, :3, 3]
+            ori=naction[:, :,:3, :2].flatten(start_dim=-2)
+            tran= naction[:, :, :3, 3]
 
-            # noise=torch.cat((noisy_ori,noisy_tran), dim=-1)
-            # naction=torch.cat((ori,tran), dim=-1)
+            noise=torch.cat((noisy_ori,noisy_tran), dim=-1)
+            naction=torch.cat((ori,tran), dim=-1)
         
-            # noisy_actions = noise_scheduler.add_noise(naction, noise, k)
+            noisy_actions = noise_scheduler.add_noise(naction, noise, k)
+
+            gripper_noise = torch.randn(gt_gripper_action.shape, device=device)
+            noisy_gripper = gripper_noise_scheduler.add_noise(gt_gripper_action, gripper_noise, k)
+
+            unet_input=torch.cat((noisy_actions,noisy_gripper),dim=-1) # [B,Hp,10]
+            unet_output= nets['unet'](unet_input, k, global_cond=model_output.reshape(model_output.shape[0],-1))
 
         else:
 
@@ -622,33 +638,33 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             unet_output= nets['unet'](unet_input, k, global_cond=model_output.reshape(model_output.shape[0],-1))
 
         if config['use_ddpm']:
-            raise NotImplementedError
-            # TODO
-            # # ddpm
-            # target=noise
-            # if not config['ddpm_predict_noise']:
-            #     target=noisy_actions
-
-            # # loss=torch.nn.functional.mse_loss(model_output.reshape(target.shape[0],target.shape[1],-1), target.reshape(target.shape[0],target.shape[1],-1))
+            # raise NotImplementedError
+            # # TODO
+            # ddpm
+            target=noise
+            if not config['ddpm_predict_noise']:
+                target=noisy_actions
+            target=torch.cat((target,gt_gripper_action),dim=-1)
+            # # loss=torch.nn.functional.mse_loss(unet_output.reshape(target.shape[0],target.shape[1],-1), target.reshape(target.shape[0],target.shape[1],-1))
             # # TODO 2 cols and 1 trans from target
 
 
-            # if isinstance(model_output,dict):
-            #     ori=model_output['ori']
-            #     pos=model_output['pos']
-            #     gripper=model_output['gripper']
+            # if isinstance(unet_output,dict):
+            #     ori=unet_output['ori']
+            #     pos=unet_output['pos']
+            #     gripper=unet_output['gripper']
 
-            #     model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
+            #     unet_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
 
-            # loss = nn.functional.mse_loss(model_output,target)
-            # reconstructed_ori=model_output[...,0:6].reshape(-1,6)
-            # reconstructed_pos=model_output[...,6:9].reshape(-1,3)
-            # reconstructed_model_output=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
-
-            # reconstructed_ori=target[...,0:6].reshape(-1,6)
-            # reconstructed_pos=target[...,6:9].reshape(-1,3)
-            # reconstructed_target=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
-            # _, dist_r, dist_t,dist_g = compute_loss(reconstructed_model_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4))  
+            loss = nn.functional.mse_loss(unet_output,target)
+            reconstructed_ori=unet_output[...,0:6].reshape(-1,6)
+            reconstructed_pos=unet_output[...,6:9].reshape(-1,3)
+            reconstructed_unet_output=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
+            reconstructed_gripper_action=unet_output[...,9:10]
+            reconstructed_ori=target[...,0:6].reshape(-1,6)
+            reconstructed_pos=target[...,6:9].reshape(-1,3)
+            reconstructed_target=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
+            _, dist_r, dist_t,dist_g = compute_loss(reconstructed_unet_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4),reconstructed_gripper_action,gt_gripper_action)  
             # if dist_g is not None:
             #     loss=loss+dist_g
         else:
