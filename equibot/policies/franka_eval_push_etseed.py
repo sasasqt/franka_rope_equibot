@@ -103,12 +103,15 @@ def main(cfg):
         'no_noise':cfg.dev.no_noise,
         'low_memory':cfg.dev.low_memory,
         'se3':cfg.dev.se3,
-        'unet':cfg.dev.unet,
+        'unet':True,
         'unet_film':cfg.dev.unet_film,
         'Ho_in_B':cfg.dev.Ho_in_B,
+        'diff': cfg.dev.diff,
         'bugfix':cfg.dev.bugfix,
         'sanity_check': cfg.dev.sanity_check,
         'testing': cfg.dev.testing,
+        'pc_xyz_feat': cfg.dev.pc_xyz_feat,
+        'eef_xyz_feat': cfg.dev.eef_xyz_feat,
         'arch':cfg.dev.arch,
         "cfg":cfg
     }
@@ -127,18 +130,27 @@ def main(cfg):
         raise NotImplementedError
     nets = init_model(device,config)
 
-    if config['use_ddpm']:
-        from diffusers import DDPMScheduler
-        prediction_type='epsilon'
-        if not config['ddpm_predict_noise']:
-            prediction_type='sample'
-        noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
-    else:
-        noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
+    # if config['use_ddpm']:
+    #     from diffusers import DDPMScheduler
+    #     prediction_type='epsilon'
+    #     if not config['ddpm_predict_noise']:
+    #         prediction_type='sample'
+    #     noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
+    # else:
+    #     noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
+
+    noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
+
+    from diffusers import DDPMScheduler
+    prediction_type='epsilon'
+    if not config['ddpm_predict_noise']:
+        prediction_type='sample'
+    gripper_noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
+
 
     config['nets']=nets
     config['noise_scheduler']=noise_scheduler
-    
+    config['gripper_noise_scheduler']=gripper_noise_scheduler
 
     # IsaacUIUtils.setUp()
     # from viztracer import VizTracer

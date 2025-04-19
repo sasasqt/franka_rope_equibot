@@ -40,12 +40,12 @@ def main(cfg):
         "eps": cfg.eps,
         "sigma_r":cfg.sigma_r,
         "sigma_t": cfg.sigma_t,
-        "equiv_frac": cfg.equiv_frac,
+        #"equiv_frac": cfg.equiv_frac,
         "save_freq": cfg.save_freq,
         "diffusion_steps": cfg.diffusion_steps,
         "diffusion_mode": cfg.diffusion_mode,
         'use_ddpm': cfg.dev.use_ddpm,
-        'k_option':3,
+        #'k_option':3,
         'diffusion_option':cfg.dev.diffusion_option,
         'sh_basis_compute_gradients':cfg.dev.sh_basis_compute_gradients,
         'rot_aggregation':cfg.dev.rot_aggregation,
@@ -61,7 +61,6 @@ def main(cfg):
         'bugfix':cfg.dev.bugfix,
         'sanity_check': cfg.dev.sanity_check,
         'testing': cfg.dev.testing,
-        # new
         'pc_xyz_feat': cfg.dev.pc_xyz_feat,
         'eef_xyz_feat': cfg.dev.eef_xyz_feat,
     }
@@ -194,7 +193,7 @@ def main(cfg):
 
 
 # Initialize the model and optimizer
-def init_model_and_optimizer(device,config):
+def init_model_and_optimizer(device,config,isNotTrain=False):
     import torch
     print(torch.cuda.is_available())
     print(torch.cuda.device_count())
@@ -210,7 +209,7 @@ def init_model_and_optimizer(device,config):
         # from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
         # action_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
     else:
-        raise NotImplementedError(f"k_option {config['se3']} not implemented")
+        raise NotImplementedError(f"se3 {config['se3']} not implemented")
     
     unet=None
     assert config['unet']==True,'unet needed for diffusion'
@@ -228,6 +227,12 @@ def init_model_and_optimizer(device,config):
         'equivariant_pred_net': action_pred_net,
         'unet': unet,
     }).to(device)
+
+    if isNotTrain:
+        checkpoint = torch.load(config["checkpoint_path"])
+        nets.load_state_dict(checkpoint['model_state_dict'])
+        nets.eval()
+        return nets,None,None
 
     optimizer = torch.optim.AdamW(
         params=nets.parameters(),
@@ -500,7 +505,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     nxyz = nbatch['pc'][:, :, :, :3].to(device) # [B,Ho,num_pts,3]
     tgt_nxyz = nbatch['pc'][:, :, :, 3:6].to(device)
     naction = nbatch['action'].to(device) # [B,Hp,4by4]
-    gt_gripper_action=naction[...,-1].unsqueeze(-1) # [B,Hp,1]
+    gt_gripper_action=naction[...,-1].unsqueeze(-1) # [B,Hp,1] # 0=close 1=open
     naction[...,-1]=1
     neefpose = nbatch['eef_pos'].to(device) # ([B, Ho, num_eef, pose gripper action etc])
     

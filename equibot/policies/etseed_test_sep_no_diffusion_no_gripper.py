@@ -141,9 +141,39 @@ def main(cfg):
 
 
 def init_model(device,config):
-    from equibot.policies.etseed_train_sep2 import init_model_and_optimizer
-    nets,_,_=init_model_and_optimizer(device,config,isNotTrain=True)
+    SE3VisionNet_Hierarchical_input_type_1_feat=2 if config['pc_xyz_feat'] else 1
+    pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=config['pred_horizon*obs_horizon'],output_type_1_feat=3,config=config)
+    if config['se3']==0:
+        noise_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1)
+    elif config['se3']==1:
+        from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
+        noise_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1)
+    else:
+        raise NotImplementedError(f"se3 {config['se3']} not implemented")
+    
+    unet=None
+    assert config['unet']==True,'unet needed for diffusion'
+    if  config['unet']:
+        from equibot.policies.utils.diffusion.conditional_unet1d import ConditionalUnet1D
+        unet = ConditionalUnet1D(
+            input_dim=10, #cat: ori, pos, gripper o/c
+            diffusion_step_embed_dim=config['pred_horizon']*10, # last two dim of action_pred_net
+            global_cond_dim=config['pred_horizon']*10,
+            cond_predict_scale=config['unet_film']
+        )
+
+    nets = nn.ModuleDict({
+        'pointcloud_encoder': pointcloud_encoder,
+        'equivariant_pred_net': noise_pred_net,
+        'unet': unet,
+    }).to(device)
+
+
+    checkpoint = torch.load(config["checkpoint_path"])
+    nets.load_state_dict(checkpoint['model_state_dict'])
+    nets.eval()
     return nets
+
 
 # test a single batch of data
 def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,config,isVisualEval=False):
@@ -301,9 +331,7 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
             # else:
             #     return loss_cpu
             
-        else:    
-            gripper_noise_scheduler.set_timesteps(num_inference_steps=config['diffusion_steps'],device=device)
-
+        else:               
             # predict action instead of noise might due to https://github.com/lucidrains/denoising-diffusion-pytorch/issues/58#issuecomment-2676085515
             # but why does the predicted action at denoise_idx=num_steps already good, if not the best action?
             for denoise_idx in range(config['diffusion_steps'] - 1, 0, -1):
@@ -334,8 +362,8 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                 action=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
                 
                     
-                output_gripper_action=unet_output[...,9:10]
-                noisy_gripper = gripper_noise_scheduler.step(output_gripper_action, denoise_idx, output_gripper_action).prev_sample      
+                output_gripper_action=model_output[...,9:10]
+                # TODO
 
                 # Options
                 if config['diffusion_option']==0:

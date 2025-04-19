@@ -390,8 +390,9 @@ class EvalUtils(ControlFlow):
 
         nets=cls.config['nets']
         noise_scheduler=cls.config['noise_scheduler']
+        gripper_noise_scheduler=cls.config['gripper_noise_scheduler']
 
-        cls.sample._pre_physics_callback=partial(cls._post_reset,nets,noise_scheduler,_onDone_async=cls._reset_async)
+        cls.sample._pre_physics_callback=partial(cls._post_reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
 
         cls._sample._on_logging_event(True)
         # await cls._sample._world.play_async()
@@ -479,13 +480,16 @@ class EvalUtils(ControlFlow):
         return capture_viewport_to_file(viewport, file_path=image1)
 
     @classmethod
-    def _post_reset(cls,nets, noise_scheduler,step_size=None,_onDone_async=None):
+    def _post_reset(cls,nets, noise_scheduler,gripper_noise_scheduler,step_size=None,_onDone_async=None):
         if cls.config['arch']==0:
             from equibot.policies.etseed_test import test_batch
         # elif config['arch']==1:
         #     pass
         elif cls.config['arch']==2:
             from equibot.policies.etseed_test_sep2 import test_batch
+        elif cls.config['arch']==3:
+            from equibot.policies.etseed_test_sep_no_diffusion_no_gripper import test_batch
+            
         else:
             raise NotImplementedError
         
@@ -789,7 +793,7 @@ class EvalUtils(ControlFlow):
             # id[:3, 3] = -1.0*torch.tensor([0.00001,0.00001,0.00001],dtype=torch.float32, device='cuda')*cls.count
             # ac = id[None, None, :, :].expand(1,pred_horizion,4,4)
 
-            ac = test_batch(nets=nets, noise_scheduler=noise_scheduler, nbatch=agent_obs, device=cls.device,config=cls.config,isVisualEval=True)
+            ac = test_batch(nets=nets, noise_scheduler=noise_scheduler,gripper_noise_scheduler=gripper_noise_scheduler, nbatch=agent_obs, device=cls.device,config=cls.config,isVisualEval=True)
             # print(ac.shape, "ac?") # b Ha 4 4
             # if eval(str(cls.cfg.manually_close).title()) is True:
             #     for i in range(len(ac)):
