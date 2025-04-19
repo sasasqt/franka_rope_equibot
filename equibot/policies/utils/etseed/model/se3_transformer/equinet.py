@@ -223,12 +223,26 @@ class SE3ManiNet_Invariant_Separate(ExtendedModule):
 
 
 class SE3ManiNet_Fused(ExtendedModule):
-    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None,no_tgt_nxyz=False,eef_abs_position_as_node=False,eef_xyz_feat=False):
+    def __init__(
+            self, 
+            voxelize=False,
+            k_neighbours=8,
+            pred_horizon=8,
+            config=None,
+            no_tgt_nxyz=False,
+            eef_abs_position_as_node=False,
+            eef_xyz_feat=False,
+            ):
         assert not config==None
         super().__init__()
         self.pred_horizon=pred_horizon
         self.config=config
 
+        num_degrees= config['num_degrees']
+        num_channels= config['num_channels']
+        num_heads= config['num_heads']
+        channels_div= config['channels_div']
+        
         type1_cnt=0
         if eef_abs_position_as_node:
             type1_cnt+=1
@@ -282,10 +296,10 @@ class SE3ManiNet_Fused(ExtendedModule):
                 "1": (1)*pred_horizon, # offset/translation (not unit direction)
             }),
             num_layers= 8,
-            num_degrees= 6,
-            num_channels= 16,
-            num_heads= 2,
-            channels_div= 2,
+            num_degrees= num_degrees,
+            num_channels= num_channels,
+            num_heads= num_heads,
+            channels_div= channels_div,
             voxelize = voxelize,
             k_neighbours=k_neighbours,
             compute_gradients=config['sh_basis_compute_gradients'],
@@ -613,11 +627,15 @@ class SE3VisionNet_Hierarchical(ExtendedModule):
             num_layers= 2,
             num_degrees= 6,
             num_channels= 16,
-            num_heads= 2,
+            num_heads= 8,
             channels_div= 2,
             voxelize=False,
             config=None):
         super().__init__()
+        num_degrees= config['num_degrees']
+        num_channels= config['num_channels']
+        num_heads= config['num_heads']
+        channels_div= config['channels_div']
         self.config=config
         self.hierarchy_layers=hierarchy_layers
         self.output_type_1_feat=output_type_1_feat

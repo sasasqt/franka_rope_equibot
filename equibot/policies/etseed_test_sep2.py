@@ -55,6 +55,10 @@ def main(cfg):
         'arch':cfg.dev.arch,
         'pc_xyz_feat': cfg.dev.pc_xyz_feat,
         'eef_xyz_feat': cfg.dev.eef_xyz_feat,
+        'num_degrees':cfg.dev.num_degrees,
+        'num_channels':cfg.dev.num_channels,
+        'num_heads':cfg.dev.num_heads,
+        'channels_div':cfg.dev.channels_div,
     }
 
     assert config["mode"] == "eval"

@@ -43,9 +43,9 @@ dev:
   trans_aggregation: mean # mean/separate_mean/min/abs_min/max
   ddpm_predict_noise: True
   no_noise: False # only for se3 diffusion
-  low_memory: False
+  low_memory: True
   se3: 0 # 0=SE3ManiNet_Fused 1=SE3ManiNet_ori_pos_sep
-  unet: False
+  unet: True
   unet_film: False
   Ho_in_B: False
   diff: False
@@ -55,7 +55,12 @@ dev:
   sanity_check: 0 # 1: se3 pc enc + unet;
   pc_xyz_feat: False # use xyz position of pc explicitly as features
   eef_xyz_feat: False # use xyz position of end effector explicitly as features # only works w/ testing
-  
+  test_lr_scheduler: False
+  num_degrees: 6
+  num_channels: 16
+  num_heads: 2
+  channels_div: 2
+
 training:
   ckpt: null
 

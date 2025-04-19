@@ -55,6 +55,11 @@ def main(cfg):
         # new
         'pc_xyz_feat': cfg.dev.pc_xyz_feat,
         'eef_xyz_feat': cfg.dev.eef_xyz_feat,
+        'test_lr_scheduler':cfg.dev.test_lr_scheduler,
+        'num_degrees':cfg.dev.num_degrees,
+        'num_channels':cfg.dev.num_channels,
+        'num_heads':cfg.dev.num_heads,
+        'channels_div':cfg.dev.channels_div,
     }
 
 
@@ -153,7 +158,7 @@ def main(cfg):
 
 
 # Initialize the model and optimizer
-def init_model_and_optimizer(device,config):
+def init_model_and_optimizer(device,config,isNotTrain=False):
     import torch
     print(torch.cuda.is_available())
     print(torch.cuda.device_count())
@@ -183,6 +188,12 @@ def init_model_and_optimizer(device,config):
         'equivariant_pred_net': action_pred_net,
         'unet': unet,
     }).to(device)
+
+    if isNotTrain:
+        checkpoint = torch.load(config["checkpoint_path"])
+        nets.load_state_dict(checkpoint['model_state_dict'])
+        nets.eval()
+        return nets,None,None
 
     optimizer = torch.optim.AdamW(
         params=nets.parameters(),

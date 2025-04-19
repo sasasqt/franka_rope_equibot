@@ -63,6 +63,11 @@ def main(cfg):
         'testing': cfg.dev.testing,
         'pc_xyz_feat': cfg.dev.pc_xyz_feat,
         'eef_xyz_feat': cfg.dev.eef_xyz_feat,
+        'test_lr_scheduler':cfg.dev.test_lr_scheduler,
+        'num_degrees':cfg.dev.num_degrees,
+        'num_channels':cfg.dev.num_channels,
+        'num_heads':cfg.dev.num_heads,
+        'channels_div':cfg.dev.channels_div,
     }
 
 
@@ -91,9 +96,12 @@ def main(cfg):
     )
 
     config["num_training_steps"]=cfg.data.dataset.num_training_steps = (
-        1500 #max(1,2 * len(train_dataset) // (batch_size))
+        1500 #max(1,2 * len(train_dataset) // (batch_size)) # config["num_epochs"] * len(train_dataset)
     )
-
+    if config['test_lr_scheduler']:
+        config["num_training_steps"]=cfg.data.dataset.num_training_steps = (
+            config["num_epochs"] * len(train_dataset)
+        )
     valid_dataset = get_dataset(cfg, "train", valid=True)
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset,

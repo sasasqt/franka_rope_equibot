@@ -112,6 +112,10 @@ def main(cfg):
         'testing': cfg.dev.testing,
         'pc_xyz_feat': cfg.dev.pc_xyz_feat,
         'eef_xyz_feat': cfg.dev.eef_xyz_feat,
+        'num_degrees':cfg.dev.num_degrees,
+        'num_channels':cfg.dev.num_channels,
+        'num_heads':cfg.dev.num_heads,
+        'channels_div':cfg.dev.channels_div,
         'arch':cfg.dev.arch,
         "cfg":cfg
     }
@@ -126,6 +130,9 @@ def main(cfg):
     #     pass
     elif config['arch']==2:
         from equibot.policies.etseed_test_sep2 import init_model
+    elif config['arch']==3:
+        from equibot.policies.etseed_test_sep_no_diffusion_no_gripper import init_model
+        
     else:
         raise NotImplementedError
     nets = init_model(device,config)
