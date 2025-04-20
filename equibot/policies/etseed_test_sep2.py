@@ -48,6 +48,7 @@ def main(cfg):
         'se3':cfg.dev.se3,
         'unet':cfg.dev.unet,
         'unet_film':cfg.dev.unet_film,
+        'unet_equivariance': cfg.dev.unet_equivariance,
         'Ho_in_B':cfg.dev.Ho_in_B,
         'diff': cfg.dev.diff,
         'bugfix':cfg.dev.bugfix,

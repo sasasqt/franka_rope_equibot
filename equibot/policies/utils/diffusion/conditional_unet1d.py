@@ -221,7 +221,7 @@ class ConditionalUnet1D(nn.Module):
 
         final_conv = nn.Sequential(
             Conv1dBlock(start_dim, start_dim, kernel_size=kernel_size),
-            nn.Conv1d(start_dim, input_dim, 1,equivariance=equivariance),
+            nn.Conv1d(start_dim, input_dim, 1,bias=not equivariance),
         )
 
         self.diffusion_step_encoder = diffusion_step_encoder

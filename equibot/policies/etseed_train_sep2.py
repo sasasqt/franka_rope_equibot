@@ -620,7 +620,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             noise[:, :, 3, 3]=1.0
 
             noisy_ori=noise[:, :,:3, :2].flatten(start_dim=-2)
-            noisy_tran= noise[:, :, :3, 3]*config["sigma_t"]
+            noisy_tran= noise[:, :, :3, 3]
             
             ori=naction[:, :,:3, :2].flatten(start_dim=-2)
             tran= naction[:, :, :3, 3]
