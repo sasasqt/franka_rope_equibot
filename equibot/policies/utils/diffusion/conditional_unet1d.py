@@ -22,13 +22,14 @@ class ConditionalResidualBlock1D(nn.Module):
         kernel_size=3,
         n_groups=8,
         cond_predict_scale=False,
+        equivariance=False
     ):
         super().__init__()
-
+        self.equivariance=equivariance
         self.blocks = nn.ModuleList(
             [
-                Conv1dBlock(in_channels, out_channels, kernel_size, n_groups=n_groups),
-                Conv1dBlock(out_channels, out_channels, kernel_size, n_groups=n_groups),
+                Conv1dBlock(in_channels, out_channels, kernel_size, n_groups=n_groups,equivariance=equivariance),
+                Conv1dBlock(out_channels, out_channels, kernel_size, n_groups=n_groups,equivariance=equivariance),
             ]
         )
 
@@ -47,7 +48,7 @@ class ConditionalResidualBlock1D(nn.Module):
 
         # make sure dimensions compatible
         self.residual_conv = (
-            nn.Conv1d(in_channels, out_channels, 1)
+            nn.Conv1d(in_channels, out_channels, 1,bias=not equivariance)
             if in_channels != out_channels
             else nn.Identity()
         )
@@ -66,7 +67,10 @@ class ConditionalResidualBlock1D(nn.Module):
             embed = embed.reshape(embed.shape[0], 2, self.out_channels, 1)
             scale = embed[:, 0, ...]
             bias = embed[:, 1, ...]
-            out = scale * out + bias
+            if self.equivariance:
+                out = scale * out
+            else:
+                out = scale * out + bias
         else:
             out = out + embed
         out = self.blocks[1](out)
@@ -85,6 +89,7 @@ class ConditionalUnet1D(nn.Module):
         kernel_size=3,
         n_groups=8,
         cond_predict_scale=False,
+        equivariance=False
     ):
         super().__init__()
         all_dims = [input_dim] + list(down_dims)
@@ -117,6 +122,7 @@ class ConditionalUnet1D(nn.Module):
                         kernel_size=kernel_size,
                         n_groups=n_groups,
                         cond_predict_scale=cond_predict_scale,
+                        equivariance=equivariance
                     ),
                     # up encoder
                     ConditionalResidualBlock1D(
@@ -126,6 +132,7 @@ class ConditionalUnet1D(nn.Module):
                         kernel_size=kernel_size,
                         n_groups=n_groups,
                         cond_predict_scale=cond_predict_scale,
+                        equivariance=equivariance
                     ),
                 ]
             )
@@ -140,6 +147,7 @@ class ConditionalUnet1D(nn.Module):
                     kernel_size=kernel_size,
                     n_groups=n_groups,
                     cond_predict_scale=cond_predict_scale,
+                    equivariance=equivariance
                 ),
                 ConditionalResidualBlock1D(
                     mid_dim,
@@ -148,6 +156,7 @@ class ConditionalUnet1D(nn.Module):
                     kernel_size=kernel_size,
                     n_groups=n_groups,
                     cond_predict_scale=cond_predict_scale,
+                    equivariance=equivariance
                 ),
             ]
         )
@@ -165,6 +174,7 @@ class ConditionalUnet1D(nn.Module):
                             kernel_size=kernel_size,
                             n_groups=n_groups,
                             cond_predict_scale=cond_predict_scale,
+                            equivariance=equivariance
                         ),
                         ConditionalResidualBlock1D(
                             dim_out,
@@ -173,8 +183,9 @@ class ConditionalUnet1D(nn.Module):
                             kernel_size=kernel_size,
                             n_groups=n_groups,
                             cond_predict_scale=cond_predict_scale,
+                            equivariance=equivariance
                         ),
-                        Downsample1d(dim_out) if not is_last else nn.Identity(),
+                        Downsample1d(dim_out,equivariance=equivariance) if not is_last else nn.Identity(),
                     ]
                 )
             )
@@ -192,6 +203,7 @@ class ConditionalUnet1D(nn.Module):
                             kernel_size=kernel_size,
                             n_groups=n_groups,
                             cond_predict_scale=cond_predict_scale,
+                            equivariance=equivariance
                         ),
                         ConditionalResidualBlock1D(
                             dim_in,
@@ -200,15 +212,16 @@ class ConditionalUnet1D(nn.Module):
                             kernel_size=kernel_size,
                             n_groups=n_groups,
                             cond_predict_scale=cond_predict_scale,
+                            equivariance=equivariance
                         ),
-                        Upsample1d(dim_in) if not is_last else nn.Identity(),
+                        Upsample1d(dim_in,equivariance=equivariance) if not is_last else nn.Identity(),
                     ]
                 )
             )
 
         final_conv = nn.Sequential(
             Conv1dBlock(start_dim, start_dim, kernel_size=kernel_size),
-            nn.Conv1d(start_dim, input_dim, 1),
+            nn.Conv1d(start_dim, input_dim, 1,equivariance=equivariance),
         )
 
         self.diffusion_step_encoder = diffusion_step_encoder

@@ -29,9 +29,9 @@ sigma_r: 0.0015
 sigma_t: 0.001
 equiv_frac: 0.1
 save_freq: 3
+max_ckpts: 8
 diffusion_steps: 100
 diffusion_mode: squaredcos_cap_v2
-
 
 dev:
   use_ddpm: False
@@ -47,6 +47,7 @@ dev:
   se3: 0 # 0=SE3ManiNet_Fused 1=SE3ManiNet_ori_pos_sep
   unet: True
   unet_film: False
+  unet_equivariance: False
   Ho_in_B: False
   diff: False
   arch: 0 # 0: one se3 for pc enc + action prediction; 2: two sep. se3, potentially w/ unet

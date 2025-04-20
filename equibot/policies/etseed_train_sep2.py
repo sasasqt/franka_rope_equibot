@@ -17,6 +17,7 @@ import hydra
 import logging
 import omegaconf
 from equibot.policies.utils.misc import get_dataset
+import glob
 
 import kornia
 
@@ -42,6 +43,7 @@ def main(cfg):
         "sigma_t": cfg.sigma_t,
         #"equiv_frac": cfg.equiv_frac,
         "save_freq": cfg.save_freq,
+        "max_ckpts": cfg.max_ckpts,
         "diffusion_steps": cfg.diffusion_steps,
         "diffusion_mode": cfg.diffusion_mode,
         'use_ddpm': cfg.dev.use_ddpm,
@@ -56,6 +58,7 @@ def main(cfg):
         'se3':cfg.dev.se3,
         'unet':True,
         'unet_film':cfg.dev.unet_film,
+        'unet_equivariance': cfg.dev.unet_equivariance,
         'Ho_in_B':cfg.dev.Ho_in_B,
         'diff': cfg.dev.diff,
         'bugfix':cfg.dev.bugfix,
@@ -96,7 +99,8 @@ def main(cfg):
     )
 
     config["num_training_steps"]=cfg.data.dataset.num_training_steps = (
-        1500 #max(1,2 * len(train_dataset) // (batch_size)) # config["num_epochs"] * len(train_dataset)
+        1500*200//config['batch_size']
+        #1500 #max(1,2 * len(train_dataset) // (batch_size)) # config["num_epochs"] * len(train_dataset)
     )
     if config['test_lr_scheduler']:
         config["num_training_steps"]=cfg.data.dataset.num_training_steps = (
@@ -205,6 +209,16 @@ def main(cfg):
                     'loss': loss_cpu,
                     'lr_scheduler_state_dict': lr_scheduler.state_dict()
                 }, checkpoint_path)
+
+                ckpts = sorted(
+                    glob.glob(os.path.join(checkpoint_dir, 'ckpt*.pth')),
+                    key=os.path.getmtime
+                )
+
+                # Remove older checkpoints if exceeding max_ckpts
+                while len(ckpts) > config['max_ckpts']:
+                    os.remove(ckpts[0])
+                    ckpts.pop(0)
     print("Training Done!")
 
 
@@ -237,7 +251,8 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
             input_dim=10, #cat: ori, pos, gripper o/c
             diffusion_step_embed_dim=config['pred_horizon']*10, # last two dim of action_pred_net
             global_cond_dim=config['pred_horizon']*10,
-            cond_predict_scale=config['unet_film']
+            cond_predict_scale=config['unet_film'],
+            equivariance=config['unet_equivariance'],
         )
 
     nets = nn.ModuleDict({
@@ -262,7 +277,7 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
     lr_scheduler = get_scheduler(
         name='cosine',
         optimizer=optimizer,
-        num_warmup_steps=500,
+        num_warmup_steps=500*200//config['batch_size'],
         num_training_steps=config["num_training_steps"]
     )
     return nets, optimizer, lr_scheduler
