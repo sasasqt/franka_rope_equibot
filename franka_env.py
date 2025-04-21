@@ -23,7 +23,9 @@ nest_asyncio.apply()
 from omni.isaac.core.utils.extensions import enable_extension
 enable_extension("omni.isaac.examples")
 # from franka_pusht import IsaacUIUtils, VRUIUtils
-from franka_pick import IsaacUIUtils, VRUIUtils
+# from franka_pick import IsaacUIUtils, VRUIUtils
+from franka_square import IsaacUIUtils, VRUIUtils
+
 from omni.isaac.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
 
 
