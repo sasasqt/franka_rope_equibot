@@ -22,7 +22,8 @@ nest_asyncio.apply()
 
 from omni.isaac.core.utils.extensions import enable_extension
 enable_extension("omni.isaac.examples")
-from franka_pusht import IsaacUIUtils, VRUIUtils
+# from franka_pusht import IsaacUIUtils, VRUIUtils
+from franka_pick import IsaacUIUtils, VRUIUtils
 from omni.isaac.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
 
 
@@ -34,8 +35,8 @@ from glob import glob
 
 @hydra.main(config_path="equibot/policies/configs", config_name="franka_base")
 def main(cfg):
-    # IsaacUIUtils.setUp(cfg.franka_rope)
-    VRUIUtils.setUp()
+    IsaacUIUtils.setUp(cfg.franka_rope)
+    # VRUIUtils.setUp()
     while simulation_app.is_running():
         simulation_app.update()
     simulation_app.close()
