@@ -4,7 +4,7 @@ import os
 from math import sqrt
 import math
 import hydra
-
+import random
 # from isaacsim import SimulationApp
 
 # simulation_app = SimulationApp({"headless": True})
@@ -270,6 +270,11 @@ def main(cfg):
         with open(file, "r") as f:
             for line in f:
                 data.append(json.loads(line))
+        
+        degree = random.randint(0, 360)
+        random_rotation = R.from_euler('z', degree, degrees=True).as_matrix()
+        rotated_tgt_pc=np.array([random_rotation@vector for vector in tgt_pc])
+
         # to mimic saved npz with keys pc, rgb?, action, eef_pos
         for i, _fut in enumerate(data[0]["Isaac Sim Data"]):
             if not i % 3 == 0:
@@ -291,14 +296,16 @@ def main(cfg):
             # franka_joints = np.array(
             #     curr["Right"]["Right_joint_positions"]
             # )  # not exposed to the algorithm
-            right_target_world_pos = np.array(
+            right_target_world_pos = random_rotation@np.array(
                 curr["Right"]["Right_target_world_position"]
             )  # as-is
             right_target_world_rot = np.array(
                 curr["Right"]["Right_target_world_orientation"]
             )
-            t_pc = np.array(curr["T"]["pc"])  # as pc
+            right_target_world_rot=random_rotation@R.from_quat(right_target_world_rot,scalar_first=True).as_matrix()
 
+            t_pc = np.array(curr["T"]["pc"])  # as pc
+            rotated_t_pc=[random_rotation@vector for vector in t_pc]
             if (
                 curr["Right"]["applied_joint_positions"][-1] < 0.025
             ):  # 0/-0.3 is closed, ~0.05 is opened
@@ -307,16 +314,16 @@ def main(cfg):
                 gripper_action = 1
 
             # should be like (3460, 3)
-            pc = np.array(t_pc)
+            pc = np.array(rotated_t_pc)
 
             pc = np.concatenate(
-                (pc, tgt_pc), axis=1
+                (pc, rotated_tgt_pc), axis=1
             )  # [ 1.57756746e-01  9.57879238e-03  5.00003956e-02 -7.45579600e-04 -6.01215288e-04 -4.09781933e-07]
         
             # pc = np.concatenate((pc, np.full((pc.shape[0], 1), gripper_pose)), axis=1)
 
             delta_pos = (
-                np.array(fut["Right"]["Right_target_world_position"])
+                random_rotation@np.array(fut["Right"]["Right_target_world_position"])
                 - right_target_world_pos
             )
 
@@ -330,10 +337,19 @@ def main(cfg):
             # )
             # ori = q2rmat(delta_rot)
 
-            _q=fut["Right"]["Right_target_world_orientation"]
-            q1=R.from_quat(_q,scalar_first=True)
-            _q=curr["Right"]["Right_target_world_orientation"]
-            q2=R.from_quat(_q,scalar_first=True)
+            _q= np.array(
+                fut["Right"]["Right_target_world_orientation"]
+            )
+            q1=random_rotation@R.from_quat(_q,scalar_first=True).as_matrix()
+            q1=R.from_matrix(q1)
+            _q= np.array(
+                curr["Right"]["Right_target_world_orientation"]
+            )
+            q2=random_rotation@R.from_quat(_q,scalar_first=True).as_matrix()
+            q2=R.from_matrix(q2)
+
+            # _q=curr["Right"]["Right_target_world_orientation"]
+            # q2=R.from_quat(_q,scalar_first=True)
 
             delta_rot=(q1*(q2.inv())).as_matrix() # 3 by 3 rot orthogonal matrix
             ori=delta_rot
@@ -350,19 +366,20 @@ def main(cfg):
             _i = i // 3
             assert not (np.isnan(np.array(pc)).any())
             assert not (np.isnan(np.array(action)).any())
-            recalculated=delta_rot@(R.from_quat(curr["Right"]["Right_target_world_orientation"],scalar_first=True).as_matrix())
-            gt=(R.from_quat(fut["Right"]["Right_target_world_orientation"],scalar_first=True).as_matrix())
-            np.testing.assert_allclose(recalculated-gt, 0, atol=1e-7)
+            # recalculated=delta_rot@(R.from_quat(curr["Right"]["Right_target_world_orientation"],scalar_first=True).as_matrix())
+            # gt=(R.from_quat(fut["Right"]["Right_target_world_orientation"],scalar_first=True).as_matrix())
+            # np.testing.assert_allclose(recalculated-gt, 0, atol=1e-7)
 
-            tmp=delta_rot@(R.from_quat(right_target_world_rot,scalar_first=True).as_matrix())
-            recalculated=R.from_matrix(tmp).as_quat(scalar_first=True,canonical=False)
-            gt=np.array(fut["Right"]["Right_target_world_orientation"])
-            np.testing.assert_allclose(recalculated-gt, 0, atol=1e-7)
+            # tmp=delta_rot@(R.from_quat(right_target_world_rot,scalar_first=True).as_matrix())
+            # recalculated=R.from_matrix(tmp).as_quat(scalar_first=True,canonical=False)
+            # gt=np.array(fut["Right"]["Right_target_world_orientation"])
+            # np.testing.assert_allclose(recalculated-gt, 0, atol=1e-7)
 
-            recalculated=delta_pos+right_target_world_pos
-            gt=np.array(fut["Right"]["Right_target_world_position"])
-            np.testing.assert_allclose(recalculated-gt, 0, atol=1e-7)
-            ori=R.from_quat(right_target_world_rot,scalar_first=True).as_matrix()
+            # recalculated=delta_pos+right_target_world_pos
+            # gt=np.array(fut["Right"]["Right_target_world_position"])
+            # np.testing.assert_allclose(recalculated-gt, 0, atol=1e-7)
+            #ori=R.from_quat(right_target_world_rot,scalar_first=True).as_matrix()
+            ori=right_target_world_rot
             ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
             cols = [ori[i, j] for i, j in ori_indices]
             eef_pos = np.array((

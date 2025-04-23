@@ -12,4 +12,5 @@ ddpm scaling factor test(unet_film)?
 ~~abs xyz as feat for pc encoder~~
 diffusion steps: 30 10
 no noise diffusion?
-
+6 vs 5 no lr
+rot + trans augmentation!
