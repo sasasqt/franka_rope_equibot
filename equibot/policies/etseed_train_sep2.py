@@ -47,7 +47,7 @@ def main(cfg):
         "diffusion_steps": cfg.diffusion_steps,
         "diffusion_mode": cfg.diffusion_mode,
         'use_ddpm': cfg.dev.use_ddpm,
-        #'k_option':3,
+        'k_option':3,
         'diffusion_option':cfg.dev.diffusion_option,
         'sh_basis_compute_gradients':cfg.dev.sh_basis_compute_gradients,
         'rot_aggregation':cfg.dev.rot_aggregation,
@@ -71,6 +71,10 @@ def main(cfg):
         'num_channels':cfg.dev.num_channels,
         'num_heads':cfg.dev.num_heads,
         'channels_div':cfg.dev.channels_div,
+        'global_cond':cfg.dev.global_cond,
+        'local_cond':cfg.dev.local_cond,
+        
+        
     }
 
 
@@ -247,10 +251,37 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
     assert config['unet']==True,'unet needed for diffusion'
     if config['unet']:
         from equibot.policies.utils.diffusion.conditional_unet1d import ConditionalUnet1D
+        local_cond_dim=None
+        global_cond_dim=None
+        diffusion_step_embed_dim=None
+        
+        if config['local_cond']==0:
+            local_cond_dim=None
+        elif config['local_cond']==1:
+            # proposed actions as local
+            local_cond_dim=10 # last dim of action_pred_net
+        else:
+            raise NotImplementedError
+        
+        if config['global_cond']==0:
+            # proposed actions as global
+            global_cond_dim=config['pred_horizon']*10 # last two dim of action_pred_net
+            diffusion_step_embed_dim=global_cond_dim
+        elif config['global_cond']==1:
+            # latent pc as global
+            global_cond_dim=config['pred_horizon']*2*9 # last two dim of pointcloud encoder
+            diffusion_step_embed_dim=global_cond_dim
+        elif config['global_cond']==2:
+            global_cond_dim=None
+            diffusion_step_embed_dim=config['pred_horizon']*10
+        else: 
+            raise NotImplementedError
+        
         unet = ConditionalUnet1D(
             input_dim=10, #cat: ori, pos, gripper o/c
-            diffusion_step_embed_dim=config['pred_horizon']*10, # last two dim of action_pred_net
-            global_cond_dim=config['pred_horizon']*10,
+            diffusion_step_embed_dim=diffusion_step_embed_dim,
+            global_cond_dim=global_cond_dim,
+            local_cond_dim=local_cond_dim,
             cond_predict_scale=config['unet_film'],
             equivariance=config['unet_equivariance'],
         )
@@ -321,39 +352,39 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config):
     # noisy_trans_actions = torch.stack(selected_trans_actions, dim=-1)  #.repeat_interleave(num_point,dim=1) # [B,Hp,3]
     device='cuda'
 
-    # vectors = torch.tensor([[1.0, 1.0, 1.0]] * B,device=nxyz.device)  # Shape: (B, 3)
-    # angles = k.clone().detach()*torch.pi/(1+config['diffusion_steps']+config['pred_horizon'])
-    # angles=angles.to(nxyz.device)
-    # axes = vectors / torch.norm(vectors, dim=1, keepdim=True)  # Shape: (batch_size, 3)
+    vectors = torch.tensor([[1.0, 1.0, 1.0]] * B,device=nxyz.device)  # Shape: (B, 3)
+    angles = k.clone().detach()*torch.pi/(1+config['diffusion_steps']+config['pred_horizon'])
+    angles=angles.to(nxyz.device)
+    axes = vectors / torch.norm(vectors, dim=1, keepdim=True)  # Shape: (batch_size, 3)
 
-    # # Rodrigues' formula
-    # K = torch.zeros(B, 3, 3,device=nxyz.device)
-    # K[:, 0, 1] = -axes[:, 2]
-    # K[:, 0, 2] = axes[:, 1]
-    # K[:, 1, 0] = axes[:, 2]
-    # K[:, 1, 2] = -axes[:, 0]
-    # K[:, 2, 0] = -axes[:, 1]
-    # K[:, 2, 1] = axes[:, 0]
+    # Rodrigues' formula
+    K = torch.zeros(B, 3, 3,device=nxyz.device)
+    K[:, 0, 1] = -axes[:, 2]
+    K[:, 0, 2] = axes[:, 1]
+    K[:, 1, 0] = axes[:, 2]
+    K[:, 1, 2] = -axes[:, 0]
+    K[:, 2, 0] = -axes[:, 1]
+    K[:, 2, 1] = axes[:, 0]
 
-    # I = torch.eye(3,device=nxyz.device).unsqueeze(0).repeat(B, 1, 1)
-    # angles = angles.unsqueeze(-1).unsqueeze(-1)
+    I = torch.eye(3,device=nxyz.device).unsqueeze(0).repeat(B, 1, 1)
+    angles = angles.unsqueeze(-1).unsqueeze(-1)
 
-    # # Compute rotation matrices
-    # rotation_matrices = I + torch.sin(angles) * K + (1 - torch.cos(angles)) * torch.bmm(K, K)
-    # k1=rotation_matrices[:, :, 0] # [B,3] first col
-    # k2=rotation_matrices[:, :, 1] # [B,3] second col
-    # k1=k1.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
-    # k2=k2.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
+    # Compute rotation matrices
+    rotation_matrices = I + torch.sin(angles) * K + (1 - torch.cos(angles)) * torch.bmm(K, K)
+    k1=rotation_matrices[:, :, 0] # [B,3] first col
+    k2=rotation_matrices[:, :, 1] # [B,3] second col
+    k1=k1.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
+    k2=k2.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
 
-    # k1=k1.to(device)
-    # k2=k2.to(device)
+    k1=k1.to(device)
+    k2=k2.to(device)
 
-    # tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
+    tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
 
     if config['Ho_in_B']:
         nxyz=nxyz.reshape(B*Ho_num_point,-1).unsqueeze(1)
         neefpose=neefpose.reshape(B*Ho_num_point,-1).unsqueeze(1)
-        # tensor_k=tensor_k.reshape(B*Ho_num_point,-1).unsqueeze(1)
+        tensor_k=tensor_k.reshape(B*Ho_num_point,-1).unsqueeze(1)
         k1=k1.reshape(B*Ho_num_point,-1).unsqueeze(1)
         k2=k2.reshape(B*Ho_num_point,-1).unsqueeze(1)
 
@@ -386,8 +417,16 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config):
 
     # ref_output=torch.cat((noisy_ori_actions,noisy_trans_actions), dim=-1)
 
-    feature = torch.cat((gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
-
+    if config['k_option']==1:
+            # # 1 diffusion steps as type 0 rotation
+            # num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+            feature = torch.cat((k1,k2,gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
+    elif config['k_option']==3:
+        # no k
+        feature = torch.cat((gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
+    else:
+        raise NotImplementedError
+    
     model_input = {
         'xyz': nxyz.to(device='cuda',dtype=torch.float32),
         'feature': feature.to(device='cuda',dtype=torch.float32)
@@ -400,6 +439,8 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config):
 
 # Prepare the input for the model
 def prepare_model_input3(nxyz,neefpose, k,num_point,config):
+    raise NotImplementedError
+
     B = nxyz.shape[0]
     Ho_num_point=nxyz.shape[1]
     # nxyz is the latent pc, [B,Ho*num_pts,type_1_feat*3]
@@ -634,7 +675,6 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             noisy_gripper = gripper_noise_scheduler.add_noise(gt_gripper_action, gripper_noise, k)
 
             unet_input=torch.cat((noisy_actions,noisy_gripper),dim=-1) # [B,Hp,10]
-            unet_output= nets['unet'](unet_input, k, global_cond=model_output.reshape(model_output.shape[0],-1))
 
         else:
 
@@ -658,7 +698,30 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             else:
                 raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
             
-            unet_output= nets['unet'](unet_input, k, global_cond=model_output.reshape(model_output.shape[0],-1))
+
+        local_cond=None
+        global_cond=None
+
+        if config['local_cond']==0:
+            local_cond=None
+        elif config['local_cond']==1:
+            # proposed actions as local
+            local_cond=model_output
+        else:
+            raise NotImplementedError
+        
+        if config['global_cond']==0:
+            # proposed actions as global
+            global_cond=model_output.reshape(model_output.shape[0],-1)
+        elif config['global_cond']==1:
+            # latent pc as global
+            global_cond=latent_pc.reshape(latent_pc.shape[0],-1)
+        elif config['global_cond']==2:
+            global_cond=None
+        else:
+            raise NotImplementedError
+
+        unet_output= nets['unet'](unet_input, k, global_cond=global_cond,local_cond=local_cond)
 
         if config['use_ddpm']:
             # raise NotImplementedError

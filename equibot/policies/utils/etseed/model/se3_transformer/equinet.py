@@ -268,8 +268,16 @@ class SE3ManiNet_Fused(ExtendedModule):
         #     num_fib_in = [1,5-type1_cnt] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
         # else:
         #     raise NotImplementedError(f"k_option {config['k_option']} not implemented")
-        num_fib_in = [1,5-type1_cnt] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-
+        # num_fib_in = [1,5-type1_cnt] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+        if config['k_option']==1:
+            # 1 diffusion steps as type 0 rotation
+            num_fib_in = [7,5-type1_cnt] # 22 in total, 7 type0: k1,k2; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        elif config['k_option']==3:
+            # no k
+            num_fib_in = [1,5-type1_cnt] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+        else:
+            raise NotImplementedError(f"k_option {config['k_option']} not implemented")
+        
         # if no_tgt_nxyz:
         #     if config['k_option']==0:
         #         # 0 diffusion steps as type 0 scalar

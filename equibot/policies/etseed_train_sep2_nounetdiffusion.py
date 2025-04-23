@@ -47,7 +47,7 @@ def main(cfg):
         "diffusion_steps": cfg.diffusion_steps,
         "diffusion_mode": cfg.diffusion_mode,
         'use_ddpm': cfg.dev.use_ddpm,
-        #'k_option':3,
+        'k_option':3,
         'diffusion_option':cfg.dev.diffusion_option,
         'sh_basis_compute_gradients':cfg.dev.sh_basis_compute_gradients,
         'rot_aggregation':cfg.dev.rot_aggregation,
@@ -574,7 +574,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     gripper=model_output['gripper']
     model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
 
-    final_action=process_action(ori, pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
+    final_action=process_action(ori.reshape(-1,6), pos.reshape(-1,3),follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
     output_gripper_action=model_output[...,9:10]
 
     loss, dist_r, dist_t, dist_g = compute_loss(final_action.reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action)  
