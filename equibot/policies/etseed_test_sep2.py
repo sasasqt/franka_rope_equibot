@@ -60,6 +60,8 @@ def main(cfg):
         'num_channels':cfg.dev.num_channels,
         'num_heads':cfg.dev.num_heads,
         'channels_div':cfg.dev.channels_div,
+        'global_cond':cfg.dev.global_cond,
+        'local_cond':cfg.dev.local_cond,
     }
 
     assert config["mode"] == "eval"
@@ -329,8 +331,30 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                     unet_input=torch.cat((noisy_ori_actions,noisy_trans_actions,noisy_gripper),dim=-1) # [B,Hp,10]
                 else:
                     raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
-                                
-                unet_output= nets['unet'](unet_input, k, global_cond=model_output.reshape(model_output.shape[0],-1))
+                    
+                local_cond=None
+                global_cond=None
+
+                if config['local_cond']==0:
+                    local_cond=None
+                elif config['local_cond']==1:
+                    # proposed actions as local
+                    local_cond=model_output
+                else:
+                    raise NotImplementedError
+                
+                if config['global_cond']==0:
+                    # proposed actions as global
+                    global_cond=model_output.reshape(model_output.shape[0],-1)
+                elif config['global_cond']==1:
+                    # latent pc as global
+                    global_cond=latent_pc.reshape(latent_pc.shape[0],-1)
+                elif config['global_cond']==2:
+                    global_cond=None
+                else:
+                    raise NotImplementedError
+         
+                unet_output= nets['unet'](unet_input, k, global_cond=global_cond,local_cond=local_cond)
 
 
 
@@ -414,7 +438,7 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
             if isVisualEval:
                 actions=noisy_actions
                 # TODO BUG?
-                noisy_actions[...,3,3]=output_gripper_action.squeeze(-1)
+                actions[...,3,3]=output_gripper_action.squeeze(-1)
                 return actions
             else:
                 return loss_cpu

@@ -99,7 +99,7 @@ def main(cfg):
     )
 
     config["num_training_steps"]=cfg.data.dataset.num_training_steps = (
-        1500*200//config['batch_size']
+        1000*200//config['batch_size']
         #1500 #max(1,2 * len(train_dataset) // (batch_size)) # config["num_epochs"] * len(train_dataset)
     )
     if config['test_lr_scheduler']:
@@ -237,7 +237,7 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
     if config['se3']==0:
         action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
     elif config['se3']==1:
-        raise NotImplementedError
+        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'],fused=False)
         # from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
         # action_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
     else:

@@ -117,6 +117,8 @@ def main(cfg):
         'num_channels':cfg.dev.num_channels,
         'num_heads':cfg.dev.num_heads,
         'channels_div':cfg.dev.channels_div,
+        'global_cond':cfg.dev.global_cond,
+        'local_cond':cfg.dev.local_cond,
         'arch':cfg.dev.arch,
         "cfg":cfg
     }
@@ -133,9 +135,12 @@ def main(cfg):
         from equibot.policies.etseed_test_sep2 import init_model
     elif config['arch']==3:
         from equibot.policies.etseed_test_sep_no_diffusion_no_gripper import init_model
-        
+    elif config['arch']==4:
+        from equibot.policies.etseed_test_sep2_nounetdiffusion import init_model
+        config['unet']=False
     else:
         raise NotImplementedError
+
     nets = init_model(device,config)
 
     # if config['use_ddpm']:

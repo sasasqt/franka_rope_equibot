@@ -47,7 +47,7 @@ def main(cfg):
         "diffusion_steps": cfg.diffusion_steps,
         "diffusion_mode": cfg.diffusion_mode,
         'use_ddpm': cfg.dev.use_ddpm,
-        'k_option':3,
+        'k_option':cfg.dev.k_option,
         'diffusion_option':cfg.dev.diffusion_option,
         'sh_basis_compute_gradients':cfg.dev.sh_basis_compute_gradients,
         'rot_aggregation':cfg.dev.rot_aggregation,
@@ -103,7 +103,7 @@ def main(cfg):
     )
 
     config["num_training_steps"]=cfg.data.dataset.num_training_steps = (
-        1500*200//config['batch_size']
+        1000*200//config['batch_size']
         #1500 #max(1,2 * len(train_dataset) // (batch_size)) # config["num_epochs"] * len(train_dataset)
     )
     if config['test_lr_scheduler']:
@@ -268,7 +268,7 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
             global_cond_dim=config['pred_horizon']*10 # last two dim of action_pred_net
             diffusion_step_embed_dim=global_cond_dim
         elif config['global_cond']==1:
-            # latent pc as global
+            # latent pc as global   
             global_cond_dim=config['pred_horizon']*2*9 # last two dim of pointcloud encoder
             diffusion_step_embed_dim=global_cond_dim
         elif config['global_cond']==2:
