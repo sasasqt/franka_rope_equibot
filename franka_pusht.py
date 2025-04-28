@@ -139,6 +139,7 @@ class FrankaRope(BaseSample):
 
 
         self._vbar = DynamicCuboid(
+            name='vbar',
             prim_path=vbar_str,
             position=[0.0,0.0,0.01],
             color=np.array([1.0, 0.0, 0.0]),
@@ -146,12 +147,22 @@ class FrankaRope(BaseSample):
         )
 
         self._hbar = DynamicCuboid(
+            name='hbar',
             prim_path=hbar_str,
             position=[0.1,0.0,0.01],
             color=np.array([1.0, 0.0, 0.0]),
             scale=[0.05,0.15,0.05]
         )
 
+        scene=self._world.scene
+
+        scene.add(
+            self._vbar
+        )
+        scene.add(
+            self._hbar
+        )
+        
 
     def _add_target_t_shape(self):
         from omni.isaac.core.objects import VisualCuboid
@@ -168,6 +179,7 @@ class FrankaRope(BaseSample):
                 )
 
         self._target_vbar = VisualCuboid(
+            name='tgt_vbar',
             prim_path=vbar_str,
             position=[0.0,0.0,0.01],
             color=np.array([1.0, 0.0, 0.0]),
@@ -175,18 +187,29 @@ class FrankaRope(BaseSample):
         )
 
         self._hbar = VisualCuboid(
+            name='tgt_hbar',
             prim_path=hbar_str,
             position=[0.1,0.0,0.01],
             color=np.array([1.0, 0.0, 0.0]),
             scale=[0.05,0.15,0.05]
         )
 
+        scene=self._world.scene
+
+        scene.add(
+            self._target_vbar
+        )
+        scene.add(
+            self._target_hbar
+        )
+        
+
         self._target_tshape_str="/World/Extras/TargetTShape"
         self._target_tshape_xform=_target_tshape_xform =stage.DefinePrim(self._target_tshape_str, 'Xform')
         usd_target_tshape_xform = UsdGeom.Xform(_target_tshape_xform)
-        # usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0.0,0]))
-        # usd_target_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
-        # usd_target_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
+        usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0.0,0]))
+        usd_target_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
+        usd_target_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
 
         if self.pusht_pos is None:
             usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0,0]))
@@ -227,6 +250,7 @@ class FrankaRope(BaseSample):
                 )
 
         self._target_vbar = DynamicCuboid(
+            name='tgt_vbar',
             prim_path=vbar_str,
             position=[0.0,0.0,0.01],
             color=np.array([0.0, 0.0, 0.5]),
@@ -234,10 +258,20 @@ class FrankaRope(BaseSample):
         )
 
         self._target_hbar = DynamicCuboid(
+            name='tgt_hbar',
             prim_path=hbar_str,
             position=[0.1,0.0,0.01],
             color=np.array([0.0, 0.0, 0.5]),
             scale=[0.05,0.15,0.05]
+        )
+
+        scene=self._world.scene
+
+        scene.add(
+            self._target_vbar
+        )
+        scene.add(
+            self._target_hbar
         )
 
         self._target_tshape_str="/World/Extras/TargetTShape"
