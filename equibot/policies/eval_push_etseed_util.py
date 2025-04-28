@@ -381,7 +381,6 @@ class EvalUtils(ControlFlow):
         noise_scheduler=cls.config['noise_scheduler']
         gripper_noise_scheduler=cls.config['gripper_noise_scheduler']
 
-        cls.sample._pre_physics_callback=partial(cls._post_reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
 
         cls._sample._on_logging_event(True)
         # await cls._sample._world.play_async()
@@ -409,9 +408,20 @@ class EvalUtils(ControlFlow):
         cls.make_sure_directory_existed(cls._output_folder)
         cls.clean_files_in_directory(cls._output_folder, ".png")
 
-        await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
+        await omni.kit.app.get_app().next_update_async()
+        # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
+        await omni.kit.app.get_app().next_update_async()
 
+        cls.sample._pre_physics_callback=partial(cls._reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
+        
+        await omni.kit.app.get_app().next_update_async()
+        # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
+        await omni.kit.app.get_app().next_update_async()
 
+        while cls.count<-1:
+            await asyncio.sleep(0.01)
+
+        cls.sample._pre_physics_callback=None
         if cls.cfg.translation is not None:
         # rotate world first after play(), otherwise the franka will compensate the rotation somehow in their code
         # rotate in simulation not in usd
@@ -422,6 +432,12 @@ class EvalUtils(ControlFlow):
 
         if cls.cfg.scale is not None:
             sample._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(cls.cfg.scale)))
+
+            await omni.kit.app.get_app().next_update_async()
+            # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
+            await omni.kit.app.get_app().next_update_async()
+
+        cls.sample._pre_physics_callback=partial(cls._post_reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
 
         # # see extscache\omni.kit.capture.viewport-1.5.1\omni\kit\capture\viewport\tests\test_capture_png.py
         # cls._capture_instance = CaptureExtension().get_instance()
@@ -481,6 +497,85 @@ class EvalUtils(ControlFlow):
             viewport = get_active_viewport()
 
         return capture_viewport_to_file(viewport, file_path=image1)
+
+
+
+
+    @classmethod
+    def _reset(cls,nets, noise_scheduler,gripper_noise_scheduler,step_size=None,_onDone_async=None):
+        if cls.config['arch']==0:
+            from equibot.policies.etseed_test import test_batch
+        # elif config['arch']==1:
+        #     pass
+        elif cls.config['arch']==2:
+            from equibot.policies.etseed_test_sep2 import test_batch
+        elif cls.config['arch']==3:
+            from equibot.policies.etseed_test_sep_no_diffusion_no_gripper import test_batch
+        elif cls.config['arch']==4:
+            from equibot.policies.etseed_test_sep2_nounetdiffusion import test_batch
+        else:
+            raise NotImplementedError
+        
+        print("---")
+        if step_size is None:
+            pass # return
+        if cls.done:
+            asyncio.ensure_future(_onDone_async(cls))
+            return
+        if cls.count >= -1:
+            return
+        
+        cls.count+=1
+
+        # if cls.count==0:
+        #     cls._capture_instance.start()
+        # # cls.capture(image_name=f"{cls.count}.png")
+        # if cls.count>=0 and cls.count<cls._end:
+        #     cls.viewport_capture(image_name=f"{cls._current_time}_{cls.count}.png", output_img_dir=cls._output_folder)
+
+        sample=cls.sample
+        world=cls.world
+        task=cls.task
+        scene=cls.scene
+        hbar=sample._hbar
+        vbar=sample._vbar
+        # rope=cls.rope
+        robot=cls.robot
+        robot_name=cls.robot_name
+        target_name=cls.target_name
+        obs_history = cls.obs_history
+
+
+        obs_horizon=cls.obs_horizon
+        ac_horizon=cls.ac_horizon
+        pred_horizion=cls.pred_horizon
+        reduce_horizon_dim=cls.reduce_horizon_dim
+
+        print(cls.count)
+        # ISSUE 1: need at least 2 dt to populate simulation physics when gripper is holding the rope
+        # ISSUE 2: during the initial alignment, the hand/gripper need to rotate to match the orientation of the taget cube
+        if cls.cfg.from_demo is not None and cls.count < 0 and cls.count>=-2:
+            data_frame = cls.data_logger.get_data_frame(data_frame_index=cls.start_time+1+cls.count)
+            for idx,_str in enumerate(["Left","Right"]):  
+                world.scene.get_object(target_name).set_world_pose(
+                    position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
+                    orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
+                )
+
+                world.scene.get_object('vbar').set_world_pose(
+                    position=np.array(data_frame.data["T"]["vbar_world_position"]),
+                    orientation=np.array(data_frame.data["T"]["vbar_world_orientation"]),
+                )
+                world.scene.get_object('hbar').set_world_pose(
+                    position=np.array(data_frame.data["T"]["hbar_world_position"]),
+                    orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
+                )
+
+                # rope.set_world_pose(
+                #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
+                #     orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
+                # )
+            return
 
     @classmethod
     def _post_reset(cls,nets, noise_scheduler,gripper_noise_scheduler,step_size=None,_onDone_async=None):
@@ -552,30 +647,30 @@ class EvalUtils(ControlFlow):
             cls.simulation_app.close()
 
         print(cls.count)
-        # ISSUE 1: need at least 2 dt to populate simulation physics when gripper is holding the rope
-        # ISSUE 2: during the initial alignment, the hand/gripper need to rotate to match the orientation of the taget cube
-        if cls.cfg.from_demo is not None and cls.count < 0 and cls.count>=-2:
-            data_frame = cls.data_logger.get_data_frame(data_frame_index=cls.start_time+1+cls.count)
-            for idx,_str in enumerate(["Left","Right"]):  
-                world.scene.get_object(target_name).set_world_pose(
-                    position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
-                    orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
-                )
+        # # ISSUE 1: need at least 2 dt to populate simulation physics when gripper is holding the rope
+        # # ISSUE 2: during the initial alignment, the hand/gripper need to rotate to match the orientation of the taget cube
+        # if cls.cfg.from_demo is not None and cls.count < 0 and cls.count>=-2:
+        #     data_frame = cls.data_logger.get_data_frame(data_frame_index=cls.start_time+1+cls.count)
+        #     for idx,_str in enumerate(["Left","Right"]):  
+        #         world.scene.get_object(target_name).set_world_pose(
+        #             position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
+        #             orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
+        #         )
 
-                world.scene.get_object('vbar').set_world_pose(
-                    position=np.array(data_frame.data["T"]["vbar_world_position"]),
-                    orientation=np.array(data_frame.data["T"]["vbar_world_orientation"]),
-                )
-                world.scene.get_object('hbar').set_world_pose(
-                    position=np.array(data_frame.data["T"]["hbar_world_position"]),
-                    orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
-                )
+        #         world.scene.get_object('vbar').set_world_pose(
+        #             position=np.array(data_frame.data["T"]["vbar_world_position"]),
+        #             orientation=np.array(data_frame.data["T"]["vbar_world_orientation"]),
+        #         )
+        #         world.scene.get_object('hbar').set_world_pose(
+        #             position=np.array(data_frame.data["T"]["hbar_world_position"]),
+        #             orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
+        #         )
 
-                # rope.set_world_pose(
-                #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
-                #     orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
-                # )
-            return
+        #         # rope.set_world_pose(
+        #         #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
+        #         #     orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
+        #         # )
+        #     return
 
         if cls.count < 0:
             return
