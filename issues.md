@@ -18,8 +18,14 @@ rot + trans augmentation!
 local cond? k in eef enc?
 
 
+action=4?
+diffusion steps=400?
+k=1 in eef net?
+separate?
+
+
 no unetdiffusion w/ se3 data
-no unetdiffusion w/ rotated_se3 data: se3: yes, but translation/offset is also affected by rel. rotation?! solution: **separate** ori pos net!?
+no unetdiffusion w/ rotated_se3 data: se3: yes, but translation/offset is also affected by rel. rotation?! solution: **separate** ori pos net!? **reduce** horizon? **horizion in batch**??
 
 sep2 w/ k=1 global_cond=1 local_cond=1: k was set to 3, **bad** result
 sep2 w/ k=1

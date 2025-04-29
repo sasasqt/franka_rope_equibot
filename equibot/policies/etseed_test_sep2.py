@@ -98,16 +98,14 @@ def main(cfg):
     
     nets = init_model(device,config)
 
-    # if config['use_ddpm']:
-    #     from diffusers import DDPMScheduler
-    #     prediction_type='epsilon'
-    #     if not config['ddpm_predict_noise']:
-    #         prediction_type='sample'
-    #     noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
-    # else:
-    #     noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
-
-    noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
+    if config['use_ddpm']:
+        from diffusers import DDPMScheduler
+        prediction_type='epsilon'
+        if not config['ddpm_predict_noise']:
+            prediction_type='sample'
+        noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
+    else:
+        noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
 
     from diffusers import DDPMScheduler
     prediction_type='epsilon'
@@ -181,27 +179,20 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
         k=torch.full((bz,), config['diffusion_steps'] - 1).long().to(device)
 
         if config['use_ddpm']:
-            raise NotImplementedError
-            # noise = torch.randn(H_Identity.shape, device=device)
-            # # noise[:, :,:3, :3]=noise[:, :,:3, :3]*config["sigma_r"]
-            # # noise[:, :, :3, 3] = noise[:, :, :3, 3]*config["sigma_t"]
-            # # noise[:, :, 3, :3]=0.0
-            # # noise[:, :, 3, 3]=1.0
-
-            # noisy_ori=noise[:, :,:3, :2].flatten(start_dim=-2)*config["sigma_r"]
-            # noisy_tran= noise[:, :, :3, 3]*config["sigma_t"]
-            # noise=torch.cat((noisy_ori,noisy_tran), dim=-1)
-
-            # # ori=H_Identity[:, :,:3, :2].flatten(start_dim=-2)
-            # # tran= H_Identity[:, :, :3, 3]
-            # # H_Identity=torch.cat((ori,tran), dim=-1)
+            noise = torch.randn(H_Identity.shape, device=device)
+            noise[:, :,:3, :3]=noise[:, :,:3, :3]
+            noise[:, :, :3, 3] = noise[:, :, :3, 3]
+            noise[:, :, 3, :3]=0.0
+            noise[:, :, 3, 3]=1.0
+            noisy_ori=noise[:, :,:3, :2].flatten(start_dim=-2)
+            noisy_tran= noise[:, :, :3, 3]
             
-            # noisy_actions=noise
-            # # noisy_actions = noise_scheduler.add_noise(H_Identity, noise, k)
+            noisy_actions=torch.cat((noisy_ori,noisy_tran),dim=-1)
         else:
             noisy_actions, noise=noise_scheduler.add_noise(H_Identity, k, device=device,no_noise=config['no_noise'])
-            gripper_noise = torch.randn((bz,hp,1), device=device)
-            noisy_gripper = gripper_noise # gripper_noise_scheduler.add_noise(gt_gripper_action, gripper_noise, k)
+        
+        gripper_noise = torch.randn((bz,hp,1), device=device)
+        noisy_gripper = gripper_noise # gripper_noise_scheduler.add_noise(gt_gripper_action, gripper_noise, k)
 
         if os.name == 'nt': # mock actions on windows 
             #actions=prepare_model_output(noisy_actions)
@@ -211,102 +202,116 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
         pc= prepare_model_input1(nxyz, tgt_nxyz,diff=config['diff'],pc_xyz_feat=config['pc_xyz_feat'])
         latent_pc=nets["pointcloud_encoder"](pc) # b,l,f (l:x*Hp; f:3x)
 
-        num_point = config['pred_horizon']
-        model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
-
-        if config['testing']==1:
-            model_input = prepare_model_input3(latent_pc,neefpose, k,num_point,config)
-
-        if config['Ho_in_B']:
-            num_point = config['pred_horizon*obs_horizon']
-
-        return_raw=True
-        model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=return_raw,Ho_in_B=config['Ho_in_B'])
-        ori=model_output['ori']
-        pos=model_output['pos']
-        gripper=model_output['gripper']
-        model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
                 
         if config['use_ddpm']:
-            raise NotImplementedError
-            # g_step+=1
             # # ddpm, the huggingface diffuser way
-            # noise_scheduler.set_timesteps(num_inference_steps=config['diffusion_steps'],device=device)
-            # for denoise_idx in noise_scheduler.timesteps: # shape [1]
+            noise_scheduler.set_timesteps(num_inference_steps=config['diffusion_steps'],device=device)
+            for denoise_idx in noise_scheduler.timesteps: # shape [1]
+                g_step+=1
 
-            #     model_input = prepare_model_input2(latent_pc, neefpose, denoise_idx.expand(bz), num_point,config)
-            #     if config['testing']==1:
-            #         model_input = prepare_model_input3(latent_pc,neefpose, denoise_idx.expand(bz),num_point,config)
+                if (denoise_idx.item() +1==config['diffusion_steps'] or not config['k_option']==3):
+                    k=torch.full((bz,), denoise_idx).long().to(device)
 
-            #     if config['Ho_in_B']:
-            #         num_point = config['pred_horizon*obs_horizon']
-            #     return_raw=True
-            #     # return_raw=False
-            #     # if config['use_ddpm'] or config['unet']:
-            #     #     return_raw=True
-            #     model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=return_raw,Ho_in_B=config['Ho_in_B'])
+                    num_point = config['pred_horizon']
+                    model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
 
-            #     ori=model_output['ori']
-            #     pos=model_output['pos']
-            #     gripper=model_output['gripper']
-            #     model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
-                
-            #     if config['unet']:
-            #         model_output= nets['unet'](model_output, denoise_idx, global_cond=latent_pc.reshape(latent_pc.shape[0],-1))
-            #         # output_ori=model_output[...,0:6].reshape(-1,6)
-            #         # output_pos=model_output[...,6:9].reshape(-1,3)
+                    if config['testing']==1:
+                        model_input = prepare_model_input3(latent_pc,neefpose, k,num_point,config)
+
+                    if config['Ho_in_B']:
+                        num_point = config['pred_horizon*obs_horizon']
+
+                    return_raw=True
+                    model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=return_raw,Ho_in_B=config['Ho_in_B'])
+                    ori=model_output['ori']
+                    pos=model_output['pos']
+                    gripper=model_output['gripper']
+                    model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
                     
-            #         # model_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
+                unet_input=torch.cat((noisy_actions,noisy_gripper),dim=-1) # [B,Hp,10]
 
-            #     # rot=model_outpudev.k_option=1 dev.unet=True dev.use_ddpm=True dev.low_memory=True dev.arch=2t.reshape(-1,4,4)[...,:3,:3]
-            #     # print(torch.det(rot),'MMMMMMMMMM')
-            #     # assert torch.all(torch.det(rot)>=0.0), rot # actually allclose 1.0
-
-
-            #     if not config['early_return']:
-            #         #noisy_actions = noise_scheduler.step(model_output.view(model_output.shape[0],model_output.shape[1],4,4), denoise_idx, noisy_actions).prev_sample      
-            #         noisy_actions = noise_scheduler.step(model_output, denoise_idx, noisy_actions).prev_sample      
-                
-            #     else:
-            #         #noisy_actions = noise_scheduler.step(model_output.view(model_output.shape[0],model_output.shape[1],4,4), denoise_idx, noisy_actions).pred_original_sample
-            #         noisy_actions = noise_scheduler.step(model_output, denoise_idx, noisy_actions).pred_original_sample
-
-
-            #     # rot=noisy_actions.reshape(-1,4,4)[...,:3,:3]
-            #     # print(torch.det(rot),'AAAAAAAAAAA')
-            #     #assert torch.all(torch.det(rot)>=0.0), rot
-
-            #     if not isVisualEval:
-            #         pred_original_sample=noise_scheduler.step(model_output, denoise_idx, noisy_actions).pred_original_sample
-            #         output_ori=pred_original_sample[...,0:6].reshape(-1,6)
-            #         output_pos=pred_original_sample[...,6:9].reshape(-1,3)
-            #         final_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(bz,-1,4,4)
                     
-            #         loss, dist_R, dist_T = compute_loss(final_output.view(-1,4,4), naction.view(-1,4,4))
+                local_cond=None
+                global_cond=None
 
-            #         loss_cpu = loss.item()
-
-            #         wandb.log({"test_dist_R": dist_R},step=g_step)
-            #         wandb.log({"test_dist_T": dist_T},step=g_step)
-            #         wandb.log({"test_loss_cpu": loss_cpu},step=g_step)
-
-            #     if config['early_return']:
-            #         break
-
-            # # output_ori=noisy_actions[...,0:6].reshape(-1,6)
-            # # output_pos=noisy_actions[...,6:9].reshape(-1,3)
-            # # final_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(bz,-1,4,4)
-
-            # assert not torch.any(torch.isnan(noisy_actions)), noisy_actions
-            # if isVisualEval:
-            #     output_ori=noisy_actions[...,0:6].reshape(-1,6)
-            #     output_pos=noisy_actions[...,6:9].reshape(-1,3)
-            #     final_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(bz,-1,4,4)
+                if config['local_cond']==0:
+                    local_cond=None
+                elif config['local_cond']==1:
+                    # proposed actions as local
+                    local_cond=model_output
+                else:
+                    raise NotImplementedError
                 
-            #     actions=final_output
-            #     return actions
-            # else:
-            #     return loss_cpu
+                if config['global_cond']==0:
+                    # proposed actions as global
+                    global_cond=model_output.reshape(model_output.shape[0],-1)
+                elif config['global_cond']==1:
+                    # latent pc as global
+                    global_cond=latent_pc.reshape(latent_pc.shape[0],-1)
+                elif config['global_cond']==2:
+                    global_cond=None
+                else:
+                    raise NotImplementedError
+                
+                unet_output= nets['unet'](unet_input, denoise_idx, global_cond=global_cond,local_cond=local_cond)
+
+                output_ori_pos=unet_output[...,0:9]
+                output_gripper_action=unet_output[...,9:10]
+
+
+                # rot=model_outpudev.k_option=1 dev.unet=True dev.use_ddpm=True dev.low_memory=True dev.arch=2t.reshape(-1,4,4)[...,:3,:3]
+                # print(torch.det(rot),'MMMMMMMMMM')
+                # assert torch.all(torch.det(rot)>=0.0), rot # actually allclose 1.0
+
+
+                if not config['early_return']:
+                    #noisy_actions = noise_scheduler.step(model_output.view(model_output.shape[0],model_output.shape[1],4,4), denoise_idx, noisy_actions).prev_sample      
+                    noisy_actions = noise_scheduler.step(output_ori_pos, denoise_idx, noisy_actions).prev_sample      
+                    noisy_gripper = gripper_noise_scheduler.step(output_gripper_action, denoise_idx, output_gripper_action).prev_sample      
+
+                else:
+                    #noisy_actions = noise_scheduler.step(model_output.view(model_output.shape[0],model_output.shape[1],4,4), denoise_idx, noisy_actions).pred_original_sample
+                    noisy_actions = noise_scheduler.step(output_ori_pos, denoise_idx, noisy_actions).pred_original_sample
+                    noisy_gripper = gripper_noise_scheduler.step(output_gripper_action, denoise_idx, output_gripper_action).pred_original_sample      
+
+
+                # rot=noisy_actions.reshape(-1,4,4)[...,:3,:3]
+                # print(torch.det(rot),'AAAAAAAAAAA')
+                #assert torch.all(torch.det(rot)>=0.0), rot
+
+                if not isVisualEval:
+                    pred_original_sample=noise_scheduler.step(model_output, denoise_idx, noisy_actions).pred_original_sample
+                    output_ori=pred_original_sample[...,0:6].reshape(-1,6)
+                    output_pos=pred_original_sample[...,6:9].reshape(-1,3)
+                    final_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(bz,-1,4,4)
+                    
+                    loss, dist_R, dist_T = compute_loss(final_output.view(-1,4,4), naction.view(-1,4,4))
+
+                    loss_cpu = loss.item()
+
+                    wandb.log({"test_dist_R": dist_R},step=g_step)
+                    wandb.log({"test_dist_T": dist_T},step=g_step)
+                    wandb.log({"test_loss_cpu": loss_cpu},step=g_step)
+
+                if config['early_return']:
+                    break
+
+            # output_ori=noisy_actions[...,0:6].reshape(-1,6)
+            # output_pos=noisy_actions[...,6:9].reshape(-1,3)
+            # final_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(bz,-1,4,4)
+
+            assert not torch.any(torch.isnan(noisy_actions)), noisy_actions
+            if isVisualEval:
+                output_ori=noisy_actions[...,0:6].reshape(-1,6)
+                output_pos=noisy_actions[...,6:9].reshape(-1,3)
+                final_output=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(bz,-1,4,4)
+                
+                actions=final_output
+                actions[...,3,3]=noisy_gripper.squeeze(-1)
+
+                return actions
+            else:
+                return loss_cpu
             
         else:    
             gripper_noise_scheduler.set_timesteps(num_inference_steps=config['diffusion_steps'],device=device)
@@ -316,22 +321,32 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
             for denoise_idx in range(config['diffusion_steps'] - 1, 0, -1):
                 g_step+=1
 
-                # Options
-                if config['diffusion_option']==0 or config['diffusion_option']==1 or config['diffusion_option']==3:
-                    # 0: the default, predict the gt H0
-                    # 1: predict relative transformation from Ht to H0
-                    k=torch.full((bz,), denoise_idx).long().to(device)
+                k=torch.full((bz,), denoise_idx).long().to(device)
 
-                    ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
-                    selected_ori_actions = [noisy_actions[:, :, i, j] for i, j in ori_indices]
-                    trans_indices = [(0, 3), (1, 3), (2, 3)]
-                    selected_trans_actions = [noisy_actions[:, :, i, j] for i, j in trans_indices]
-                    noisy_ori_actions = torch.stack(selected_ori_actions, dim=-1)
-                    noisy_trans_actions = torch.stack(selected_trans_actions, dim=-1)
-                    unet_input=torch.cat((noisy_ori_actions,noisy_trans_actions,noisy_gripper),dim=-1) # [B,Hp,10]
-                else:
-                    raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
-                    
+                num_point = config['pred_horizon']
+                model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
+
+                if config['testing']==1:
+                    model_input = prepare_model_input3(latent_pc,neefpose, k,num_point,config)
+
+                if config['Ho_in_B']:
+                    num_point = config['pred_horizon*obs_horizon']
+
+                return_raw=True
+                model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=return_raw,Ho_in_B=config['Ho_in_B'])
+                ori=model_output['ori']
+                pos=model_output['pos']
+                gripper=model_output['gripper']
+                model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
+                
+                ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
+                selected_ori_actions = [noisy_actions[:, :, i, j] for i, j in ori_indices]
+                trans_indices = [(0, 3), (1, 3), (2, 3)]
+                selected_trans_actions = [noisy_actions[:, :, i, j] for i, j in trans_indices]
+                noisy_ori_actions = torch.stack(selected_ori_actions, dim=-1)
+                noisy_trans_actions = torch.stack(selected_trans_actions, dim=-1)
+                unet_input=torch.cat((noisy_ori_actions,noisy_trans_actions,noisy_gripper),dim=-1)
+                
                 local_cond=None
                 global_cond=None
 
@@ -404,7 +419,6 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                 print(torch.det(rot),'RRRRRRRRRR')
                 print(tran,'TTTTTTTTTT')
 
-                print(noisy_actions.shape,output_gripper_action.shape,"??????")
                 assert torch.any(torch.det(rot)>=0.0), rot
                 assert not torch.any(torch.isnan(tran)), tran
 

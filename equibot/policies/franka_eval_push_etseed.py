@@ -133,6 +133,7 @@ def main(cfg):
     #     pass
     elif config['arch']==2:
         from equibot.policies.etseed_test_sep2 import init_model
+        # config['early_return']=False
     elif config['arch']==3:
         from equibot.policies.etseed_test_sep_no_diffusion_no_gripper import init_model
     elif config['arch']==4:
@@ -143,16 +144,14 @@ def main(cfg):
 
     nets = init_model(device,config)
 
-    # if config['use_ddpm']:
-    #     from diffusers import DDPMScheduler
-    #     prediction_type='epsilon'
-    #     if not config['ddpm_predict_noise']:
-    #         prediction_type='sample'
-    #     noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
-    # else:
-    #     noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
-
-    noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
+    if config['use_ddpm']:
+        from diffusers import DDPMScheduler
+        prediction_type='epsilon'
+        if not config['ddpm_predict_noise']:
+            prediction_type='sample'
+        noise_scheduler = DDPMScheduler(num_train_timesteps=config["diffusion_steps"],beta_schedule=config['diffusion_mode'],prediction_type=prediction_type)
+    else:
+        noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
 
     from diffusers import DDPMScheduler
     prediction_type='epsilon'
