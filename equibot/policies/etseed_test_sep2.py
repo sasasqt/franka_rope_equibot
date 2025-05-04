@@ -319,26 +319,31 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
             # predict action instead of noise might due to https://github.com/lucidrains/denoising-diffusion-pytorch/issues/58#issuecomment-2676085515
             # but why does the predicted action at denoise_idx=num_steps already good, if not the best action?
             for denoise_idx in range(config['diffusion_steps'] - 1, 0, -1):
+                print(denoise_idx)
                 g_step+=1
 
-                k=torch.full((bz,), denoise_idx).long().to(device)
+                if (denoise_idx +1==config['diffusion_steps'] or not config['k_option']==3):
+                # if (denoise_idx +1==config['diffusion_steps'] ):
 
-                num_point = config['pred_horizon']
-                model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
+                    k=torch.full((bz,), denoise_idx).long().to(device)
 
-                if config['testing']==1:
-                    model_input = prepare_model_input3(latent_pc,neefpose, k,num_point,config)
+                    num_point = config['pred_horizon']
+                    model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
 
-                if config['Ho_in_B']:
-                    num_point = config['pred_horizon*obs_horizon']
+                    if config['testing']==1:
+                        model_input = prepare_model_input3(latent_pc,neefpose, k,num_point,config)
 
-                return_raw=True
-                model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=return_raw,Ho_in_B=config['Ho_in_B'])
-                ori=model_output['ori']
-                pos=model_output['pos']
-                gripper=model_output['gripper']
-                model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
+                    if config['Ho_in_B']:
+                        num_point = config['pred_horizon*obs_horizon']
+
+                    return_raw=True
+                    model_output = nets["equivariant_pred_net"](model_input,num_point,return_raw=return_raw,Ho_in_B=config['Ho_in_B'])
+                    ori=model_output['ori']
+                    pos=model_output['pos']
+                    gripper=model_output['gripper']
+                    model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
                 
+
                 ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
                 selected_ori_actions = [noisy_actions[:, :, i, j] for i, j in ori_indices]
                 trans_indices = [(0, 3), (1, 3), (2, 3)]
@@ -416,9 +421,10 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
 
                 rot=noisy_actions.reshape(-1,4,4)[...,:3,:3]
                 tran=noisy_actions.reshape(-1,4,4)[...,:3,3]
-                print(torch.det(rot),'RRRRRRRRRR')
-                print(tran,'TTTTTTTTTT')
-
+                # print()
+                # print(torch.det(rot),'RRRRRRRRRR')
+                # print(tran,'TTTTTTTTTT')
+                # print(noisy_actions)
                 assert torch.any(torch.det(rot)>=0.0), rot
                 assert not torch.any(torch.isnan(tran)), tran
 

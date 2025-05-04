@@ -103,7 +103,7 @@ def main(cfg):
     )
 
     config["num_training_steps"]=cfg.data.dataset.num_training_steps = (
-        1000*200//config['batch_size']
+        1500*200//config['batch_size']
         #1500 #max(1,2 * len(train_dataset) // (batch_size)) # config["num_epochs"] * len(train_dataset)
     )
     if config['test_lr_scheduler']:

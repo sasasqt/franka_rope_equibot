@@ -93,9 +93,9 @@ class FrankaRope(BaseSample):
             prim_path=find_unique_string_name(
                     initial_name=f"/World/Extras/FixedCylinder", is_unique_fn=lambda x: not is_prim_path_valid(x)
                 ),
-            radius=0.01,
-            height=0.11,
-            position=[0.0,-0.05,0.01],
+            radius=0.02,
+            height=0.2,
+            position=[-0.1,-0.1,0.01],
             color=np.array([1.0, 0.0, 0.0])
         )
         # self.extra_prims["fixed_cylinder"]=prim
@@ -330,15 +330,26 @@ class FrankaRope(BaseSample):
 
         
 
-    def _add_sphere(self,pos,prim_path="/sphere"):
+    def _add_sphere(self,pos,xform="/Xform",name="sphere"):
+        scene=self._world.scene
+        if not scene.object_exists(xform):
+            stage=self._world.stage
+            self._sphere_xform=_sphere_xform=stage.DefinePrim(xform, 'Xform')
+            from omni.isaac.core.prims import XFormPrimView
+            prims = XFormPrimView(prim_paths_expr=xform,name=xform)
+            scene.add(prims)
+        
         from omni.isaac.core.objects import VisualSphere
         sphere=VisualSphere(
-            prim_path=prim_path,
+            prim_path=f'{xform}/{name}',
             position=pos,
             color=np.array([1.0, 0.0, 0.0]),
-            radius=0.01
+            radius=0.01,
+            name=f'{xform}/{name}'
         )
 
+        self._spheres.append(sphere)
+        scene.add(sphere)
 
 
 
@@ -359,11 +370,16 @@ class FrankaRope(BaseSample):
         prim = stage.DefinePrim(square_str)  
         prim.GetReferences().AddReference("/home/workstation/project/franka_rope_equibot/hollow_square_handle.usd")
 
+        _scale=0.6
         from omni.isaac.core.prims import XFormPrimView
-        prims = XFormPrimView(prim_paths_expr=f'{square_str}/hollow_square_handle',name=f'{square_str}/hollow_square_handle')
+        prims = XFormPrimView(prim_paths_expr=f'{square_str}/hollow_square_handle',name=f'{square_str}/hollow_square_handle',scales=[[_scale,_scale,_scale]])
         self._world.scene.add(prims)
         self._square=self._world.scene.get_object(f'{square_str}/hollow_square_handle')
 
+        from pxr import UsdPhysics
+        massAPI = UsdPhysics.MassAPI.Apply(stage.GetPrimAtPath(f'{square_str}/hollow_square_handle'))
+        massAPI.CreateMassAttr().Set(0.1) # will mass be auto derivated from createdensityattr? not sure ...
+        
         from pxr import Sdf
         import omni.kit.commands
 
@@ -381,28 +397,32 @@ class FrankaRope(BaseSample):
         # self._square_mesh=mesh
 
         mesh=[
-            [-0.075,-0.025,0.025],[-0.075,-0.025,-0.025],
-            #[0.075,-0.025,0.025],[0.075,-0.025,-0.025], # 
-            [0.075,0.025,0.025],[0.075,0.025,-0.025],
-            #[-0.075,0.025,0.025],[-0.075,0.025,-0.025], # 
+            [-0.075*_scale,-0.025*_scale,0.025*_scale],[-0.075*_scale,-0.025*_scale,-0.025*_scale], 
+            #[0.075*_scale,-0.025*_scale,0.025*_scale],[0.075*_scale,-0.025*_scale,-0.025*_scale], # 
+            [0.075*_scale,0.025*_scale,0.025*_scale],[0.075*_scale,0.025*_scale,-0.025*_scale]
+,            #[-0.075*_scale,0.025*_scale,0.025*_scale],[-0.075*_scale,0.025*_scale,-0.025*_scale], # 
 
-            [0.125,-0.025,0.025],[0.125,-0.025,-0.025],
-            #[0.125,0.125,0.025],[0.125,0.125,-0.025], # 
-            [0.075,0.125,0.025],[0.075,0.125,-0.025],
+            [0.125*_scale,-0.025*_scale,0.025*_scale],[0.125*_scale,-0.025*_scale,-0.025*_scale], 
+            #[0.125*_scale,0.125*_scale,0.025*_scale],[0.125*_scale,0.125*_scale,-0.025*_scale], # 
+            [0.075*_scale,0.125*_scale,0.025*_scale],[0.075*_scale,0.125*_scale,-0.025*_scale], 
 
-            [0.125,0.175,0.025],[0.125,0.175,-0.025],
-            [0.0,0.175,0.025],[0.0,0.175,-0.025],
-            [-0.025,0.125,0.025],[0.0,0.125,-0.025],
+            [0.125*_scale,0.175*_scale,0.025*_scale],[0.125*_scale,0.175*_scale,-0.025*_scale], 
+            [0.0*_scale,0.175*_scale,0.025*_scale],[0.0*_scale,0.175*_scale,-0.025*_scale], 
+            [-0.025*_scale,0.125*_scale,0.025*_scale],[0.0*_scale,0.125*_scale,-0.025*_scale], 
             
-            [-0.075,0.175,0.025],[-0.075,0.175,-0.025],
-            [-0.025,0.025,0.025],[-0.025,0.025,-0.025],
+            [-0.075*_scale,0.175*_scale,0.025*_scale],[-0.075*_scale,0.175*_scale,-0.025*_scale], 
+            [-0.025*_scale,0.025*_scale,0.025*_scale],[-0.025*_scale,0.025*_scale,-0.025*_scale], 
 
-            [0.05,0.175,0.025],[0.05,0.175,-0.025],
-            [0.05,0.275,0.025],[0.05,0.275,-0.025],
-            [0.0,0.275,0.025],[0.0,0.275,-0.025],
+            [0.05*_scale,0.175*_scale,0.025*_scale],[0.05*_scale,0.175*_scale,-0.025*_scale], 
+            [0.05*_scale,0.275*_scale,0.025*_scale],[0.05*_scale,0.275*_scale,-0.025*_scale], 
+            [0.0*_scale,0.275*_scale,0.025*_scale],[0.0*_scale,0.275*_scale,-0.025*_scale],
             ]
-        self._square_mesh=mesh
-        self._square_com=[0.1,0.15,0.025]
+
+        for i,point in enumerate(mesh):
+            p=np.array(point)
+            self._add_sphere(p,xform="/Sphere",name=f"sphere{i}")
+
+
     extras={
         'fixed_cylinder': _add_fixed_cylinder,
         'visual_line': _add_visual_line,
@@ -442,6 +462,7 @@ class FrankaRope(BaseSample):
         self._rope_y_pos=None
         self.pusht_pos=None
         self.pusht_ori=None
+        self._spheres=[]
         set_seed(42)
 
         if cfg is not None:
@@ -485,6 +506,8 @@ class FrankaRope(BaseSample):
         if self._randomize_on_reset:
             self.pusht_pos=[random.uniform(0.05, 0.15),random.uniform(-0.15, 0.15),0]
             self.pusht_ori=[0,0,random.uniform(-70, 70)]
+            quat=np.array([euler_angles_to_quat(self.pusht_ori).tolist()]) # bruh
+            self._square.set_world_poses(positions=np.array([self.pusht_pos]),orientations=quat)
             #self._target_tshape_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(self.pusht_pos)) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
             #self._target_tshape_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(self.pusht_ori)) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
 
@@ -494,6 +517,12 @@ class FrankaRope(BaseSample):
             # close the gripper properly 
             robot._gripper.close()
             
+        for sphere in self._spheres:
+            default=sphere.get_default_state()
+            position=default.position
+            orientation=default.orientation
+            sphere.set_world_pose(position=position,orientation=orientation)
+
     def world_cleanup(self):
         try:
             del self._robot_articulation_solver
@@ -596,6 +625,7 @@ class FrankaRope(BaseSample):
 
         # self._add_cube()
         self._add_square()
+        self._add_fixed_cylinder()
     # manually reset _task_scene_built to call initialize() in reset(), if task not setted up in seteup_scene
     # world._task_scene_built=False
     # await world.reset_async()
@@ -694,8 +724,8 @@ class FrankaRope(BaseSample):
             _robot_dof=robot.num_dof
             # In radians/s, or stage_units/s
             max_vel = np.zeros(_robot_dof) + 1.0
-            max_vel[_robot_dof-1]=None # dont limit gripper
-            max_vel[_robot_dof-2]=None # dont limit gripper
+            # max_vel[_robot_dof-1]=2 # dont limit gripper
+            # max_vel[_robot_dof-2]=2 # dont limit gripper
             robot._articulation_view.set_max_joint_velocities(max_vel)
 
             # # gripper open/close immediately  # dont limit gripper
@@ -1200,44 +1230,16 @@ class FrankaRope(BaseSample):
                     "square_world_orientation": self._square.get_world_poses()[1][0].tolist(),
                     "square_world_scale": self._square.get_world_scales()[0].tolist(),
                 }
-                print(dict['square_world_position'])
+
+                xform=self._world.scene.get_object("/Sphere")
+                xform.set_world_poses(positions=self._square.get_world_poses()[0],orientations=self._square.get_world_poses()[1])
+
                 pc=[]
-                from itertools import product
-                values = [1, -1]
-                dominant_values=np.linspace(-1, 1, num=2).tolist()
-                combinations = list(product(values, repeat=2))
-                combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
-                self._add_sphere(dict[f"square_world_position"],prim_path='/center')
-                for i,mesh in enumerate(self._square_mesh):
-                    p=np.array(mesh)*np.array(dict[f"square_world_scale"])#-np.array(self._square_com)
-                    quat_p=np.concatenate(([0.0],p))
-                    ori=np.array(dict[f"square_world_orientation"])
-                    quat_p=mu.mul(mu.inverse(ori),quat_p)
-                    quat_p=mu.mul(quat_p,(ori))
-                    p[0],p[1],p[2]=-quat_p[1],-quat_p[2],quat_p[3] # ????? BUG
-                    
-                    p=p+np.array(dict[f"square_world_position"])
-                    pc.append(p.tolist())
-                    self._add_sphere(p,prim_path=f"/squaresphere{i}")
-
-
-                # for component in ["square"]:
-                #     xyz=np.array(dict[f"{component}_world_scale"])/2
-                #     dominant_direction=np.argmax(xyz)
-                #     for i,comb in enumerate(combinations):
-                #         tmp=comb[dominant_direction]
-                #         comb[dominant_direction]=comb[0]
-                #         comb[0]=tmp
-                #         center=np.array(dict[f"{component}_world_position"])
-                #         p=np.array(comb)*xyz
-                #         quat_p=np.concatenate(([0.0],p))
-                #         ori=np.array(dict[f"{component}_world_orientation"])
-                #         quat_p=mu.mul(mu.inverse(ori),quat_p)
-                #         quat_p=mu.mul(quat_p,(ori))
-                #         p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
-                #         pc.append((center+p).tolist())
-                #         # if i==0: self._add_sphere(center+p,prim_path=f"/{component}sphere{i}")
-                #         self._add_sphere(center+p,prim_path=f"/{component}sphere{i}")
+                i=0
+                while scene.object_exists(f'/Sphere/sphere{i}'):
+                    sphere=scene.get_object(f'/Sphere/sphere{i}')
+                    pc.append(sphere.get_world_pose()[0].tolist())
+                    i+=1
                 _dict["Square"]["pc"]=pc
 
 
@@ -1399,6 +1401,7 @@ class ControlFlow:
                 pass
         # await create_new_stage_async()
         # await update_stage_async()
+        cls._cfg=cfg
         cls._sample = FrankaRope(cfg) # TODO replace with yaml
         await update_stage_async()
         await cls._sample.load_world_async()
@@ -1432,7 +1435,7 @@ class ControlFlow:
     def on_reload(cls,callback_fn=None):
         async def _on_reload_async(callback_fn=None):
             cls.init_buttons()
-            await cls.setUp_async(callback_fn)
+            await cls.setUp_async(cfg=cls._cfg,callback_fn=callback_fn)
         asyncio.ensure_future(_on_reload_async(callback_fn))
 
     @classmethod
@@ -1734,7 +1737,7 @@ class VRUIUtils(ControlFlow):
             world=cls._sample._world
             if (cls.publisher is None):
                 print(">>> INIT SIMPUBLISHER <<< ")
-                cls.publisher = IsaacSimPublisher(host="192.168.0.103", stage=world.stage) # for InteractiveScene
+                cls.publisher = IsaacSimPublisher(host="192.168.96.126", stage=world.stage) # for InteractiveScene
             # THE MetaQuest3 NAME MUST BE THE SAME AS IN THE CSHARP CODE
             if (cls.vr_controller is None):
                 print(">>> INIT META QUEST 3 <<< ")
@@ -2039,8 +2042,9 @@ class VRUIUtils(ControlFlow):
             delta_rot=mu.mul(input_rot,mu.inverse(old_input_rot)) # ~~the order is unclear in doc could be another way around~~
 
             # make rotation intuitive, align with isaac sim gui
-            # axis,angle=_q2aa(delta_rot)
-            # delta_rot=_aa2q([axis[0],-axis[1],-axis[2]],angle)
+            if _str == "Left":
+                axis,angle=_q2aa(delta_rot)
+                delta_rot=_aa2q([-axis[0],-axis[1],axis[2]],angle)
 
             old_target_pos,old_target_rot=observations[cls._sample._target_name[_str]]["position"],observations[cls._sample._target_name[_str]]["orientation"]
             # target_pos=old_target_pos+delta_pos

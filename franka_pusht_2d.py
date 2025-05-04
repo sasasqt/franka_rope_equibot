@@ -162,7 +162,7 @@ class FrankaRope(BaseSample):
         scene.add(
             self._hbar
         )
-        
+
         from pxr import PhysxSchema
         from omni.isaac.core.utils.prims import get_prim_at_path
         physxRigidBodyAPI=PhysxSchema.PhysxRigidBodyAPI.Apply(get_prim_at_path(vbar_str))
@@ -171,6 +171,7 @@ class FrankaRope(BaseSample):
         physxRigidBodyAPI=PhysxSchema.PhysxRigidBodyAPI.Apply(get_prim_at_path(hbar_str))
         physxRigidBodyAPI.CreateLockedRotAxisAttr(1) # x
         physxRigidBodyAPI.CreateLockedRotAxisAttr(3) # y
+
 
     def _add_target_t_shape(self):
         from omni.isaac.core.objects import VisualCuboid
@@ -366,7 +367,7 @@ class FrankaRope(BaseSample):
     }
 
     def _align_targets(self):
-        for _str in ["Left","Right"]:
+        for _str in ["Left"]:
             # align the cube with endeffector
             position=self._robot[_str]._end_effector.get_world_pose()[0]
             self._target[_str].set_world_pose(position=position,orientation=None)
@@ -443,8 +444,8 @@ class FrankaRope(BaseSample):
             self._target_tshape_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(self.pusht_pos)) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
             self._target_tshape_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(self.pusht_ori)) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
 
-        self._align_targets()
-        for idx,_str in enumerate(["Left","Right"]):    
+        #self._align_targets()
+        for idx,_str in enumerate(["Left"]):    
             robot=self._robot[_str]
             # close the gripper properly 
             robot._gripper.close()
@@ -502,7 +503,7 @@ class FrankaRope(BaseSample):
         self._franka_inverse_position={}
         self._franka_inverse_orientation={}
         
-        for idx,_str in enumerate(["Left","Right"]):
+        for idx,_str in enumerate(["Left"]):
             _target_name=f"{_str}FollowedTarget"
             _target_prim_path = find_unique_string_name(
                     initial_name=f"/World/{_target_name}", is_unique_fn=lambda x: not is_prim_path_valid(x)
@@ -515,7 +516,7 @@ class FrankaRope(BaseSample):
             )
             franka_robot_name=f"{_str}_franka"
             franka_prim_path=f"/World/{franka_robot_name}"
-            target_position=[0.2*idx-0.1, 0.0, 0.015]
+            target_position=[0.4*idx-0.2, 0.1, 0.02]
             self._franka_position[_str]=position=[0.0,0.8*idx-0.4,0.0] # (np.linalg.inv(euler_to_rot_matrix(_world_ori)) @ np.array([0.0,0.8*idx-0.4,0.0])).tolist() 
             self._franka_inverse_position[_str]=[0.0,-0.8*idx+0.4,0.0] # (np.linalg.inv(euler_to_rot_matrix(_world_ori)) @ np.array([0.0,-0.8*idx+0.4,0.0])).tolist() 
 
@@ -593,7 +594,7 @@ class FrankaRope(BaseSample):
         self._data_logger  = world.get_data_logger()
         self._pre_actions={}
         self._now_actions={}
-        for idx,_str in enumerate(["Left","Right"]):    
+        for idx,_str in enumerate(["Left"]):    
             self._pre_actions[_str]=None
             self._now_actions[_str]=None
             
@@ -665,7 +666,7 @@ class FrankaRope(BaseSample):
 
 
         robot_path={}
-        for _str in ["Left","Right"]:
+        for _str in ["Left"]:
             robot_path[_str]=scene.get_object(self._robot_name[_str]).prim_path
 
 
@@ -708,7 +709,7 @@ class FrankaRope(BaseSample):
 
         # add frankas to franka group
         collectionAPI = Usd.CollectionAPI.Apply(frankas_collision_group.GetPrim(), "colliders")
-        for _str in ["Left","Right"]:
+        for _str in ["Left"]:
             collectionAPI.CreateIncludesRel().AddTarget(Sdf.Path(robot_path[_str]))
 
         
@@ -722,8 +723,8 @@ class FrankaRope(BaseSample):
         await world.reset_async()
         await update_stage_async()
         await self._world.pause_async()
-        self._align_targets()
-        for idx,_str in enumerate(["Left","Right"]):    
+        # self._align_targets()
+        for idx,_str in enumerate(["Left"]):    
             robot=self._robot[_str]
             # close the gripper properly 
             robot._gripper.close()
@@ -743,14 +744,15 @@ class FrankaRope(BaseSample):
         data_logger.load(log_path=data_file)
 
         await world.play_async()
-        # disable rigidbodyapi only AFTER play, or visual cubes stay put
-        # TODO BUG?
-        for prim in world.stage.Traverse():
-            if str(prim.GetPath()).startswith("/World/Extras"):
-                # Apply RigidBodyAPI
-                if UsdPhysics.RigidBodyAPI.CanApply(prim) and prim.GetTypeName().lower() in ["cube"]:
-                    RigidBodyAPI=UsdPhysics.RigidBodyAPI.Apply(prim)
-                    RigidBodyAPI.GetRigidBodyEnabledAttr().Set(False)
+        # # phyx joint setactors: at least one actor must be non static
+        # # disable rigidbodyapi only AFTER play, or visual cubes stay put
+        # # TODO BUG?
+        # for prim in world.stage.Traverse():
+        #     if str(prim.GetPath()).startswith("/World/Extras"):
+        #         # Apply RigidBodyAPI
+        #         if UsdPhysics.RigidBodyAPI.CanApply(prim) and prim.GetTypeName().lower() in ["cube"]:
+        #             RigidBodyAPI=UsdPhysics.RigidBodyAPI.Apply(prim)
+        #             RigidBodyAPI.GetRigidBodyEnabledAttr().Set(False)
         if self._cfg is not None:
             if self._cfg.translation is not None:
             # rotate world first after play(), otherwise the franka will compensate the rotation somehow in their code
@@ -820,7 +822,7 @@ class FrankaRope(BaseSample):
         # pos, ori: via get_local_pose()
         observations =  self._world.get_observations()
 
-        for _str in ["Left","Right"]:
+        for _str in ["Left"]:
             # if target stays still, do nothing
             if (self._old_observations is not None):
                 _delta_pos=observations[self._target_name[_str]]["position"]-self._old_observations[self._target_name[_str]]["position"]
@@ -905,7 +907,7 @@ class FrankaRope(BaseSample):
             if self._PhysicsScene.GetPrim().IsActive():
                 # disable the PhysicsScene to for fps
                 self._PhysicsScene.GetPrim().SetActive(False)
-            for idx,_str in enumerate(["Left","Right"]):  
+            for idx,_str in enumerate(["Left"]):  
                 robot_name = self._robot_name[_str]
                 target_name = self._target_name[_str]
                 data_frame = data_logger.get_data_frame(data_frame_index=world.current_time_step_index-time_offset)
@@ -963,17 +965,15 @@ class FrankaRope(BaseSample):
             if self._PhysicsScene.GetPrim().IsActive():
                 # disable the PhysicsScene to for fps
                 self._PhysicsScene.GetPrim().SetActive(False)
-            for idx,_str in enumerate(["Left","Right"]):  
+            for idx,_str in enumerate(["Left"]):  
                 robot_name = self._robot_name[_str]
                 target_name = self._target_name[_str]
                 data_frame = data_logger.get_data_frame(data_frame_index=world.current_time_step_index-time_offset)
-                if idx == 0:
-                    world.scene.get_object(robot_name).set_joint_positions(
-                        np.array(data_frame.data[_str][f"{_str}_joint_positions"])
-                    )
-                else:
-                    world.scene.get_object(robot_name).apply_action(ArticulationAction(joint_positions=np.array(data_frame.data[_str]["applied_joint_positions"])))
-                
+
+                world.scene.get_object(robot_name).set_joint_positions(
+                    np.array(data_frame.data[_str][f"{_str}_joint_positions"])
+                )
+
                 world.scene.get_object(target_name).set_world_pose(
                     position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
@@ -1026,7 +1026,7 @@ class FrankaRope(BaseSample):
             if self._PhysicsScene.GetPrim().IsActive():
                 # disable the PhysicsScene to for fps
                 self._PhysicsScene.GetPrim().SetActive(False)
-            for idx,_str in enumerate(["Left","Right"]):  
+            for idx,_str in enumerate(["Left"]):  
                 robot_name = self._robot_name[_str]
                 target_name = self._target_name[_str]
                 data_frame = data_logger.get_data_frame(data_frame_index=world.current_time_step_index-time_offset)
@@ -1070,7 +1070,7 @@ class FrankaRope(BaseSample):
             # rope=self._rope
             def frame_logging_func(tasks, scene):
                 _dict={}
-                for _str in ["Left","Right"]:
+                for _str in ["Left"]:
                     robot_name = self._robot_name[_str]
                     target_name = self._target_name[_str]
                     _dict[_str]= {
@@ -1125,7 +1125,7 @@ class FrankaRope(BaseSample):
                         quat_p=mu.mul(quat_p,(ori))
                         p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
                         pc.append((center+p).tolist())
-                        # if i==0: self._add_sphere(center+p,prim_path=f"/{component}sphere{i}")
+                        if i==0: self._add_sphere(center+p,prim_path=f"/{component}sphere{i}")
                 _dict["T"]["pc"]=pc
 
 
@@ -1278,7 +1278,6 @@ class ControlFlow:
         "Follow Target": ["to start", "to stop"],
         "Simulation": ["to play", "to pause"],
         "Left Gripper Action": ["to open", "to close"],
-        "Right Gripper Action": ["to open", "to close"],
         "Start Logging": ["to begin", "to stop"],
         "Save Data": ["save"],
         "Replay Recording": ["replay"],
@@ -1552,7 +1551,6 @@ class IsaacUIUtils(ControlFlow):
         _on_follow_target_button_event=partial(super().on_follow_target_button_event,callback_fn=_callback_fn)
         _on_simulation_button_event=partial(super().on_simulation_button_event,callback_fn=_callback_fn)
         _on_left_gripper_action_button_event=lambda open:cls.on_gripper_action_button_event(name="Left",open=open, callback_fn=_callback_fn) # partial(super().on_gripper_action_button_event,name="Left",callback_fn=_callback_fn)
-        _on_right_gripper_action_button_event=lambda open:cls.on_gripper_action_button_event(name="Right",open=open, callback_fn=_callback_fn) # partial(super().on_gripper_action_button_event,name="Right",callback_fn=_callback_fn)
         _on_logging_button_event=partial(super().on_logging_button_event,callback_fn=_callback_fn)
 
         cls.FN_CONFIG={
@@ -1562,7 +1560,6 @@ class IsaacUIUtils(ControlFlow):
             "Follow Target": _on_follow_target_button_event,
             "Simulation": _on_simulation_button_event,
             "Left Gripper Action": _on_left_gripper_action_button_event,
-            "Right Gripper Action": _on_right_gripper_action_button_event,
             "Start Logging": _on_logging_button_event,
             "Save Data": super().on_save_data_button_event,
             "Replay Recording":_on_replay_recording_button_event,
@@ -1947,7 +1944,7 @@ class VRUIUtils(ControlFlow):
         
         # print("--------")
         observations=cls._sample._world.get_observations()
-        for _str in ["Left","Right"]:
+        for _str in ["Left"]:
             old_input_pos,old_input_rot=cls.old_input_pos[_str],cls.old_input_rot[_str]
             input_pos,input_rot=cls.old_input_pos[_str],cls.old_input_rot[_str] = cls.get_pose(_str,input_data)
             #print(f"input_pos is {input_pos}")
@@ -1959,6 +1956,9 @@ class VRUIUtils(ControlFlow):
             delta_pos=np.array([-delta_pos[0],-delta_pos[1],delta_pos[2]])
             delta_rot=mu.mul(input_rot,mu.inverse(old_input_rot)) # ~~the order is unclear in doc could be another way around~~
 
+            # fix pos and rotation
+            delta_pos[2]=0.0
+            #delta_rot=np.array([1.0,0.0,0.0,0.0])
             # make rotation intuitive, align with isaac sim gui
             if _str == "Left":
                 axis,angle=_q2aa(delta_rot)
@@ -1986,7 +1986,7 @@ class VRUIUtils(ControlFlow):
                 # print(f"delta pos: {delta_pos}")
                 # print(f"old tgt pos: {old_target_pos}")
                 # print(f"tgt pos: {target_pos}")
-                cls._sample._target[_str].set_local_pose(translation=target_pos, orientation=target_rot) 
+                cls._sample._target[_str].set_local_pose(translation=target_pos, orientation=None)#target_rot) 
             #await update_stage_async()
         #asyncio.ensure_future(_transform_target_async(cls,input_data))
 

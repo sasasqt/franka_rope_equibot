@@ -305,39 +305,105 @@ class FrankaRope(BaseSample):
         
 
 
-
     def _add_cube(self):
-        from omni.isaac.core.objects import DynamicCuboid
-        from pxr import UsdPhysics
-
         stage=self._world.stage
-        self._tshape_xform=_tshape_xform =stage.DefinePrim(f'/World/Extras/Cube', 'Xform')
-        usd_tshape_xform = UsdGeom.Xform(_tshape_xform)
-        usd_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0,0,0]))
-        usd_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
-        usd_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
+        _tshape_xform =stage.DefinePrim(f'/World/Extras/Cube', 'Xform')
+
 
         self._cube_str=cube_str=find_unique_string_name(
                     initial_name=f"/World/Extras/Cube/Cube", is_unique_fn=lambda x: not is_prim_path_valid(x)
                 )
+
+        prim = stage.DefinePrim(cube_str)
+        prim.GetReferences().AddReference("/home/workstation/project/franka_rope_equibot/cube.usd")
+        prim = stage.DefinePrim(f'{cube_str}/cube')  # BUG inconsistency in isaacsim 4.2.0
+
+        _scale=0.4
+        from omni.isaac.core.prims import XFormPrimView
+        prims = XFormPrimView(prim_paths_expr=f'{cube_str}/cube',name=f'{cube_str}/cube',scales=[[_scale,_scale,_scale]]) # BUG inconsistency in isaacsim 4.2.0
+        self._world.scene.add(prims)
+        self._cube=self._world.scene.get_object(f'{cube_str}/cube')
+
+        from pxr import UsdPhysics
+        massAPI = UsdPhysics.MassAPI.Apply(stage.GetPrimAtPath(f'{cube_str}/cube'))
+        massAPI.CreateMassAttr().Set(0.1) # will mass be auto derivated from createdensityattr? not sure ...
         
-        self._cube = DynamicCuboid(
-            prim_path=cube_str,
-            position=[0.0,0.0,0.01],
-            color=np.array([1.0, 0.0, 0.0]),
-            scale=[0.025,0.025,0.025]
-        )
+        from pxr import Sdf
+        import omni.kit.commands
+
+        omni.kit.commands.execute('SetRigidBody',
+            path=Sdf.Path('/World/Extras/Cube/Cube/cube'),
+            kinematic=False)
+
+        # import trimesh
+
+        # mesh = trimesh.load('.obj')
+        # num_points = 40
+        # points, _ = trimesh.sample.sample_surface(mesh, num_points)
+
+        # self._square_mesh=mesh
+
+        mesh=[
+                [0.075*_scale,0.075*_scale,0.075*_scale],
+                [0.075*_scale,0.075*_scale,-0.075*_scale],
+                [0.075*_scale,-0.075*_scale,0.075*_scale],
+                [-0.075*_scale,0.075*_scale,0.075*_scale],
+                [0.075*_scale,-0.075*_scale,-0.075*_scale],
+                [-0.075*_scale,0.075*_scale,-0.075*_scale],
+                [-0.075*_scale,-0.075*_scale,0.075*_scale],
+                [-0.075*_scale,-0.075*_scale,-0.075*_scale],
+                
+            ]
+        pc=[]
+        for i,point in enumerate(mesh):
+            p=np.array(point)
+            pc.append(p.tolist())
+            self._add_sphere(p,xform="/Sphere",name=f"sphere{i}")
+
+    # def _add_cube(self):
+    #     from omni.isaac.core.objects import DynamicCuboid
+    #     from pxr import UsdPhysics
+
+    #     stage=self._world.stage
+    #     self._tshape_xform=_tshape_xform =stage.DefinePrim(f'/World/Extras/Cube', 'Xform')
+    #     usd_tshape_xform = UsdGeom.Xform(_tshape_xform)
+    #     usd_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0,0,0]))
+    #     usd_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
+    #     usd_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
+
+    #     self._cube_str=cube_str=find_unique_string_name(
+    #                 initial_name=f"/World/Extras/Cube/Cube", is_unique_fn=lambda x: not is_prim_path_valid(x)
+    #             )
+        
+    #     self._cube = DynamicCuboid(
+    #         prim_path=cube_str,
+    #         position=[0.0,0.0,0.01],
+    #         color=np.array([1.0, 0.0, 0.0]),
+    #         scale=[0.05,0.05,0.05]
+    #     )
 
         
 
-    def _add_sphere(self,pos,prim_path="/sphere"):
+    def _add_sphere(self,pos,xform="/Xform",name="sphere"):
+        scene=self._world.scene
+        if not scene.object_exists(xform):
+            stage=self._world.stage
+            self._sphere_xform=_sphere_xform=stage.DefinePrim(xform, 'Xform')
+            from omni.isaac.core.prims import XFormPrimView
+            prims = XFormPrimView(prim_paths_expr=xform,name=xform)
+            scene.add(prims)
+        
         from omni.isaac.core.objects import VisualSphere
         sphere=VisualSphere(
-            prim_path=prim_path,
+            prim_path=f'{xform}/{name}',
             position=pos,
             color=np.array([1.0, 0.0, 0.0]),
-            radius=0.01
+            radius=0.01,
+            name=f'{xform}/{name}'
         )
+
+        self._spheres.append(sphere)
+        scene.add(sphere)
 
     extras={
         'fixed_cylinder': _add_fixed_cylinder,
@@ -347,7 +413,7 @@ class FrankaRope(BaseSample):
     }
 
     def _align_targets(self):
-        for _str in ["Left","Right"]:
+        for _str in ["Left"]:
             # align the cube with endeffector
             position=self._robot[_str]._end_effector.get_world_pose()[0]
             self._target[_str].set_world_pose(position=position,orientation=None)
@@ -378,6 +444,7 @@ class FrankaRope(BaseSample):
         self._rope_y_pos=None
         self.pusht_pos=None
         self.pusht_ori=None
+        self._spheres=[]
         set_seed(42)
 
         if cfg is not None:
@@ -421,14 +488,23 @@ class FrankaRope(BaseSample):
         if self._randomize_on_reset:
             self.pusht_pos=[random.uniform(0.05, 0.15),random.uniform(-0.15, 0.15),0]
             self.pusht_ori=[0,0,random.uniform(-70, 70)]
-            self._target_tshape_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(self.pusht_pos)) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
-            self._target_tshape_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(self.pusht_ori)) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
+            quat=np.array([euler_angles_to_quat(self.pusht_ori).tolist()]) # bruh
+            self._cube.set_world_poses(positions=np.array([self.pusht_pos]),orientations=quat)
+            # self._tshape_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(self.pusht_pos)) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
+            # self._tshape_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(self.pusht_ori)) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
 
-        self._align_targets()
-        for idx,_str in enumerate(["Left","Right"]):    
+        # self._align_targets()
+        for idx,_str in enumerate(["Left"]):    
             robot=self._robot[_str]
             # close the gripper properly 
             robot._gripper.close()
+        
+        for sphere in self._spheres:
+            default=sphere.get_default_state()
+            position=default.position
+            orientation=default.orientation
+            sphere.set_world_pose(position=position,orientation=orientation)
+
             
     def world_cleanup(self):
         try:
@@ -483,7 +559,7 @@ class FrankaRope(BaseSample):
         self._franka_inverse_position={}
         self._franka_inverse_orientation={}
         
-        for idx,_str in enumerate(["Left","Right"]):
+        for idx,_str in enumerate(["Left"]):
             _target_name=f"{_str}FollowedTarget"
             _target_prim_path = find_unique_string_name(
                     initial_name=f"/World/{_target_name}", is_unique_fn=lambda x: not is_prim_path_valid(x)
@@ -575,7 +651,7 @@ class FrankaRope(BaseSample):
         self._data_logger  = world.get_data_logger()
         self._pre_actions={}
         self._now_actions={}
-        for idx,_str in enumerate(["Left","Right"]):    
+        for idx,_str in enumerate(["Left"]):    
             self._pre_actions[_str]=None
             self._now_actions[_str]=None
             
@@ -633,6 +709,17 @@ class FrankaRope(BaseSample):
             max_vel[_robot_dof-2]=None # dont limit gripper
             robot._articulation_view.set_max_joint_velocities(max_vel)
 
+            # import omni
+            # import omni.usd
+            # from pxr import Sdf
+            # import omni.kit.commands
+
+            # omni.kit.commands.execute('ChangeProperty',
+            #     prop_path=Sdf.Path('/World/Left_franka/panda_hand/panda_finger_joint1.drive:linear:physics:maxForce'),
+            #     value=10000000000.0,
+            #     prev=7.199999809265137,
+            #     usd_context_name=omni.usd.get_context().get_stage())
+
             # # gripper open/close immediately  # dont limit gripper
             # robot._gripper._action_deltas=None
 
@@ -647,7 +734,7 @@ class FrankaRope(BaseSample):
 
 
         robot_path={}
-        for _str in ["Left","Right"]:
+        for _str in ["Left"]:
             robot_path[_str]=scene.get_object(self._robot_name[_str]).prim_path
 
 
@@ -690,7 +777,7 @@ class FrankaRope(BaseSample):
 
         # add frankas to franka group
         collectionAPI = Usd.CollectionAPI.Apply(frankas_collision_group.GetPrim(), "colliders")
-        for _str in ["Left","Right"]:
+        for _str in ["Left"]:
             collectionAPI.CreateIncludesRel().AddTarget(Sdf.Path(robot_path[_str]))
 
         
@@ -704,8 +791,8 @@ class FrankaRope(BaseSample):
         await world.reset_async()
         await update_stage_async()
         await self._world.pause_async()
-        self._align_targets()
-        for idx,_str in enumerate(["Left","Right"]):    
+        # self._align_targets()
+        for idx,_str in enumerate(["Left"]):    
             robot=self._robot[_str]
             # close the gripper properly 
             robot._gripper.close()
@@ -726,13 +813,13 @@ class FrankaRope(BaseSample):
 
         await world.play_async()
         # disable rigidbodyapi only AFTER play, or visual cubes stay put
-        # TODO BUG?
-        for prim in world.stage.Traverse():
-            if str(prim.GetPath()).startswith("/World/Extras"):
-                # Apply RigidBodyAPI
-                if UsdPhysics.RigidBodyAPI.CanApply(prim) and prim.GetTypeName().lower() in ["cube"]:
-                    RigidBodyAPI=UsdPhysics.RigidBodyAPI.Apply(prim)
-                    RigidBodyAPI.GetRigidBodyEnabledAttr().Set(False)
+        # # TODO BUG?
+        # for prim in world.stage.Traverse():
+        #     if str(prim.GetPath()).startswith("/World/Extras"):
+        #         # Apply RigidBodyAPI
+        #         if UsdPhysics.RigidBodyAPI.CanApply(prim) and prim.GetTypeName().lower() in ["cube"]:
+        #             RigidBodyAPI=UsdPhysics.RigidBodyAPI.Apply(prim)
+        #             RigidBodyAPI.GetRigidBodyEnabledAttr().Set(False)
         if self._cfg is not None:
             if self._cfg.translation is not None:
             # rotate world first after play(), otherwise the franka will compensate the rotation somehow in their code
@@ -802,7 +889,7 @@ class FrankaRope(BaseSample):
         # pos, ori: via get_local_pose()
         observations =  self._world.get_observations()
 
-        for _str in ["Left","Right"]:
+        for _str in ["Left"]:
             # if target stays still, do nothing
             if (self._old_observations is not None):
                 _delta_pos=observations[self._target_name[_str]]["position"]-self._old_observations[self._target_name[_str]]["position"]
@@ -887,7 +974,7 @@ class FrankaRope(BaseSample):
             if self._PhysicsScene.GetPrim().IsActive():
                 # disable the PhysicsScene to for fps
                 self._PhysicsScene.GetPrim().SetActive(False)
-            for idx,_str in enumerate(["Left","Right"]):  
+            for idx,_str in enumerate(["Left"]):  
                 robot_name = self._robot_name[_str]
                 target_name = self._target_name[_str]
                 data_frame = data_logger.get_data_frame(data_frame_index=world.current_time_step_index-time_offset)
@@ -942,7 +1029,7 @@ class FrankaRope(BaseSample):
             if self._PhysicsScene.GetPrim().IsActive():
                 # disable the PhysicsScene to for fps
                 self._PhysicsScene.GetPrim().SetActive(False)
-            for idx,_str in enumerate(["Left","Right"]):  
+            for idx,_str in enumerate(["Left"]):  
                 robot_name = self._robot_name[_str]
                 target_name = self._target_name[_str]
                 data_frame = data_logger.get_data_frame(data_frame_index=world.current_time_step_index-time_offset)
@@ -962,7 +1049,7 @@ class FrankaRope(BaseSample):
                 orientation=np.array(data_frame.data["Cube"]["cube_world_orientation"]),
             )
             # if world.current_time_step_index-time_offset<40:
-            print(cube.get_world_pose()[0],world.scene.get_object(target_name).get_world_pose()[0],world.scene.get_object(target_name).get_world_pose()[1],world.current_time_step_index-time_offset)            
+            print(cube.get_world_poses()[0],world.scene.get_object(target_name).get_world_pose()[0],world.scene.get_object(target_name).get_world_pose()[1],world.current_time_step_index-time_offset)            
             
             
         else:
@@ -997,7 +1084,7 @@ class FrankaRope(BaseSample):
             if self._PhysicsScene.GetPrim().IsActive():
                 # disable the PhysicsScene to for fps
                 self._PhysicsScene.GetPrim().SetActive(False)
-            for idx,_str in enumerate(["Left","Right"]):  
+            for idx,_str in enumerate(["Left"]):  
                 robot_name = self._robot_name[_str]
                 target_name = self._target_name[_str]
                 data_frame = data_logger.get_data_frame(data_frame_index=world.current_time_step_index-time_offset)
@@ -1060,7 +1147,7 @@ class FrankaRope(BaseSample):
             if self._PhysicsScene.GetPrim().IsActive():
                 # disable the PhysicsScene to for fps
                 self._PhysicsScene.GetPrim().SetActive(False)
-            for idx,_str in enumerate(["Left","Right"]):  
+            for idx,_str in enumerate(["Left"]):  
                 robot_name = self._robot_name[_str]
                 target_name = self._target_name[_str]
                 data_frame = data_logger.get_data_frame(data_frame_index=world.current_time_step_index-time_offset)
@@ -1104,7 +1191,7 @@ class FrankaRope(BaseSample):
             # rope=self._rope
             def frame_logging_func(tasks, scene):
                 _dict={}
-                for _str in ["Left","Right"]:
+                for _str in ["Left"]:
                     robot_name = self._robot_name[_str]
                     target_name = self._target_name[_str]
                     _dict[_str]= {
@@ -1131,36 +1218,21 @@ class FrankaRope(BaseSample):
                 #     }
 
                 dict=_dict["Cube"]={
-                    "cube_world_position": self._cube.get_world_pose()[0].tolist(),
-                    "cube_world_orientation": self._cube.get_world_pose()[1].tolist(),
-                    "cube_world_scale": self._cube.get_world_scale().tolist(),
+                    "cube_world_position": self._cube.get_world_poses()[0][0].tolist(),
+                    "cube_world_orientation": self._cube.get_world_poses()[1][0].tolist(),
+                    "cube_world_scale": self._cube.get_world_poses()[0].tolist(),
                 }
+
+                xform=self._world.scene.get_object("/Sphere")
+                xform.set_world_poses(positions=self._cube.get_world_poses()[0],orientations=self._cube.get_world_poses()[1])
+
                 pc=[]
-                from itertools import product
-                values = [1, -1]
-                dominant_values=np.linspace(-1, 1, num=2).tolist()
-                combinations = list(product(values, repeat=2))
-                combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
-                for component in ["cube"]:
-                    xyz=np.array(dict[f"{component}_world_scale"])/2
-                    dominant_direction=np.argmax(xyz)
-                    for i,comb in enumerate(combinations):
-                        tmp=comb[dominant_direction]
-                        comb[dominant_direction]=comb[0]
-                        comb[0]=tmp
-                        center=np.array(dict[f"{component}_world_position"])
-                        p=np.array(comb)*xyz
-                        quat_p=np.concatenate(([0.0],p))
-                        ori=np.array(dict[f"{component}_world_orientation"])
-                        quat_p=mu.mul(mu.inverse(ori),quat_p)
-                        quat_p=mu.mul(quat_p,(ori))
-                        p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
-                        pc.append((center+p).tolist())
-                        # if i==0: self._add_sphere(center+p,prim_path=f"/{component}sphere{i}")
-                        self._add_sphere(center+p,prim_path=f"/{component}sphere{i}")
+                i=0
+                while scene.object_exists(f'/Sphere/sphere{i}'):
+                    sphere=scene.get_object(f'/Sphere/sphere{i}')
+                    pc.append(sphere.get_world_pose()[0].tolist())
+                    i+=1
                 _dict["Cube"]["pc"]=pc
-
-
 
                 if extras_fn is not None:
                     _dict["extras"]=extras_fn()
@@ -1319,6 +1391,7 @@ class ControlFlow:
                 pass
         # await create_new_stage_async()
         # await update_stage_async()
+        cls._cfg=cfg
         cls._sample = FrankaRope(cfg) # TODO replace with yaml
         await update_stage_async()
         await cls._sample.load_world_async()
@@ -1352,7 +1425,7 @@ class ControlFlow:
     def on_reload(cls,callback_fn=None):
         async def _on_reload_async(callback_fn=None):
             cls.init_buttons()
-            await cls.setUp_async(callback_fn)
+            await cls.setUp_async(cfg=cls._cfg,callback_fn=callback_fn)
         asyncio.ensure_future(_on_reload_async(callback_fn))
 
     @classmethod
@@ -1654,7 +1727,7 @@ class VRUIUtils(ControlFlow):
             world=cls._sample._world
             if (cls.publisher is None):
                 print(">>> INIT SIMPUBLISHER <<< ")
-                cls.publisher = IsaacSimPublisher(host="192.168.0.103", stage=world.stage) # for InteractiveScene
+                cls.publisher = IsaacSimPublisher(host="192.168.96.126", stage=world.stage) # for InteractiveScene
             # THE MetaQuest3 NAME MUST BE THE SAME AS IN THE CSHARP CODE
             if (cls.vr_controller is None):
                 print(">>> INIT META QUEST 3 <<< ")
@@ -1913,7 +1986,7 @@ class VRUIUtils(ControlFlow):
     @classmethod
     def zeroing_pose(cls, input_data,name=None):
         if name is None:
-            for _str in ["Left","Right"]:
+            for _str in ["Left"]:
                 cls._zeroing_pose(_str,input_data)
         else:
             cls._zeroing_pose(name,input_data)
@@ -1946,7 +2019,7 @@ class VRUIUtils(ControlFlow):
         
         # print("--------")
         observations=cls._sample._world.get_observations()
-        for _str in ["Left","Right"]:
+        for _str in ["Left"]:
             old_input_pos,old_input_rot=cls.old_input_pos[_str],cls.old_input_rot[_str]
             input_pos,input_rot=cls.old_input_pos[_str],cls.old_input_rot[_str] = cls.get_pose(_str,input_data)
             #print(f"input_pos is {input_pos}")
@@ -1959,8 +2032,10 @@ class VRUIUtils(ControlFlow):
             delta_rot=mu.mul(input_rot,mu.inverse(old_input_rot)) # ~~the order is unclear in doc could be another way around~~
 
             # make rotation intuitive, align with isaac sim gui
-            # axis,angle=_q2aa(delta_rot)
-            # delta_rot=_aa2q([axis[0],-axis[1],-axis[2]],angle)
+            if _str == "Left":
+                axis,angle=_q2aa(delta_rot)
+                delta_rot=_aa2q([-axis[0],-axis[1],axis[2]],angle)
+
 
             old_target_pos,old_target_rot=observations[cls._sample._target_name[_str]]["position"],observations[cls._sample._target_name[_str]]["orientation"]
             # target_pos=old_target_pos+delta_pos
@@ -2649,8 +2724,8 @@ class FollowTarget(tasks.FollowTarget):
         #   1) performance issue, that is 64 times too many calculations
         #   2) franka explosion: only the base/root remains in the scene 
         #       due to velocity accumulation if the target gripper position is unreachable, like inside a rigidbody/below groundplane
-        franka.set_solver_position_iteration_count(4)
-        franka.set_solver_velocity_iteration_count(0)
+        franka.set_solver_position_iteration_count(128)
+        franka.set_solver_velocity_iteration_count(4)
         return franka
     
 import torch
