@@ -1956,7 +1956,7 @@ class VRUIUtils(ControlFlow):
             delta_pos=np.array([-delta_pos[0],-delta_pos[1],delta_pos[2]])
             delta_rot=mu.mul(input_rot,mu.inverse(old_input_rot)) # ~~the order is unclear in doc could be another way around~~
 
-            # fix pos and rotation
+            # fix pos and rotation # TODO DO NOT HARDCODE
             delta_pos[2]=0.0
             #delta_rot=np.array([1.0,0.0,0.0,0.0])
             # make rotation intuitive, align with isaac sim gui
