@@ -44,6 +44,9 @@ def main(cfg):
         #"equiv_frac": cfg.equiv_frac,
         "save_freq": cfg.save_freq,
         "max_ckpts": cfg.max_ckpts,
+        "loadFromCkpt": cfg.loadFromCkpt,
+        "lr_cycle_scale_factor": cfg.lr_cycle_scale_factor,
+        "checkpoint_path": cfg.training.ckpt,
         "diffusion_steps": cfg.diffusion_steps,
         "diffusion_mode": cfg.diffusion_mode,
         'use_ddpm': cfg.dev.use_ddpm,
@@ -72,9 +75,7 @@ def main(cfg):
         'num_heads':cfg.dev.num_heads,
         'channels_div':cfg.dev.channels_div,
         'global_cond':cfg.dev.global_cond,
-        'local_cond':cfg.dev.local_cond,
-        
-        
+        'local_cond':cfg.dev.local_cond,        
     }
 
 
@@ -103,7 +104,7 @@ def main(cfg):
     )
 
     config["num_training_steps"]=cfg.data.dataset.num_training_steps = (
-        1500*200//config['batch_size']
+        1500*200*config['lr_cycle_scale_factor']//config['batch_size']
         #1500 #max(1,2 * len(train_dataset) // (batch_size)) # config["num_epochs"] * len(train_dataset)
     )
     if config['test_lr_scheduler']:
@@ -129,6 +130,9 @@ def main(cfg):
         # micromamba further complicates it by not introducing proper sys envs for cmakelists
     
     nets, optimizer, lr_scheduler = init_model_and_optimizer(device,config)
+    if config['loadFromCkpt']:
+        config['epoch_offset']=torch.load(config["checkpoint_path"])['epoch'] 
+
     if config['use_ddpm']:
 
         from diffusers import DDPMScheduler
@@ -193,7 +197,7 @@ def main(cfg):
     )
     global g_step
     g_step=-1
-    with tqdm(range(config["num_epochs"]), desc='Epoch', position=0) as tglobal:
+    with tqdm(range(config["num_epochs"]), desc='Epoch', position=0) as tglobal:        
         for epoch_idx in tglobal:
             epoch_loss = []
             with tqdm(train_dataloader, desc='Batch', position=1, leave=False) as tepoch:
@@ -206,8 +210,12 @@ def main(cfg):
             
             if (epoch_idx + 1) % config["save_freq"] == 0 or epoch_idx == cfg["num_epochs"] - 1:
                 checkpoint_path = os.path.join(checkpoint_dir, f'ckpt{epoch_idx:05d}.pth')
+                epoch=epoch_idx
+                if config['loadFromCkpt']:
+                    epoch+=config['epoch_offset']+1
                 torch.save({
-                    'epoch': epoch_idx,
+                    'epoch': epoch,
+                    'g_step': g_step,
                     'model_state_dict': nets.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'loss': loss_cpu,
@@ -234,7 +242,7 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
     print(torch.cuda.is_available())
     print(torch.cuda.device_count())
     print(torch.version.cuda)
-
+    loadFromCkpt=config['loadFromCkpt']
     # TODO do not hardcode
     SE3VisionNet_Hierarchical_input_type_1_feat=2 if config['pc_xyz_feat'] else 1
     pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=config['pred_horizon*obs_horizon'],input_type_1_feat=SE3VisionNet_Hierarchical_input_type_1_feat,output_type_1_feat=3,config=config)
@@ -309,8 +317,16 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
         name='cosine',
         optimizer=optimizer,
         num_warmup_steps=500*200//config['batch_size'],
-        num_training_steps=config["num_training_steps"]
+        num_training_steps=config["num_training_steps"],
     )
+
+    if loadFromCkpt:
+        checkpoint = torch.load(config["checkpoint_path"])
+        nets.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])  
+        lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict']) 
+        lr_scheduler.last_epoch = checkpoint['g_step']
+
     return nets, optimizer, lr_scheduler
 
 
