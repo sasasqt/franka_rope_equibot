@@ -111,14 +111,25 @@ def main(cfg):
         config["num_training_steps"]=cfg.data.dataset.num_training_steps = (
             config["num_epochs"] * len(train_dataset)
         )
+
+    if config['loadFromCkpt'] and ".pth" not in config["checkpoint_path"]:
+        ckpt = sorted(
+            glob.glob(os.path.join(config["checkpoint_path"], 'ckpt*.pth')),
+            key=os.path.getmtime
+        )
+        if ckpt ==[]:
+            config['loadFromCkpt']=False
+        else:
+            config["checkpoint_path"]=ckpt[-1]
+        
     valid_dataset = get_dataset(cfg, "train", valid=True)
     valid_loader = torch.utils.data.DataLoader(
         valid_dataset,
-        batch_size=64,
+        batch_size=4,
         num_workers=num_workers,
         shuffle=True,
         drop_last=True, # was True
-        pin_memory=True,
+        pin_memory=False,
     )
 
     checkpoint_dir = log_dir
@@ -131,7 +142,9 @@ def main(cfg):
     
     nets, optimizer, lr_scheduler = init_model_and_optimizer(device,config)
     if config['loadFromCkpt']:
-        config['epoch_offset']=torch.load(config["checkpoint_path"])['epoch'] 
+        ckpt=torch.load(config["checkpoint_path"])
+        config['epoch_offset']=ckpt['epoch'] 
+        config['g_step_offset'] = ckpt['g_step']
 
     if config['use_ddpm']:
 
@@ -197,6 +210,8 @@ def main(cfg):
     )
     global g_step
     g_step=-1
+    if config['loadFromCkpt']:
+        g_step+=config['g_step_offset']
     with tqdm(range(config["num_epochs"]), desc='Epoch', position=0) as tglobal:        
         for epoch_idx in tglobal:
             epoch_loss = []
@@ -206,13 +221,14 @@ def main(cfg):
                     epoch_loss.append(loss_cpu)
                     tepoch.set_postfix(loss=loss_cpu)
             tglobal.set_postfix(loss=np.mean(epoch_loss))
-            wandb.log({'train_loss_avg': np.mean(epoch_loss), 'epoch': epoch_idx},step=g_step)
+            epoch=epoch_idx
+            if config['loadFromCkpt']:
+                epoch+=config['epoch_offset']+1
+            wandb.log({'train_loss_avg': np.mean(epoch_loss), 'epoch': epoch},step=g_step)
             
             if (epoch_idx + 1) % config["save_freq"] == 0 or epoch_idx == cfg["num_epochs"] - 1:
-                checkpoint_path = os.path.join(checkpoint_dir, f'ckpt{epoch_idx:05d}.pth')
-                epoch=epoch_idx
-                if config['loadFromCkpt']:
-                    epoch+=config['epoch_offset']+1
+                checkpoint_path = os.path.join(checkpoint_dir, f'ckpt{epoch:05d}.pth')
+
                 torch.save({
                     'epoch': epoch,
                     'g_step': g_step,
