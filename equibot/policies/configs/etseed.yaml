@@ -29,7 +29,7 @@ sigma_r: 0.005
 sigma_t: 0.003
 equiv_frac: 0.1
 save_freq: 3
-max_ckpts: 8
+max_ckpts: 2
 diffusion_steps: 100
 diffusion_mode: squaredcos_cap_v2
 loadFromCkpt: True
@@ -85,7 +85,7 @@ data:
   dataset:
     num_training_steps: ???
     path: null
-    num_points: 35 # should match with _ropeLength 0.4:17 0.8: 35 1.0:44? 40:pusht
+    num_points: 40 # should match with _ropeLength 0.4:17 0.8: 35 1.0:44? 40:pusht
     num_augment: 0
     same_aug_per_sample: true
     aug_keep_original: true
@@ -97,7 +97,7 @@ data:
     aug_zero_z_offset: false
     aug_center: [0., 0., 0.]
     shuffle_pc: false # https://github.com/charlesq34/pointnet2/issues/143#issuecomment-523416620 # was true
-    num_workers: 12
+    num_workers: 4
     dof: ${env.dof}
     num_eef: ${env.num_eef}
     eef_dim: ${env.eef_dim}
@@ -138,7 +138,7 @@ wandb:
   project: equibot
 
 franka_rope:
-  physics_dt: 1.0/30.0
+  physics_dt: 1.0/10.0
   rendering_dt: 1.0/10.0
   _randomize: False
   _randomize_on_reset: False

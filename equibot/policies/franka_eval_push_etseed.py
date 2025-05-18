@@ -120,7 +120,9 @@ def main(cfg):
         'global_cond':cfg.dev.global_cond,
         'local_cond':cfg.dev.local_cond,
         'arch':cfg.dev.arch,
-        "cfg":cfg
+        "cfg":cfg,
+        "loadFromCkpt": False,
+
     }
 
     device = torch.device('cuda')

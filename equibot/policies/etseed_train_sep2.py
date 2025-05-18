@@ -226,7 +226,18 @@ def main(cfg):
                 epoch+=config['epoch_offset']+1
             wandb.log({'train_loss_avg': np.mean(epoch_loss), 'epoch': epoch},step=g_step)
             
-            if (epoch_idx + 1) % config["save_freq"] == 0 or epoch_idx == cfg["num_epochs"] - 1:
+            if (epoch + 1) % config["save_freq"] == 0 or epoch_idx == cfg["num_epochs"] - 1:
+                if (epoch + 1) % (20*config["save_freq"]) == 0:
+                    checkpoint_path = os.path.join(checkpoint_dir, f'backup{epoch:05d}.pth')
+                    torch.save({
+                        'epoch': epoch,
+                        'g_step': g_step,
+                        'model_state_dict': nets.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'loss': loss_cpu,
+                        'lr_scheduler_state_dict': lr_scheduler.state_dict()
+                    }, checkpoint_path)
+
                 checkpoint_path = os.path.join(checkpoint_dir, f'ckpt{epoch:05d}.pth')
 
                 torch.save({
