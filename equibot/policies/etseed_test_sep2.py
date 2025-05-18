@@ -62,6 +62,8 @@ def main(cfg):
         'channels_div':cfg.dev.channels_div,
         'global_cond':cfg.dev.global_cond,
         'local_cond':cfg.dev.local_cond,
+        "loadFromCkpt": cfg.loadFromCkpt,
+
     }
 
     assert config["mode"] == "eval"
