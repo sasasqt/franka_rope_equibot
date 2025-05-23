@@ -65,7 +65,8 @@ dev:
   channels_div: 2
   global_cond: 0 # 0: proposed actions as global; 1: latent pc as global 2: None
   local_cond: 0 # 0: None; 1: proposed actions as local
-
+  aa: True
+  
 training:
   ckpt: null
 

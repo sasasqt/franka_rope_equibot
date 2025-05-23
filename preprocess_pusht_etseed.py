@@ -273,7 +273,9 @@ def main(cfg):
         
         degree = random.randint(0, 360)
         random_rotation = R.from_euler('z', degree, degrees=True).as_matrix()
-        rotated_tgt_pc=np.array([random_rotation@vector for vector in tgt_pc])
+        random_translation = np.array([random.randint(-2, 4),random.randint(-2, 4),0])
+        
+        rotated_tgt_pc=np.array([random_rotation@vector+random_translation for vector in tgt_pc])
 
         # to mimic saved npz with keys pc, rgb?, action, eef_pos
         for i, _fut in enumerate(data[0]["Isaac Sim Data"]):
@@ -298,14 +300,14 @@ def main(cfg):
             # )  # not exposed to the algorithm
             right_target_world_pos = random_rotation@np.array(
                 curr["Right"]["Right_target_world_position"]
-            )  # as-is
+            )+random_translation  # as-is
             right_target_world_rot = np.array(
                 curr["Right"]["Right_target_world_orientation"]
             )
             right_target_world_rot=random_rotation@R.from_quat(right_target_world_rot,scalar_first=True).as_matrix()
 
             t_pc = np.array(curr["T"]["pc"])  # as pc
-            rotated_t_pc=[random_rotation@vector for vector in t_pc]
+            rotated_t_pc=[random_rotation@vector+random_translation for vector in t_pc]
             if (
                 curr["Right"]["applied_joint_positions"][-1] < 0.025
             ):  # 0/-0.3 is closed, ~0.05 is opened
@@ -323,7 +325,7 @@ def main(cfg):
             # pc = np.concatenate((pc, np.full((pc.shape[0], 1), gripper_pose)), axis=1)
 
             delta_pos = (
-                random_rotation@np.array(fut["Right"]["Right_target_world_position"])
+                random_rotation@np.array(fut["Right"]["Right_target_world_position"])+random_translation
                 - right_target_world_pos
             )
 

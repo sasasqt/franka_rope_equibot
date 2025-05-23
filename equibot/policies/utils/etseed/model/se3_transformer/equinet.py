@@ -346,10 +346,10 @@ class SE3ManiNet_Fused(ExtendedModule):
                     "1": (1)*pred_horizon, # offset/translation (not unit direction)
                 }),
                 num_layers= 8,
-                num_degrees= 6,
-                num_channels= 16,
-                num_heads= 2,
-                channels_div= 2,
+                num_degrees= num_degrees,
+                num_channels= num_channels,
+                num_heads= num_heads,
+                channels_div= channels_div,
                 voxelize = voxelize,
                 k_neighbours=k_neighbours,
                 compute_gradients=config['sh_basis_compute_gradients'],
@@ -510,6 +510,287 @@ class SE3ManiNet_Fused(ExtendedModule):
     
         output_ori = process_action(output_ori.view(-1,6), output_pos.view(-1,3),follow_rot_trans_convention=True).view(bs,-1,4,4) # orthogonalization
         return output_ori # [B, Ho, 4, 4]
+
+
+
+
+
+
+
+class SE3ManiNet_AA(ExtendedModule):
+    def __init__(
+            self, 
+            voxelize=False,
+            k_neighbours=8,
+            pred_horizon=8,
+            config=None,
+            no_tgt_nxyz=False,
+            eef_abs_position_as_node=False,
+            eef_xyz_feat=False,
+            fused=True,
+            ):
+        assert not config==None
+        super().__init__()
+        self.pred_horizon=pred_horizon
+        self.config=config
+        self.fused=fused
+
+        num_degrees= config['num_degrees']
+        num_channels= config['num_channels']
+        num_heads= config['num_heads']
+        channels_div= config['channels_div']
+        
+        type1_cnt=0
+        if eef_abs_position_as_node:
+            type1_cnt+=1
+
+        if no_tgt_nxyz:
+            type1_cnt+=1
+
+        if eef_xyz_feat:
+            type1_cnt-=1
+
+        # num_fib_in = [1,5-type1_cnt] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+        if config['k_option']==1:
+            # 1 diffusion steps as type 0 rotation
+            num_fib_in = [7,5-type1_cnt] # 22 in total, 7 type0: k1,k2; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+        elif config['k_option']==3:
+            # no k
+            num_fib_in = [1,5-type1_cnt] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+        else:
+            raise NotImplementedError(f"k_option {config['k_option']} not implemented")
+        
+        # if no_tgt_nxyz:
+        #     if config['k_option']==0:
+        #         # 0 diffusion steps as type 0 scalar
+        #         num_fib_in = [2,4] # 14 in total, 2 type0: k; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+        #     elif config['k_option']==1:
+        #         # 1 diffusion steps as type 0 rotation
+        #         num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+        #     elif config['k_option']==2:
+        #         # 2 diffusion steps as type 1 rotation
+        #         num_fib_in = [1,6] # 19 in total, 1 type0: binary gripper_action 6 type1: k1,k2; eef_abs_position, eef_abs_rotation (2cols); gravity
+        #     elif config['k_option']==3:
+        #     # no k
+        #         num_fib_in = [1,4] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
+        #     else:
+        #         raise NotImplementedError(f"k_option {config['k_option']} not implemented")
+
+        if fused:
+            self.pos_ori_net = SE3Backbone(
+                fiber_in=Fiber({
+                    "0": num_fib_in[0], 
+                    "1": num_fib_in[1], 
+                }),
+                fiber_out=Fiber({
+                    "0": (3+1+1+1)*pred_horizon, # axis-angle + magnitude of offset + angle of axis. + gripper open(1)/close(0)
+                    "1": (1)*pred_horizon, # offset/translation (not unit direction)
+                }),
+                num_layers= 8,
+                num_degrees= num_degrees,
+                num_channels= num_channels,
+                num_heads= num_heads,
+                channels_div= channels_div,
+                voxelize = voxelize,
+                k_neighbours=k_neighbours,
+                compute_gradients=config['sh_basis_compute_gradients'],
+                low_memory=config['low_memory'],
+            )
+        else:
+            self.ori_net=SE3Backbone(
+                fiber_in=Fiber({
+                    "0": num_fib_in[0], 
+                    "1": num_fib_in[1], 
+                }),
+                fiber_out=Fiber({
+                    "0": (3+1)*pred_horizon, # axis-angle + angle of axis
+                }),
+                num_layers= 8,
+                num_degrees= num_degrees,
+                num_channels= num_channels,
+                num_heads= num_heads,
+                channels_div= channels_div,
+                voxelize = voxelize,
+                k_neighbours=k_neighbours,
+                compute_gradients=config['sh_basis_compute_gradients'],
+                low_memory=config['low_memory'],
+            )
+
+            self.pos_net = SE3Backbone(
+                fiber_in=Fiber({
+                    "0": num_fib_in[0], 
+                    "1": num_fib_in[1], 
+                }),
+                fiber_out=Fiber({
+                    "0": (1+1)*pred_horizon, # magnitude of offset + gripper open(1)/close(0)
+                    "1": (1)*pred_horizon, # offset/translation (not unit direction)
+                }),
+                num_layers= 8,
+                num_degrees= num_degrees,
+                num_channels= num_channels,
+                num_heads= num_heads,
+                channels_div= channels_div,
+                voxelize = voxelize,
+                k_neighbours=k_neighbours,
+                compute_gradients=config['sh_basis_compute_gradients'],
+                low_memory=config['low_memory'],
+            )
+
+    def forward(self, inputs,num_point,return_raw=False,Ho_in_B=False):
+        bs = inputs["xyz"].shape[0]
+
+        if self.fused:
+            pos_ori_net_features = self.pos_ori_net(inputs)["feature"]
+
+            if Ho_in_B:
+                bs=bs//num_point
+                assert bs*num_point==inputs["xyz"].shape[0]
+                pos_ori_net_features=torch.stack(pos_ori_net_features, dim=0).view(bs,num_point,-1)
+
+            # process type 0 orientation + type 0 offset/translation magnitude # "0": (3+1+1+1)*pred_horizon, # axis-angle + magnitude of offset + angle of axis. + gripper open(1)/close(0)
+            # process type 1 offset/translation direction
+
+            rot_type0_feature_list = []
+            gripper_type0_feature_list = []
+            pos_type1_feature_list = []
+            for i in range(bs):
+                batchi_type0_feature = pos_ori_net_features[i] # [Ho*num_point, Hp*7]
+                batchi_type0_feature=batchi_type0_feature.view(batchi_type0_feature.shape[0],self.pred_horizon,-1)
+                trans_mag_feature=batchi_type0_feature[:, :, 3:4]
+                # mag_feature=torch.mean(mag_feature, dim=0) # [Hp, 1]
+                rot_mag_feature=batchi_type0_feature[:, :, 4:5]
+                gripper_feature=batchi_type0_feature[:, :, 5:6]
+                gripper_feature=torch.mean(gripper_feature, dim=0) # [Hp, 1]
+                rot_feature=batchi_type0_feature[:, :, :3]
+
+                if self.config['rot_aggregation']=='mean':
+                    rot_feature=torch.mean(rot_feature * rot_mag_feature, dim=0) # [Hp, 3]
+                elif self.config['rot_aggregation']=='separate_mean':
+                    rot_feature=torch.mean(rot_feature, dim=0) * torch.mean(rot_mag_feature, dim=0) # [Hp, 3]    
+                elif self.config['rot_aggregation']=='min':
+                    indices = torch.argmin(rot_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                    rot_feature = rot_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+                elif self.config['rot_aggregation']=='abs_min':
+                    indices = torch.argmin(torch.abs(rot_mag_feature).squeeze(-1), dim=0)  # [Hp]
+                    rot_feature = rot_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+                elif self.config['rot_aggregation']=='max':
+                    indices = torch.argmax(rot_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                    rot_feature = rot_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+                else:
+                    raise NotImplementedError(f"rot_aggregation {self.config['rot_aggregation']} not implemented")
+                
+                rot_type0_feature_list.append(rot_feature)
+                gripper_type0_feature_list.append(gripper_feature)
+
+                batchi_type1_feature = pos_ori_net_features[i][:,(3+1+1+1)*self.pred_horizon:(3+1+1+1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]
+                batchi_type1_feature=batchi_type1_feature.view(batchi_type1_feature.shape[0],self.pred_horizon,-1)
+                trans_feature=batchi_type1_feature
+                if self.config['trans_aggregation']=='mean':
+                    trans_feature=torch.mean(batchi_type1_feature* trans_mag_feature, dim=0) # [Hp, 3]
+                elif self.config['trans_aggregation']=='separate_mean':
+                    trans_feature=torch.mean(batchi_type1_feature, dim=0)* torch.mean(trans_mag_feature, dim=0) # [Hp, 3]
+                elif self.config['trans_aggregation']=='min':
+                    indices = torch.argmin(trans_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                    trans_feature = trans_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+                elif self.config['trans_aggregation']=='abs_min':
+                    indices = torch.argmin(torch.abs(trans_mag_feature).squeeze(-1), dim=0)  # [Hp]
+                    trans_feature = trans_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+                elif self.config['trans_aggregation']=='max':
+                    indices = torch.argmax(trans_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                    trans_feature = trans_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+                else:
+                    raise NotImplementedError(f"trans_aggregation {self.config['trans_aggregation']} not implemented")
+                
+                pos_type1_feature_list.append(trans_feature)
+        else:
+            ori_net_features = self.ori_net(inputs)["feature"]
+            pos_net_features = self.pos_net(inputs)["feature"]
+
+            if Ho_in_B:
+                bs=bs//num_point
+                assert bs*num_point==inputs["xyz"].shape[0]
+                ori_net_features=torch.stack(ori_net_features, dim=0).view(bs,num_point,-1)
+                pos_net_features=torch.stack(pos_net_features, dim=0).view(bs,num_point,-1)
+
+            # ori "0": (3+1)*pred_horizon, # # axis-angle + angle of axis
+
+            rot_type0_feature_list = []
+            for i in range(bs):
+                batchi_type0_feature = ori_net_features[i] # [Ho*num_point, Hp*7]
+                batchi_type0_feature=batchi_type0_feature.view(batchi_type0_feature.shape[0],self.pred_horizon,-1)
+                rot_mag_feature=batchi_type0_feature[:, :, 3:4]
+                rot_feature=batchi_type0_feature[:, :, :3]
+
+                if self.config['rot_aggregation']=='mean':
+                    rot_feature=torch.mean(rot_feature * rot_mag_feature, dim=0) # [Hp, 3]
+                elif self.config['rot_aggregation']=='separate_mean':
+                    rot_feature=torch.mean(rot_feature, dim=0) * torch.mean(rot_mag_feature, dim=0) # [Hp, 3]    
+                elif self.config['rot_aggregation']=='min':
+                    indices = torch.argmin(rot_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                    rot_feature = rot_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+                elif self.config['rot_aggregation']=='abs_min':
+                    indices = torch.argmin(torch.abs(rot_mag_feature).squeeze(-1), dim=0)  # [Hp]
+                    rot_feature = rot_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+                elif self.config['rot_aggregation']=='max':
+                    indices = torch.argmax(rot_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                    rot_feature = rot_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+                else:
+                    raise NotImplementedError(f"rot_aggregation {self.config['rot_aggregation']} not implemented")
+                
+                rot_type0_feature_list.append(rot_feature)
+
+
+            # "0": (1+1)*pred_horizon, # magnitude of offset + gripper open(1)/close(0)
+            # "1": (1)*pred_horizon, # offset/translation (not unit direction)
+
+            gripper_type0_feature_list = []
+            pos_type1_feature_list = []
+            for i in range(bs):
+                batchi_type0_feature = pos_net_features[i] # [Ho*num_point, Hp*2]
+                batchi_type0_feature=batchi_type0_feature.view(batchi_type0_feature.shape[0],self.pred_horizon,-1)
+                trans_mag_feature=batchi_type0_feature[:, :, 0:1]
+                gripper_feature=batchi_type0_feature[:, :, 1:2]
+                gripper_feature=torch.mean(gripper_feature, dim=0) # [Hp, 1]
+
+                batchi_type1_feature = pos_net_features[i][:,(1+1)*self.pred_horizon:(1+1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]
+                batchi_type1_feature=batchi_type1_feature.view(batchi_type1_feature.shape[0],self.pred_horizon,-1)
+                trans_feature=batchi_type1_feature
+                if self.config['trans_aggregation']=='mean':
+                    trans_feature=torch.mean(batchi_type1_feature* trans_mag_feature, dim=0) # [Hp, 3]
+                elif self.config['trans_aggregation']=='separate_mean':
+                    trans_feature=torch.mean(batchi_type1_feature, dim=0)* torch.mean(trans_mag_feature, dim=0) # [Hp, 3]
+                elif self.config['trans_aggregation']=='min':
+                    indices = torch.argmin(trans_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                    trans_feature = trans_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+                elif self.config['trans_aggregation']=='abs_min':
+                    indices = torch.argmin(torch.abs(trans_mag_feature).squeeze(-1), dim=0)  # [Hp]
+                    trans_feature = trans_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+                elif self.config['trans_aggregation']=='max':
+                    indices = torch.argmax(trans_mag_feature.squeeze(-1), dim=0)  # [Hp]
+                    trans_feature = trans_feature[indices, torch.arange(self.pred_horizon)]  # Shape: [Hp, 3]
+                else:
+                    raise NotImplementedError(f"trans_aggregation {self.config['trans_aggregation']} not implemented")
+                
+                pos_type1_feature_list.append(trans_feature)
+                gripper_type0_feature_list.append(gripper_feature)
+
+
+
+
+        # TODO BUG first dim wont match if voxelized, thus cannot be stacked # [B, Hp, 3]
+        output_ori = torch.stack(rot_type0_feature_list,dim = 0) # [B, Hp, 3]
+        output_pos = torch.stack(pos_type1_feature_list,dim = 0) # [B, Hp, 3]
+        output_gripper = torch.stack(gripper_type0_feature_list,dim = 0) # [B, Hp, 1]
+        if return_raw:
+            return{
+                'pos':output_pos,
+                'ori':output_ori,
+                'gripper':output_gripper,
+            }
+        raise NotImplementedError
+        output_ori = process_action(output_ori.view(-1,6), output_pos.view(-1,3),follow_rot_trans_convention=True).view(bs,-1,4,4) # orthogonalization
+        return output_ori # [B, Ho, 4, 4]
+
 
 
 

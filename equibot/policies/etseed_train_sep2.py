@@ -9,7 +9,7 @@ from diffusers.optimization import get_scheduler
 from tqdm.auto import tqdm
 
 # env import
-from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Fused, SE3VisionNet_Hierarchical
+from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Fused, SE3VisionNet_Hierarchical, SE3ManiNet_AA
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 from equibot.policies.utils.etseed.utils.group_utils import process_action #, orthogonalization
 
@@ -18,6 +18,7 @@ import logging
 import omegaconf
 from equibot.policies.utils.misc import get_dataset
 import glob
+from pytorch3d.transforms import axis_angle_to_matrix
 
 import kornia
 
@@ -75,7 +76,9 @@ def main(cfg):
         'num_heads':cfg.dev.num_heads,
         'channels_div':cfg.dev.channels_div,
         'global_cond':cfg.dev.global_cond,
-        'local_cond':cfg.dev.local_cond,        
+        'local_cond':cfg.dev.local_cond,
+        'aa':cfg.dev.aa,
+                
     }
 
 
@@ -281,7 +284,9 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
         # action_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
     else:
         raise NotImplementedError(f"se3 {config['se3']} not implemented")
-    
+    if config['aa']:
+        action_pred_net=SE3ManiNet_AA(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
+
     unet=None
     assert config['unet']==True,'unet needed for diffusion'
     if config['unet']:
@@ -687,6 +692,11 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         ori=model_output['ori']
         pos=model_output['pos']
         gripper=model_output['gripper']
+        if config['aa']:
+            rotation_matrices=axis_angle_to_matrix(ori)
+            col1 = rotation_matrices[..., :, 0]  # [B, Hp, 3]
+            col2 = rotation_matrices[..., :, 1]  # [B, Hp, 3]
+            ori = torch.cat((col1, col2), dim=-1) # [B, Hp, 6]
         model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
 
         # must use unet, required for diffusion
