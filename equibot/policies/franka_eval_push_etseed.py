@@ -122,6 +122,7 @@ def main(cfg):
         'arch':cfg.dev.arch,
         "cfg":cfg,
         "loadFromCkpt": False,
+        'aa':cfg.dev.aa,
 
     }
 

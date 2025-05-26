@@ -336,6 +336,16 @@ class SE3ManiNet_Fused(ExtendedModule):
                 low_memory=config['low_memory'],
             )
 
+            if (oct(config['bugfix'])[-2])=='1':
+                num_degrees= num_degrees
+                num_channels= num_channels
+                num_heads= num_heads
+                channels_div= channels_div
+            else:
+                num_degrees= 6
+                num_channels= 16
+                num_heads= 2
+                channels_div= 2
             self.pos_net = SE3Backbone(
                 fiber_in=Fiber({
                     "0": num_fib_in[0], 
@@ -970,7 +980,7 @@ class SE3VisionNet(ExtendedModule):
         self.extra_input_type_1_feat=extra_input_type_1_feat
         self.output_type_1_feat=output_type_1_feat
         k_neighbours=config['k_neighbours']
-        if config['bugfix'] % 10 == 1:
+        if (oct(config['bugfix'])[-1])=='1':
             k_neighbours=config['k_neighbours*obs_horizon']
 
         self.weights_net = SE3Backbone(

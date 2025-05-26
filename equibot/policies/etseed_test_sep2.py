@@ -9,13 +9,14 @@ from .etseed_train_sep2 import prepare_model_input1,prepare_model_input2,prepare
 from tqdm.auto import tqdm
 
 # env import
-from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Fused, SE3VisionNet_Hierarchical
+from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Fused,SE3ManiNet_AA, SE3VisionNet_Hierarchical
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 from equibot.policies.utils.etseed.utils.group_utils import process_action #, orthogonalization
 
 import hydra
 import logging
 from equibot.policies.utils.misc import get_dataset
+from pytorch3d.transforms import axis_angle_to_matrix
 
 @hydra.main(config_path="configs", config_name="etseed")
 def main(cfg):
@@ -228,6 +229,12 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                     ori=model_output['ori']
                     pos=model_output['pos']
                     gripper=model_output['gripper']
+                    if config['aa']:
+                        rotation_matrices=axis_angle_to_matrix(ori)
+                        col1 = rotation_matrices[..., :, 0]  # [B, Hp, 3]
+                        col2 = rotation_matrices[..., :, 1]  # [B, Hp, 3]
+                        ori = torch.cat((col1, col2), dim=-1) # [B, Hp, 6]
+                        
                     model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
                     
                 unet_input=torch.cat((noisy_actions,noisy_gripper),dim=-1) # [B,Hp,10]
@@ -343,6 +350,11 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                     ori=model_output['ori']
                     pos=model_output['pos']
                     gripper=model_output['gripper']
+                    if config['aa']:
+                        rotation_matrices=axis_angle_to_matrix(ori)
+                        col1 = rotation_matrices[..., :, 0]  # [B, Hp, 3]
+                        col2 = rotation_matrices[..., :, 1]  # [B, Hp, 3]
+                        ori = torch.cat((col1, col2), dim=-1) # [B, Hp, 6]
                     model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
                 
 
