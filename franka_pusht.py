@@ -743,14 +743,15 @@ class FrankaRope(BaseSample):
         data_logger.load(log_path=data_file)
 
         await world.play_async()
-        # disable rigidbodyapi only AFTER play, or visual cubes stay put
-        # TODO BUG?
-        for prim in world.stage.Traverse():
-            if str(prim.GetPath()).startswith("/World/Extras"):
-                # Apply RigidBodyAPI
-                if UsdPhysics.RigidBodyAPI.CanApply(prim) and prim.GetTypeName().lower() in ["cube"]:
-                    RigidBodyAPI=UsdPhysics.RigidBodyAPI.Apply(prim)
-                    RigidBodyAPI.GetRigidBodyEnabledAttr().Set(False)
+        # # phyx joint setactors: at least one actor must be non static
+        # # disable rigidbodyapi only AFTER play, or visual cubes stay put
+        # # TODO BUG?
+        # for prim in world.stage.Traverse():
+        #     if str(prim.GetPath()).startswith("/World/Extras"):
+        #         # Apply RigidBodyAPI
+        #         if UsdPhysics.RigidBodyAPI.CanApply(prim) and prim.GetTypeName().lower() in ["cube"]:
+        #             RigidBodyAPI=UsdPhysics.RigidBodyAPI.Apply(prim)
+        #             RigidBodyAPI.GetRigidBodyEnabledAttr().Set(False)
         if self._cfg is not None:
             if self._cfg.translation is not None:
             # rotate world first after play(), otherwise the franka will compensate the rotation somehow in their code

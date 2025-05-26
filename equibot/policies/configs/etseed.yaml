@@ -53,7 +53,7 @@ dev:
   Ho_in_B: False
   diff: True
   arch: 0 # 0: one se3 for pc enc + action prediction; 2: two sep. se3, potentially w/ unet
-  bugfix: 0000000000000001 # last bit: knn in se3 vision
+  bugfix: 0000000000000011 # last bit: knn in se3 vision # 1<<1: hardcode pos degree
   testing: 0 #1: prepare_model_input3 instead of prepare_model_input2
   sanity_check: 0 # 1: se3 pc enc + unet;
   pc_xyz_feat: True # use xyz position of pc explicitly as features

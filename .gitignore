@@ -14,3 +14,9 @@ franka_rope.py
 wandb/*
 
 output.log
+*.pth
+*.part
+*.mp4
+*.zip
+*.zarr
+

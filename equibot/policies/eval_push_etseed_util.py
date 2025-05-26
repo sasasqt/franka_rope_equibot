@@ -154,6 +154,15 @@ class EvalUtils(ControlFlow):
                     position=np.array(data_frame.data["T"]["hbar_world_position"]),
                     orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
                 )
+                world.scene.get_object('tgt_hbar').set_world_pose(
+                    position=np.array(data_frame.data["Target_T"]["hbar_world_position"]),
+                    orientation=np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),
+                )
+                world.scene.get_object('tgt_vbar').set_world_pose(
+                    position=np.array(data_frame.data["Target_T"]["hbar_world_position"]),
+                    orientation=np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),
+                )
+                
             
                 # rope.set_world_pose(
                 #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
