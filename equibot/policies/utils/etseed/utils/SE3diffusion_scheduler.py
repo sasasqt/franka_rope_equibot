@@ -19,11 +19,11 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return torch.tensor(betas, dtype=torch.float32)
 
 class DiffusionScheduler(torch.nn.Module):
-    def __init__(self,num_steps=100,sigma_r: float = 0.05,sigma_t: float = 0.03,mode='squaredcos_cap_v2',device= torch.device("cuda")):
+    def __init__(self,num_steps=100,beta_T:float = 0.05,sigma_r: float = 0.05,sigma_t: float = 0.03,mode='squaredcos_cap_v2',device= torch.device("cuda")):
         super().__init__()
         self.num_steps: int = num_steps # 100
         self.beta_1: float = 1e-4
-        self.beta_T: float = 0.05
+        self.beta_T:float=beta_T
         self.sigma_r: float = sigma_r # 0.2 0.05 0.001 0.0005
         self.sigma_t: float = sigma_t # 0.1 0.03 0.001 0.0003
         self.mode = mode # ['linear','cosine','squaredcos_cap_v2']
@@ -42,6 +42,7 @@ class DiffusionScheduler(torch.nn.Module):
                 for t in range(0, T):
                     alphas.append(f(t, T, s) / alphas[-1])
                 betas = [1 - alpha / alphas[0] for alpha in alphas]
+
                 return [min(beta, 0.999) for beta in betas]
             betas = betas_fn(s=self.S)
             self.betas = torch.FloatTensor(betas)
@@ -59,14 +60,30 @@ class DiffusionScheduler(torch.nn.Module):
         self.gamma0 = torch.zeros_like(self.betas).to(device)
         self.gamma1 = torch.zeros_like(self.betas).to(device)
         self.gamma2 = torch.zeros_like(self.betas).to(device)
-        
-        
+        self.lambda0=torch.zeros_like(self.betas).to(device)
+        self.lambda1=torch.zeros_like(self.betas).to(device)
+        self.v_coeff1=torch.zeros_like(self.betas).to(device)
+        self.v_coeff2=torch.zeros_like(self.betas).to(device)
+        # self.v_coeff1=torch.ones_like(self.betas).to(device)
+        self._alpha=torch.zeros_like(self.betas).to(device)
+        self._beta=torch.zeros_like(self.betas).to(device)
+
         for t in range(1, self.num_steps):  # 2 to T
             alpha_prod_t = self.alpha_bars[t]
             alpha_prod_t_prev = self.alpha_bars[t - 1] if t > 0 else self.one
             self.gamma0[t] = self.betas[t] * torch.sqrt(alpha_prod_t_prev) / (1. - alpha_prod_t)
             self.gamma1[t] = (1. - alpha_prod_t_prev) * torch.sqrt(alpha_prod_t) / (1. - alpha_prod_t)
             self.gamma2[t] = (1. - alpha_prod_t_prev) * self.betas[t] / (1. - alpha_prod_t)
+            self.lambda0[t] = 1./ torch.sqrt(alpha_prod_t)
+            self.lambda1[t] = self.betas[t] / torch.sqrt(1. - alpha_prod_t)
+            self.v_coeff1[t] = torch.sqrt(alpha_prod_t)
+            self.v_coeff2[t] = torch.sqrt(1.-alpha_prod_t)
+            prev_a= self.alphas[t-1] if t > 0 else self.one
+            self._beta[t]=(1.0-prev_a)/(1-self.alphas[t])
+            self._alpha[t]=prev_a-self.alphas[t]*(1.0-prev_a)/(1.0-self.alphas[t])
+
+            
+        self.gamma2[-1]=0.0
 
     def set_timesteps(self,num_steps):
         self.num_steps = num_steps
@@ -101,13 +118,125 @@ class DiffusionScheduler(torch.nn.Module):
         
 
         return noisy_interpolated_H_t, H_pure_noise
+
+    def add_noise2(self,
+        original_samples: torch.FloatTensor, # [B, Ho, 4, 4]
+        timesteps: torch.IntTensor, # [B]
+        device,
+        no_noise=False):
+        B = original_samples.shape[0] # batch
+        Ho = original_samples.size(1)  # horizon
+        
+        # H_T the identity transformation
+        H_T = torch.eye(4)[None].expand(B,Ho, -1, -1).to(device) # H_T: [B,Ho,4,4]
+        alpha_bars = self.alpha_bars[timesteps].to(device) # [B]
+      
+        # H_t [B,Ho,4,4] the interpolation part, see eq 35
+        # H_t = se3.exp((1. - torch.sqrt(alpha_bars)).unsqueeze(-1).unsqueeze(-1) * se3.log(H_T @ (torch.inverse(original_samples).to(torch.float32)))) @ original_samples.to(torch.float32)
+        # H_t = se3.exp((torch.sqrt(alpha_bars)).unsqueeze(-1).unsqueeze(-1) * se3.log(original_samples))
+        H_t = se3.exp((torch.sqrt(alpha_bars)).unsqueeze(-1).unsqueeze(-1) * se3.log(original_samples))
+
+        # add noise
+        # the gamma in perturbation
+        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
+        lie_noise= scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)
+        # lie_noise= torch.randn(B,Ho, 6).to(device)
+        noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * lie_noise  # [B,Ho, 6]
+        # noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * lie_noise  # [B,Ho, 6]
+            
+        # perturbation part in eq 34
+        H_pure_noise = se3.exp(noise) #  [B,Ho,4,4]
+        if no_noise:
+            return H_t,H_pure_noise
+        
+        # perturbation + interpolation, see eq 34
+        noisy_interpolated_H_t = H_pure_noise @ H_t #  [B,Ho,4,4]
+        noisy_interpolated_lie_H_t=se3.log(noisy_interpolated_H_t)
+
+        return noisy_interpolated_H_t, H_pure_noise, noisy_interpolated_lie_H_t, lie_noise, se3.log(original_samples)
+    
+
+    def add_noisetest(self,
+        original_samples: torch.FloatTensor, # [B, Ho, 4, 4]
+        timesteps: torch.IntTensor, # [B]
+        device,
+        no_noise=False):
+        B = original_samples.shape[0] # batch
+        Ho = original_samples.size(1)  # horizon
+        
+        # H_T the identity transformation
+        H_T = torch.eye(4)[None].expand(B,Ho, -1, -1).to(device) # H_T: [B,Ho,4,4]
+        a = self.alphas.to(device)[timesteps.to(device)].unsqueeze(-1).unsqueeze(-1) # [B]
+        lie_h_0=se3.log(original_samples)
+
+        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
+        lie_noise= scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)
+        lie_h_t = a*lie_h_0+(1.0-a)*se3.log(H_T)+(1.0-a)*lie_noise
+        return lie_h_t,se3.exp(lie_h_t),lie_h_0
+    
+
+    def denoisetest(self,
+        lie_h_0, # [B,Ho,4,4]
+        timestep, # [B]
+        lie_sample, # [B,Ho,4,4]
+        device,
+        abs_to_rel=False):
+
+        timestep = timestep[0].cpu() # scalar
+        B = lie_sample.shape[0]
+        Ho = lie_sample.shape[1]
+        # see algorithm 2, but no longer use A^{k->0}A^k
+        alpha = self._alpha[timestep].to(device)
+        beta = self._beta[timestep].to(device)
+        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)
+        lie_noise= scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)
+        lie_sample=alpha*lie_h_0+beta*lie_sample+beta*scale*lie_noise        
+        return lie_sample,se3.exp(lie_sample)    
+    
+
+    def add_noise3(self,
+        original_samples: torch.FloatTensor, # [B, Ho, 4, 4]
+        timesteps: torch.IntTensor, # [B]
+        device,
+        no_noise=False):
+        B = original_samples.shape[0] # batch
+        Ho = original_samples.size(1)  # horizon
+        v_coeff1=self.v_coeff1[timesteps].to(device).unsqueeze(-1).unsqueeze(-1)
+        v_coeff2=self.v_coeff2[timesteps].to(device).unsqueeze(-1).unsqueeze(-1)
+
+        # H_T the identity transformation
+        H_T = torch.eye(4)[None].expand(B,Ho, -1, -1).to(device) # H_T: [B,Ho,4,4]
+        alpha_bars = self.alpha_bars[timesteps].to(device) # [B]
+      
+        # H_t [B,Ho,4,4] the interpolation part, see eq 35
+        # H_t = se3.exp((1. - torch.sqrt(alpha_bars)).unsqueeze(-1).unsqueeze(-1) * se3.log(H_T @ (torch.inverse(original_samples).to(torch.float32)))) @ original_samples.to(torch.float32)
+        H_t = se3.exp((torch.sqrt(alpha_bars)).unsqueeze(-1).unsqueeze(-1) * se3.log(original_samples))
+
+        # add noise
+        # the gamma in perturbation
+        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
+        lie_noise= scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)
+        noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * lie_noise  # [B,Ho, 6]
+            
+        # perturbation part in eq 34
+        H_pure_noise = se3.exp(noise) #  [B,Ho,4,4]
+        if no_noise:
+            return H_t,H_pure_noise
+        
+        # perturbation + interpolation, see eq 34
+        noisy_interpolated_H_t = H_pure_noise @ H_t #  [B,Ho,4,4]
+        noisy_interpolated_lie_H_t=se3.log(noisy_interpolated_H_t)
+        lie_tgt_v=v_coeff1*lie_noise-v_coeff2*se3.log(original_samples)
+        tgt_v=se3.exp(lie_tgt_v)
+        return noisy_interpolated_H_t, H_pure_noise, noisy_interpolated_lie_H_t, lie_noise, tgt_v,lie_tgt_v
     
     
     def denoise(self,
                 reconstructed_H_0, # [B,Ho,4,4]
                 timestep, # [B]
                 sample, # [B,Ho,4,4]
-                device):
+                device,
+                abs_to_rel=False):
         
         timestep = timestep[0].cpu() # scalar
         B = sample.shape[0]
@@ -115,11 +244,126 @@ class DiffusionScheduler(torch.nn.Module):
         # see algorithm 2, but no longer use A^{k->0}A^k
         gamma0 = self.gamma0[timestep].to(device)
         gamma1 = self.gamma1[timestep].to(device)
+        self.gamma2[-1]=0.0
+        gamma2 = self.gamma2[timestep].to(device)
+        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)
         # print(reconstructed_H_0)
         # print(se3.log(reconstructed_H_0))
         # print("^^^^^")
-        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample))
+        if abs_to_rel: 
+            reconstructed_H_0=reconstructed_H_0@sample
+        
+        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample) + scale*gamma2*torch.randn(B,Ho,6).to(device))
         return sample # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
+    
+
+    def denoise2(self,
+                lie_H_0, # [B,Ho,6]
+                timestep, # [B]
+                noisy_lie_actions,
+                device,
+                ):
+        
+        timestep = timestep[0].cpu() # scalar
+        B = lie_H_0.shape[0]
+        Ho = lie_H_0.shape[1]
+        # see algorithm 2, but no longer use A^{k->0}A^k
+        gamma0 = self.gamma0[timestep].to(device)
+        gamma1 = self.gamma1[timestep].to(device)
+        gamma2 = self.gamma2[timestep].to(device)
+        lambda0 = self.lambda0[timestep].to(device)
+        lambda1 = self.lambda1[timestep].to(device)
+        
+        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)
+        scale=scale.unsqueeze(0)
+        # lie_noise=torch.randn(B,Ho,6).to(device)
+        # prev_lie_h_t=lambda0*(lie_H_t-lambda1*lie_pred) + gamma2*scale*lie_noise
+
+        noise=torch.randn(B,Ho,6).to(device)
+        noisy_lie_actions = gamma0 *lie_H_0 + gamma1 * noisy_lie_actions + scale*gamma2*noise
+
+        return noisy_lie_actions,se3.exp(noisy_lie_actions)
+    
+    def denoise22(self,
+                lie_noise, # [B,Ho,6]
+                timestep, # [B]
+                noisy_actions,
+                noisy_lie_actions,
+                device,
+                ):
+        
+        timestep = timestep[0].cpu() # scalar
+        B = lie_noise.shape[0]
+        Ho = lie_noise.shape[1]
+        # see algorithm 2, but no longer use A^{k->0}A^k
+        gamma0 = self.gamma0[timestep].to(device)
+        gamma1 = self.gamma1[timestep].to(device)
+        gamma2 = self.gamma2[timestep].to(device)
+        lambda0 = self.lambda0[timestep].to(device)
+        lambda1 = self.lambda1[timestep].to(device)
+        v_coeff1=self.v_coeff1[timestep].to(device).unsqueeze(-1).unsqueeze(-1)
+        v_coeff2=self.v_coeff2[timestep].to(device).unsqueeze(-1).unsqueeze(-1)
+
+        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)
+        scale=scale.unsqueeze(0)
+        # lie_noise=torch.randn(B,Ho,6).to(device)
+        # prev_lie_h_t=lambda0*(lie_H_t-lambda1*lie_pred) + gamma2*scale*lie_noise
+
+        lie_h0=se3.log(torch.inverse(se3.exp(v_coeff2*lie_noise))@noisy_actions)/v_coeff1
+        h0=se3.exp(lie_h0)
+
+        noise=torch.randn(B,Ho,6).to(device)
+        noisy_lie_actions = gamma0 *lie_h0 + gamma1 * noisy_lie_actions + scale*gamma2*noise
+        
+        return noisy_lie_actions,se3.exp(noisy_lie_actions)
+    
+    # see eq 10 in DiffusionReg paper, (exp are applied to both sides)
+    def pre_compute_loss(self,
+                H_0, # [B,Ho,4,4]
+                timestep, # [B]
+                H_t, # [B,Ho,4,4]
+                predicted, # [B,Ho,4,4]
+                device):
+        
+        interpolated, _=self.denoise(H_0,timestep,H_t,device)
+        
+        return interpolated,predicted
+    
+
+    def denoise3(self,
+                lie_H_t, # [B,Ho,6]
+                timestep, # [B]
+                lie_v_pred,
+                device,
+                ):
+        
+        timestep = timestep[0].cpu() # scalar
+        B = lie_H_t.shape[0]
+        Ho = lie_H_t.shape[1]
+        # see algorithm 2, but no longer use A^{k->0}A^k
+        gamma0 = self.gamma0[timestep].to(device)
+        gamma1 = self.gamma1[timestep].to(device)
+        gamma2 = self.gamma2[timestep].to(device)
+        lambda0 = self.lambda0[timestep].to(device)
+        lambda1 = self.lambda1[timestep].to(device)
+        v_coeff1=self.v_coeff1[timestep].to(device).unsqueeze(-1).unsqueeze(-1)
+        v_coeff2=self.v_coeff2[timestep].to(device).unsqueeze(-1).unsqueeze(-1)
+
+        lie_noise_pred = v_coeff1 * lie_v_pred + v_coeff2 * lie_H_t
+        lie_x0_pred = v_coeff1 * lie_H_t - v_coeff2 * lie_v_pred
+
+        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device).unsqueeze(0)
+        # prev_h_t = se3.exp(gamma0 * lie_x0_pred + gamma1 * lie_H_t + scale*gamma2*torch.randn(B,Ho,6).to(device))
+        prev_lie_h_t=gamma0 * lie_x0_pred + gamma1 * lie_H_t + gamma2*lie_noise_pred
+        # lie_noise=torch.randn(B,Ho,6).to(device)
+        # prev_lie_h_t=gamma0 * lie_x0_pred + gamma1 * lie_H_t + gamma2*scale*lie_noise
+        prev_h_t = se3.exp(prev_lie_h_t)
+
+        # lie_noise=torch.randn(B,Ho,6).to(device)
+        # prev_lie_h_t=lambda0*(lie_H_t-lambda1*lie_noise_pred) #+ gamma2*scale*lie_noise
+        # prev_h_t = se3.exp(prev_lie_h_t)
+
+        return prev_lie_h_t,prev_h_t,se3.exp(lie_x0_pred)
     
     # see eq 10 in DiffusionReg paper, (exp are applied to both sides)
     def pre_compute_loss(self,

@@ -27,8 +27,16 @@ separate?
 no unetdiffusion w/ se3 data
 no unetdiffusion w/ rotated_se3 data: se3: yes, but translation/offset is also affected by rel. rotation?! solution: **separate** ori pos net!? **reduce** horizon? **horizion in batch**??
 
+test008: SLOW after the common path
+test009: SLOW since the beginning
+test012: relative slow for no reason?
+test013: surprisingly good? but translation failed
+test014: undecidable yet
+
 sep2 w/ k=1 global_cond=1 local_cond=1: k was set to 3, **bad** result
 sep2 w/ k=1
+
+bad: k=3; lower degree; no film unet; equiv unet; pred 2 cols instead of aa; fused se3
 
 sep2 w/ ddpm predict noise  k=1 global_cond=1 local_cond=1
 sep2 w/ ddpm predict target  k=1 global_cond=1 local_cond=1
