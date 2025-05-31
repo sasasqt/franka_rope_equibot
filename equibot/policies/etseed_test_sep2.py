@@ -192,7 +192,7 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
             
             noisy_actions=torch.cat((noisy_ori,noisy_tran),dim=-1)
         else:
-            noisy_actions, noise=noise_scheduler.add_noise(H_Identity, k, device=device,no_noise=config['no_noise'])
+            noisy_actions,_,noisy_lie_actions,_,_=noise_scheduler.add_noise2(H_Identity, k, device=device,no_noise=config['no_noise'])
         
         gripper_noise = torch.randn((bz,hp,1), device=device)
         noisy_gripper = gripper_noise # gripper_noise_scheduler.add_noise(gt_gripper_action, gripper_noise, k)
@@ -350,21 +350,12 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                     ori=model_output['ori']
                     pos=model_output['pos']
                     gripper=model_output['gripper']
-                    if config['aa']:
-                        rotation_matrices=axis_angle_to_matrix(ori)
-                        col1 = rotation_matrices[..., :, 0]  # [B, Hp, 3]
-                        col2 = rotation_matrices[..., :, 1]  # [B, Hp, 3]
-                        ori = torch.cat((col1, col2), dim=-1) # [B, Hp, 6]
-                    model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
+
+                    model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,3+3+1]
                 
 
-                ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
-                selected_ori_actions = [noisy_actions[:, :, i, j] for i, j in ori_indices]
-                trans_indices = [(0, 3), (1, 3), (2, 3)]
-                selected_trans_actions = [noisy_actions[:, :, i, j] for i, j in trans_indices]
-                noisy_ori_actions = torch.stack(selected_ori_actions, dim=-1)
-                noisy_trans_actions = torch.stack(selected_trans_actions, dim=-1)
-                unet_input=torch.cat((noisy_ori_actions,noisy_trans_actions,noisy_gripper),dim=-1)
+
+                unet_input=torch.cat((noisy_lie_actions,noisy_gripper),dim=-1)
                 
                 local_cond=None
                 global_cond=None
@@ -392,55 +383,45 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
 
 
 
-                output_ori=unet_output[...,0:6].reshape(-1,6)
-                output_pos=unet_output[...,6:9].reshape(-1,3)
-                action=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(model_output.shape[0],-1,4,4)
-                
+                output_ori=unet_output[...,0:3]#.reshape(-1,6)
+                output_pos=unet_output[...,3:6]#.reshape(-1,3)
+                output_lie=torch.cat((output_ori,output_pos),dim=-1)                 
                     
-                output_gripper_action=unet_output[...,9:10]
+                output_gripper_action=unet_output[...,6:7]
                 noisy_gripper = gripper_noise_scheduler.step(output_gripper_action, denoise_idx, output_gripper_action).prev_sample      
 
                 # Options
                 if config['diffusion_option']==0:
                     # 0: the default, predict the gt H0
-                    reconstructed_H_0 = action
-                    noisy_actions = noise_scheduler.denoise(
+                    reconstructed_H_0 = output_lie
+                    noisy_lie_actions,noisy_actions = noise_scheduler.denoise2(
                         reconstructed_H_0=reconstructed_H_0,
                         timestep = k,
-                        sample = noisy_actions,
+                        noisy_lie_actions = noisy_lie_actions,
                         device = device
                     )                
-                elif config['diffusion_option']==1:
-                    # 1: predict relative transformation from Ht to H0
-                    reconstructed_H_0 = torch.einsum('bhij,bhjk->bhjk',action,noisy_actions)
-                    noisy_actions = noise_scheduler.denoise(
-                        reconstructed_H_0=reconstructed_H_0,
-                        timestep = k,
-                        sample = noisy_actions,
-                        device = device
-                    )
+                # elif config['diffusion_option']==1:
+                #     # 1: predict relative transformation from Ht to H0
+                #     reconstructed_H_0 = torch.einsum('bhij,bhjk->bhjk',action,noisy_actions)
+                #     noisy_actions = noise_scheduler.denoise(
+                #         reconstructed_H_0=reconstructed_H_0,
+                #         timestep = k,
+                #         sample = noisy_actions,
+                #         device = device
+                #     )
                 elif config['diffusion_option']==2:
                     # 2: no diffusion, no denoising
-                    reconstructed_H_0=action
+                    reconstructed_H_0=output_lie
                 elif config['diffusion_option']==3:
                     # no diffusion during inference
-                    noisy_actions=action
+                    noisy_actions=output_lie
                     config['early_return']=True
                 else:
                     raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 
                 assert not torch.any(torch.isnan(model_output)), model_output
                 assert not torch.any(torch.isnan(noisy_actions)), noisy_actions
-                assert not torch.any(torch.isnan(action)), action
-
-                rot=noisy_actions.reshape(-1,4,4)[...,:3,:3]
-                tran=noisy_actions.reshape(-1,4,4)[...,:3,3]
-                # print()
-                # print(torch.det(rot),'RRRRRRRRRR')
-                # print(tran,'TTTTTTTTTT')
-                # print(noisy_actions)
-                assert torch.any(torch.det(rot)>=0.0), rot
-                assert not torch.any(torch.isnan(tran)), tran
+                assert not torch.any(torch.isnan(output_lie)), output_lie
 
                 if not isVisualEval:
                     loss, dist_R, dist_T, dist_G = compute_loss(reconstructed_H_0.reshape(-1,4,4), naction.reshape(-1,4,4))

@@ -1,4 +1,5 @@
 import torch
+from equibot.policies.utils.etseed.utils.se_math.transforms import se3
 
 def calculate_norm_loss(output_directions):
     # calculate ||R^T*R - R_trace||_F
@@ -59,6 +60,38 @@ def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None):
     dist_T = torch.sqrt(dist_t_square).mean()
     dist = dist_R + dist_T
     
+    dist_G=None
+    
+    if pred_gripper is not None:
+        dist_g_square = torch.sum((pred_gripper-gt_gripper) ** 2, dim=1)
+        dist_G = torch.sqrt(dist_g_square).mean()
+        dist=dist+dist_G
+
+    return dist, dist_R, dist_T, dist_G
+
+
+def compute_loss2(output_lie, gt4by4,lie_h_0,pred_gripper=None,gt_gripper=None):
+
+    assert ((pred_gripper is None and gt_gripper is None) or (pred_gripper is not None and gt_gripper is not None))
+    T1=se3.exp(output_lie).reshape(-1,4,4)
+    T2=gt4by4.reshape(-1,4,4)
+    R_1, t_1 = T1[:, :3, :3], T1[:, :3, 3]
+    R_2, t_2 = T2[:, :3, :3], T2[:, :3, 3]
+    t_err=torch.abs(t_1-t_2)
+    print()
+    print(torch.min(t_err,0).values.data,torch.max(t_err,0).values.data,'translation errors')
+    print(t_2[torch.min(t_err,0).indices, torch.arange(t_err.size(1))].data,t_2[torch.max(t_err,0).indices, torch.arange(t_err.size(1))].data,'gts')
+    print(t_1[torch.min(t_err,0).indices, torch.arange(t_err.size(1))].data,t_1[torch.max(t_err,0).indices, torch.arange(t_err.size(1))].data,'predicted')
+
+    dist_R_square = geodesic_distance_between_R(R_1, R_2) ** 2
+    dist_t_square = torch.sum((t_1-t_2) ** 2, dim=1)
+    # dist = torch.sqrt(dist_R_square.squeeze(-1) + dist_t_square)    # [bs]
+    dist_R = torch.sqrt(dist_R_square).mean()
+    dist_T = torch.sqrt(dist_t_square).mean()
+    # dist = dist_R + dist_T
+    dist_lie_square = torch.sum((output_lie-lie_h_0) ** 2, dim=1)
+    dist = torch.sqrt(dist_lie_square).mean()
+
     dist_G=None
     
     if pred_gripper is not None:

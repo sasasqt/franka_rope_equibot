@@ -4,7 +4,7 @@ import torch
 import time
 import torch.nn as nn
 import wandb
-from equibot.policies.utils.etseed.utils.loss_utils import compute_loss
+from equibot.policies.utils.etseed.utils.loss_utils import compute_loss,compute_loss2
 from diffusers.optimization import get_scheduler
 from tqdm.auto import tqdm
 
@@ -40,6 +40,7 @@ def main(cfg):
         "weight_decay": cfg.weight_decay,
         "betas": cfg.betas,
         "eps": cfg.eps,
+        "beta_T": cfg.beta_T,
         "sigma_r":cfg.sigma_r,
         "sigma_t": cfg.sigma_t,
         #"equiv_frac": cfg.equiv_frac,
@@ -169,7 +170,7 @@ def main(cfg):
     else:
         # noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
 
-        noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
+        noise_scheduler = DiffusionScheduler(num_steps=config["diffusion_steps"],beta_T=config["beta_T"], sigma_r=config["sigma_r"],sigma_t=config["sigma_t"],mode=config["diffusion_mode"],device=device)
 
         from diffusers import DDPMScheduler
         prediction_type='epsilon'
@@ -318,7 +319,7 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
             raise NotImplementedError
         
         unet = ConditionalUnet1D(
-            input_dim=10, #cat: ori, pos, gripper o/c
+            input_dim=7, #cat: ori, pos, gripper o/c
             diffusion_step_embed_dim=diffusion_step_embed_dim,
             global_cond_dim=global_cond_dim,
             local_cond_dim=local_cond_dim,
@@ -692,12 +693,12 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         ori=model_output['ori']
         pos=model_output['pos']
         gripper=model_output['gripper']
-        if config['aa']:
-            rotation_matrices=axis_angle_to_matrix(ori)
-            col1 = rotation_matrices[..., :, 0]  # [B, Hp, 3]
-            col2 = rotation_matrices[..., :, 1]  # [B, Hp, 3]
-            ori = torch.cat((col1, col2), dim=-1) # [B, Hp, 6]
-        model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
+        # if config['aa']:
+        #     rotation_matrices=axis_angle_to_matrix(ori)
+        #     col1 = rotation_matrices[..., :, 0]  # [B, Hp, 3]
+        #     col2 = rotation_matrices[..., :, 1]  # [B, Hp, 3]
+        #     ori = torch.cat((col1, col2), dim=-1) # [B, Hp, 6]
+        model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,3+3+1]
 
         # must use unet, required for diffusion
         # if config['unet']:
@@ -736,18 +737,20 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
                 # 0: the default, predict the gt H0
                 # 1: predict relative transformation from Ht to H0
                 # [B,Ho,4,4]
-                noisy_actions, actions_noise = noise_scheduler.add_noise(naction, k, device=device,no_noise=config['no_noise'])
+                noisy_actions,h_noise,noisy_lie_actions,lie_noise,lie_h_0 = noise_scheduler.add_noise2(naction, k, device=device,no_noise=config['no_noise'])
 
                 gripper_noise = torch.randn(gt_gripper_action.shape, device=device)
                 noisy_gripper = gripper_noise_scheduler.add_noise(gt_gripper_action, gripper_noise, k)
 
-                ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
-                selected_ori_actions = [noisy_actions[:, :, i, j] for i, j in ori_indices]
-                trans_indices = [(0, 3), (1, 3), (2, 3)]
-                selected_trans_actions = [noisy_actions[:, :, i, j] for i, j in trans_indices]
-                noisy_ori_actions = torch.stack(selected_ori_actions, dim=-1)
-                noisy_trans_actions = torch.stack(selected_trans_actions, dim=-1)
-                unet_input=torch.cat((noisy_ori_actions,noisy_trans_actions,noisy_gripper),dim=-1) # [B,Hp,10]
+                # ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
+                # selected_ori_actions = [noisy_actions[:, :, i, j] for i, j in ori_indices]
+                # trans_indices = [(0, 3), (1, 3), (2, 3)]
+                # selected_trans_actions = [noisy_actions[:, :, i, j] for i, j in trans_indices]
+                # noisy_ori_actions = torch.stack(selected_ori_actions, dim=-1)
+                # noisy_trans_actions = torch.stack(selected_trans_actions, dim=-1)
+                # unet_input=torch.cat((noisy_ori_actions,noisy_trans_actions,noisy_gripper),dim=-1) # [B,Hp,10]
+                unet_input=torch.cat((noisy_lie_actions,noisy_gripper),dim=-1) # [B,Hp,7]
+                
             else:
                 raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
             
@@ -808,18 +811,19 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             #     loss=loss+dist_g
         else:
             if return_raw:
-                output_ori=unet_output[...,0:6].reshape(-1,6)
-                output_pos=unet_output[...,6:9].reshape(-1,3)
-                final_action=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
-                output_gripper_action=unet_output[...,9:10]
+                output_ori=unet_output[...,0:3]#.reshape(-1,3)
+                output_pos=unet_output[...,3:6]#.reshape(-1,3)
+                output_gripper_action=unet_output[...,6:7]
+                output_lie=torch.cat((output_ori,output_pos),dim=-1) # [B,Hp,6]
+
             # Options
             if config['diffusion_option']==0:
                 # 0: the default, predict the gt H0
                 # see algorithm 1, but no more naction @torch.inverse(noisy_actions)
-                loss, dist_r, dist_t, dist_g = compute_loss(final_action.reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action)  
-            elif config['diffusion_option']==1:
-                # 1: predict relative transformation from Ht to H0
-                loss, dist_r, dist_t, dist_g = compute_loss(torch.einsum('bhij,bhjk->bhjk',final_action,noisy_actions).reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action)  
+                loss, dist_r, dist_t, dist_g = compute_loss2(output_lie,naction,lie_h_0,output_gripper_action,gt_gripper_action)  
+            # elif config['diffusion_option']==1:
+            #     # 1: predict relative transformation from Ht to H0
+            #     loss, dist_r, dist_t, dist_g = compute_loss(torch.einsum('bhij,bhjk->bhjk',final_action,noisy_actions).reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action)  
             else:
                 raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 
