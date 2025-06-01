@@ -7,6 +7,7 @@ import wandb
 from equibot.policies.utils.etseed.utils.loss_utils import compute_loss,compute_loss2
 from diffusers.optimization import get_scheduler
 from tqdm.auto import tqdm
+from kornia.geometry.liegroup import Se3
 
 # env import
 from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Fused, SE3VisionNet_Hierarchical, SE3ManiNet_AA
@@ -300,13 +301,13 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
             local_cond_dim=None
         elif config['local_cond']==1:
             # proposed actions as local
-            local_cond_dim=10 # last dim of action_pred_net
+            local_cond_dim=7 # last dim of action_pred_net
         else:
             raise NotImplementedError
         
         if config['global_cond']==0:
             # proposed actions as global
-            global_cond_dim=config['pred_horizon']*10 # last two dim of action_pred_net
+            global_cond_dim=config['pred_horizon']*7 # last two dim of action_pred_net
             diffusion_step_embed_dim=global_cond_dim
         elif config['global_cond']==1:
             # latent pc as global   
@@ -314,7 +315,7 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
             diffusion_step_embed_dim=global_cond_dim
         elif config['global_cond']==2:
             global_cond_dim=None
-            diffusion_step_embed_dim=config['pred_horizon']*10
+            diffusion_step_embed_dim=config['pred_horizon']*7
         else: 
             raise NotImplementedError
         
@@ -698,7 +699,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         #     col1 = rotation_matrices[..., :, 0]  # [B, Hp, 3]
         #     col2 = rotation_matrices[..., :, 1]  # [B, Hp, 3]
         #     ori = torch.cat((col1, col2), dim=-1) # [B, Hp, 6]
-        model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,3+3+1]
+        model_output=torch.cat((pos,ori, gripper), dim=-1) # [B,Hp,3+3+1]
 
         # must use unet, required for diffusion
         # if config['unet']:
@@ -708,27 +709,17 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             # raise NotImplementedError
             # # TODO
             # ddpm
+
+            naction_4by4=naction
+            naction=Se3.from_matrix(naction).log()
             noise = torch.randn(naction.shape, device=device)
-            noise[:, :,:3, :3]=noise[:, :,:3, :3]
-            noise[:, :, :3, 3] = noise[:, :, :3, 3]
-            noise[:, :, 3, :3]=0.0
-            noise[:, :, 3, 3]=1.0
-
-            noisy_ori=noise[:, :,:3, :2].flatten(start_dim=-2)
-            noisy_tran= noise[:, :, :3, 3]
-            
-            ori=naction[:, :,:3, :2].flatten(start_dim=-2)
-            tran= naction[:, :, :3, 3]
-
-            noise=torch.cat((noisy_ori,noisy_tran), dim=-1)
-            naction=torch.cat((ori,tran), dim=-1)
         
             noisy_actions = noise_scheduler.add_noise(naction, noise, k)
 
             gripper_noise = torch.randn(gt_gripper_action.shape, device=device)
             noisy_gripper = gripper_noise_scheduler.add_noise(gt_gripper_action, gripper_noise, k)
 
-            unet_input=torch.cat((noisy_actions,noisy_gripper),dim=-1) # [B,Hp,10]
+            unet_input=torch.cat((noisy_actions,noisy_gripper),dim=-1) # [B,Hp,7]
 
         else:
 
@@ -796,17 +787,11 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             #     pos=unet_output['pos']
             #     gripper=unet_output['gripper']
 
-            #     unet_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
-
-            loss = nn.functional.mse_loss(unet_output,target)
-            reconstructed_ori=unet_output[...,0:6].reshape(-1,6)
-            reconstructed_pos=unet_output[...,6:9].reshape(-1,3)
-            reconstructed_unet_output=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
-            reconstructed_gripper_action=unet_output[...,9:10]
-            reconstructed_ori=target[...,0:6].reshape(-1,6)
-            reconstructed_pos=target[...,6:9].reshape(-1,3)
-            reconstructed_target=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
-            _, dist_r, dist_t,dist_g = compute_loss(reconstructed_unet_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4),reconstructed_gripper_action,gt_gripper_action)  
+            output_ori=unet_output[...,0:3]#.reshape(-1,3)
+            output_pos=unet_output[...,3:6]#.reshape(-1,3)
+            output_gripper_action=unet_output[...,6:7]
+            output_lie=torch.cat((output_pos,output_ori),dim=-1) # [B,Hp,6]
+            loss, dist_r, dist_t, dist_g = compute_loss2(output_lie,naction_4by4,naction,output_gripper_action,gt_gripper_action)  
             # if dist_g is not None:
             #     loss=loss+dist_g
         else:
@@ -814,7 +799,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
                 output_ori=unet_output[...,0:3]#.reshape(-1,3)
                 output_pos=unet_output[...,3:6]#.reshape(-1,3)
                 output_gripper_action=unet_output[...,6:7]
-                output_lie=torch.cat((output_ori,output_pos),dim=-1) # [B,Hp,6]
+                output_lie=torch.cat((output_pos,output_ori),dim=-1) # [B,Hp,6]
 
             # Options
             if config['diffusion_option']==0:
