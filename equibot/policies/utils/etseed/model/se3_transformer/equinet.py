@@ -732,7 +732,7 @@ class SE3VisionNet(ExtendedModule):
             weight = torch.nn.functional.softmax(batchi_feature[:,:1].reshape(-1, 1), dim=0).squeeze() # [N]
             top_indices = torch.topk(weight, k=max(n//2,1), dim=0).indices
             new_xyz[i] = xyz[i][top_indices]
-            new_feat[i] = feature[i][:,:1][top_indices]
+            new_feat[i] = feature[i][top_indices,1:]
             weights.append(weight)
             global_feat[i]=batchi_feature[:,1:].mean(dim=0)
         if return_raw:

@@ -73,7 +73,7 @@ class DiffusionScheduler(torch.nn.Module):
             alpha_prod_t_prev = self.alpha_bars[t - 1] if t > 0 else self.one
             self.gamma0[t] = self.betas[t] * torch.sqrt(alpha_prod_t_prev) / (1. - alpha_prod_t)
             self.gamma1[t] = (1. - alpha_prod_t_prev) * torch.sqrt(alpha_prod_t) / (1. - alpha_prod_t)
-            self.gamma2[t] = (1. - alpha_prod_t_prev) * self.betas[t] / (1. - alpha_prod_t)
+            self.gamma2[t] = torch.sqrt((1. - alpha_prod_t_prev) * self.betas[t] / (1. - alpha_prod_t))
             self.lambda0[t] = 1./ torch.sqrt(alpha_prod_t)
             self.lambda1[t] = self.betas[t] / torch.sqrt(1. - alpha_prod_t)
             self.v_coeff1[t] = torch.sqrt(alpha_prod_t)
@@ -246,6 +246,8 @@ class DiffusionScheduler(torch.nn.Module):
         gamma1 = self.gamma1[timestep].to(device)
         self.gamma2[-1]=0.0
         gamma2 = self.gamma2[timestep].to(device)
+        alpha_bars = self.alpha_bars[timestep].to(device) # [B]
+
         scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)
         # print(reconstructed_H_0)
         # print(se3.log(reconstructed_H_0))
@@ -253,7 +255,7 @@ class DiffusionScheduler(torch.nn.Module):
         if abs_to_rel: 
             reconstructed_H_0=reconstructed_H_0@sample
         
-        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample) + scale*gamma2*torch.randn(B,Ho,6).to(device))
+        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample) + scale*gamma2*torch.randn(B,Ho,6).to(device))#torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
         return sample # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
     
 
@@ -273,14 +275,15 @@ class DiffusionScheduler(torch.nn.Module):
         gamma2 = self.gamma2[timestep].to(device)
         lambda0 = self.lambda0[timestep].to(device)
         lambda1 = self.lambda1[timestep].to(device)
-        
+        alpha_bars = self.alpha_bars[timestep].to(device) # [B]
+
         scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)
         scale=scale.unsqueeze(0)
         # lie_noise=torch.randn(B,Ho,6).to(device)
         # prev_lie_h_t=lambda0*(lie_H_t-lambda1*lie_pred) + gamma2*scale*lie_noise
 
         noise=torch.randn(B,Ho,6).to(device)
-        noisy_lie_actions = gamma0 *lie_H_0 + gamma1 * noisy_lie_actions + scale*gamma2*noise
+        noisy_lie_actions = gamma0 *lie_H_0 + gamma1 * noisy_lie_actions + scale*gamma2*noise*torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)
 
         return noisy_lie_actions,se3.exp(noisy_lie_actions)
     

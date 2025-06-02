@@ -327,8 +327,19 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
         'unet': unet,
     }).to(device)
 
+    # keys_to_remove=[]
+    # if config['unet_equivariance']:
+    #     keys_to_remove = [
+    #         "unet.final_conv.0.block.0.bias",
+    #         "unet.final_conv.0.block.1.weight", 
+    #         "unet.final_conv.0.block.1.bias"
+    #     ]
+
     if isNotTrain:
         checkpoint = torch.load(config["checkpoint_path"])
+        # for key in keys_to_remove:
+        #     if key in checkpoint['model_state_dict']:
+        #         del checkpoint['model_state_dict'][key]
         nets.load_state_dict(checkpoint['model_state_dict'])
         nets.eval()
         return nets,None,None
@@ -349,6 +360,9 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
 
     if loadFromCkpt:
         checkpoint = torch.load(config["checkpoint_path"])
+        # for key in keys_to_remove:
+        #     if key in checkpoint['model_state_dict']:
+        #         del checkpoint['model_state_dict'][key]
         nets.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])  
         lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict']) 
