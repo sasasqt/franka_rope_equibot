@@ -255,7 +255,7 @@ class DiffusionScheduler(torch.nn.Module):
         if abs_to_rel: 
             reconstructed_H_0=reconstructed_H_0@sample
         
-        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample) + scale*gamma2*torch.randn(B,Ho,6).to(device))#torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
+        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample))# + scale*gamma2*torch.randn(B,Ho,6).to(device))#torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
         return sample # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
     
 

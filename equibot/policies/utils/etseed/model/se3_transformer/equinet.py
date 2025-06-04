@@ -723,14 +723,14 @@ class SE3VisionNet(ExtendedModule):
 
         # process translation
         weights = []
-        new_xyz = torch.zeros(bs,max(n//2,1),3).to(self.device) # only half of the origin xyzs survived
-        new_feat = torch.zeros(bs,max(n//2,1),self.output_type_1_feat*3).to(self.device) # only half of the origin features survived
+        new_xyz = torch.zeros(bs,max(n//2,8),3).to(self.device) # only half of the origin xyzs survived
+        new_feat = torch.zeros(bs,max(n//2,8),self.output_type_1_feat*3).to(self.device) # only half of the origin features survived
         
         global_feat = torch.zeros(bs,self.output_type_1_feat*3).to(self.device)
         for i in range(bs):
             batchi_feature = outputs["feature"][i] # [N, fiber_out]
             weight = torch.nn.functional.softmax(batchi_feature[:,:1].reshape(-1, 1), dim=0).squeeze() # [N]
-            top_indices = torch.topk(weight, k=max(n//2,1), dim=0).indices
+            top_indices = torch.topk(weight, k=max(n//2,8), dim=0).indices
             new_xyz[i] = xyz[i][top_indices]
             new_feat[i] = feature[i][top_indices,1:]
             weights.append(weight)

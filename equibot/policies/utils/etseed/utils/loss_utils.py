@@ -57,8 +57,9 @@ def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None):
     # dist = torch.sqrt(dist_R_square.squeeze(-1) + dist_t_square)    # [bs]
     dist_R = torch.sqrt(dist_R_square).mean()
     dist_T = torch.sqrt(dist_t_square).mean()
-    dist = dist_R + dist_T
-    
+    sign_mismatch = (torch.sign(t_1) != torch.sign(t_2)).float().mean()
+    dist = dist_R + dist_T+sign_mismatch
+
     dist_G=None
     
     if pred_gripper is not None:
