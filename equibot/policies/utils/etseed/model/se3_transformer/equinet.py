@@ -231,6 +231,7 @@ class SE3ManiNet_Fused(ExtendedModule):
             config=None,
             no_tgt_nxyz=False,
             eef_abs_position_as_node=False,
+            latent_pc_as_feat=False,
             eef_xyz_feat=False,
             fused=True,
             ):
@@ -248,6 +249,9 @@ class SE3ManiNet_Fused(ExtendedModule):
         type1_cnt=0
         if eef_abs_position_as_node:
             type1_cnt+=1
+
+        if latent_pc_as_feat:
+            type1_cnt-=3
 
         if no_tgt_nxyz:
             type1_cnt+=1
@@ -350,6 +354,11 @@ class SE3ManiNet_Fused(ExtendedModule):
                 num_channels= 16,
                 num_heads= 2,
                 channels_div= 2,
+                # BUG SHOULD BE:
+                # num_degrees= num_degrees,
+                # num_channels= num_channels,
+                # num_heads= num_heads,
+                # channels_div= channels_div,
                 voxelize = voxelize,
                 k_neighbours=k_neighbours,
                 compute_gradients=config['sh_basis_compute_gradients'],
@@ -404,7 +413,11 @@ class SE3ManiNet_Fused(ExtendedModule):
 
                 batchi_type1_feature = pos_ori_net_features[i][:,(6+1+1+1)*self.pred_horizon:(6+1+1+1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]
                 batchi_type1_feature=batchi_type1_feature.view(batchi_type1_feature.shape[0],self.pred_horizon,-1)
+                if self.config['trans_norm']:
+                    norms=batchi_type1_feature.detach().norm(dim=2,keepdim=True)
+                    batchi_type1_feature=0.01*batchi_type1_feature/norms
                 trans_feature=batchi_type1_feature
+
                 if self.config['trans_aggregation']=='mean':
                     trans_feature=torch.mean(batchi_type1_feature* trans_mag_feature, dim=0) # [Hp, 3]
                 elif self.config['trans_aggregation']=='separate_mean':
@@ -692,15 +705,22 @@ class SE3VisionNet(ExtendedModule):
         if config['bugfix'] % 10 == 1:
             k_neighbours=config['k_neighbours*obs_horizon']
 
+        fiber_out=Fiber({
+            "0": 1, # the weights/heatmap
+            "1": output_type_1_feat, # the global feature
+        })
+        if config['pc_inv']:
+            fiber_out=Fiber({
+                "0": 1+output_type_1_feat*3, # the weights/heatmap# the global feature
+                #"1": , 
+            })
+
         self.weights_net = SE3Backbone(
             fiber_in=Fiber({
                 #"0": 3, # rgb
                 "1": input_type_1_feat+extra_input_type_1_feat, # tgt_xyz + extras
             }),
-            fiber_out=Fiber({
-                "0": 1, # the weights/heatmap
-                "1": output_type_1_feat, # the global feature
-            }),
+            fiber_out=fiber_out,
             num_layers= num_layers,
             num_degrees= num_degrees,
             num_channels= num_channels,
@@ -723,14 +743,14 @@ class SE3VisionNet(ExtendedModule):
 
         # process translation
         weights = []
-        new_xyz = torch.zeros(bs,max(n//2,8),3).to(self.device) # only half of the origin xyzs survived
-        new_feat = torch.zeros(bs,max(n//2,8),self.output_type_1_feat*3).to(self.device) # only half of the origin features survived
+        new_xyz = torch.zeros(bs,max(n//2,1),3).to(self.device) # only half of the origin xyzs survived
+        new_feat = torch.zeros(bs,max(n//2,1),self.output_type_1_feat*3).to(self.device) # only half of the origin features survived
         
         global_feat = torch.zeros(bs,self.output_type_1_feat*3).to(self.device)
         for i in range(bs):
             batchi_feature = outputs["feature"][i] # [N, fiber_out]
             weight = torch.nn.functional.softmax(batchi_feature[:,:1].reshape(-1, 1), dim=0).squeeze() # [N]
-            top_indices = torch.topk(weight, k=max(n//2,8), dim=0).indices
+            top_indices = torch.topk(weight, k=max(n//2,1), dim=0).indices
             new_xyz[i] = xyz[i][top_indices]
             new_feat[i] = feature[i][top_indices,1:]
             weights.append(weight)

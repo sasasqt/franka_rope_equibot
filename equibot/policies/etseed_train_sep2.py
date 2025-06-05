@@ -12,6 +12,7 @@ from tqdm.auto import tqdm
 from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Fused, SE3VisionNet_Hierarchical
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 from equibot.policies.utils.etseed.utils.group_utils import process_action #, orthogonalization
+from equibot.policies.utils.etseed.utils.se_math import se3
 
 import hydra
 import logging
@@ -55,6 +56,7 @@ def main(cfg):
         'sh_basis_compute_gradients':cfg.dev.sh_basis_compute_gradients,
         'rot_aggregation':cfg.dev.rot_aggregation,
         'trans_aggregation':cfg.dev.trans_aggregation,
+        'trans_norm':cfg.dev.trans_norm,
         'ddpm_predict_noise':cfg.dev.ddpm_predict_noise,
         'no_noise':cfg.dev.no_noise,
         'low_memory':cfg.dev.low_memory,
@@ -69,13 +71,19 @@ def main(cfg):
         'testing': cfg.dev.testing,
         'pc_xyz_feat': cfg.dev.pc_xyz_feat,
         'eef_xyz_feat': cfg.dev.eef_xyz_feat,
+        'latent_pc_as_feat': cfg.dev.latent_pc_as_feat,
         'test_lr_scheduler':cfg.dev.test_lr_scheduler,
         'num_degrees':cfg.dev.num_degrees,
         'num_channels':cfg.dev.num_channels,
         'num_heads':cfg.dev.num_heads,
         'channels_div':cfg.dev.channels_div,
         'global_cond':cfg.dev.global_cond,
-        'local_cond':cfg.dev.local_cond,        
+        'local_cond':cfg.dev.local_cond,
+        'sign_mismatch':cfg.dev.sign_mismatch,
+        'pc_inv':cfg.dev.pc_inv,
+        'noisy_action_as_k':cfg.dev.noisy_action_as_k,
+        'k_target': cfg.dev.k_target,
+        'k_on_lie': cfg.dev.k_on_lie
     }
 
 
@@ -274,7 +282,8 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
     SE3VisionNet_Hierarchical_input_type_1_feat=2 if config['pc_xyz_feat'] else 1
     pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=config['pred_horizon*obs_horizon'],input_type_1_feat=SE3VisionNet_Hierarchical_input_type_1_feat,output_type_1_feat=3,config=config)
     if config['se3']==0:
-        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
+        # action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
+        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,latent_pc_as_feat=config['latent_pc_as_feat'])
     elif config['se3']==1:
         action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'],fused=False)
         # from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
@@ -409,34 +418,38 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config):
     # noisy_trans_actions = torch.stack(selected_trans_actions, dim=-1)  #.repeat_interleave(num_point,dim=1) # [B,Hp,3]
     device='cuda'
 
-    vectors = torch.tensor([[1.0, 1.0, 1.0]] * B,device=nxyz.device)  # Shape: (B, 3)
-    angles = k.clone().detach()*torch.pi/(1+config['diffusion_steps']+config['pred_horizon'])
-    angles=angles.to(nxyz.device)
-    axes = vectors / torch.norm(vectors, dim=1, keepdim=True)  # Shape: (batch_size, 3)
+    if not config['noisy_action_as_k']:
+        vectors = torch.tensor([[1.0, 1.0, 1.0]] * B,device=nxyz.device)  # Shape: (B, 3)
+        angles = k.clone().detach()*torch.pi/(1+config['diffusion_steps']+config['pred_horizon'])
+        angles=angles.to(nxyz.device)
+        axes = vectors / torch.norm(vectors, dim=1, keepdim=True)  # Shape: (batch_size, 3)
 
-    # Rodrigues' formula
-    K = torch.zeros(B, 3, 3,device=nxyz.device)
-    K[:, 0, 1] = -axes[:, 2]
-    K[:, 0, 2] = axes[:, 1]
-    K[:, 1, 0] = axes[:, 2]
-    K[:, 1, 2] = -axes[:, 0]
-    K[:, 2, 0] = -axes[:, 1]
-    K[:, 2, 1] = axes[:, 0]
+        # Rodrigues' formula
+        K = torch.zeros(B, 3, 3,device=nxyz.device)
+        K[:, 0, 1] = -axes[:, 2]
+        K[:, 0, 2] = axes[:, 1]
+        K[:, 1, 0] = axes[:, 2]
+        K[:, 1, 2] = -axes[:, 0]
+        K[:, 2, 0] = -axes[:, 1]
+        K[:, 2, 1] = axes[:, 0]
 
-    I = torch.eye(3,device=nxyz.device).unsqueeze(0).repeat(B, 1, 1)
-    angles = angles.unsqueeze(-1).unsqueeze(-1)
+        I = torch.eye(3,device=nxyz.device).unsqueeze(0).repeat(B, 1, 1)
+        angles = angles.unsqueeze(-1).unsqueeze(-1)
 
-    # Compute rotation matrices
-    rotation_matrices = I + torch.sin(angles) * K + (1 - torch.cos(angles)) * torch.bmm(K, K)
-    k1=rotation_matrices[:, :, 0] # [B,3] first col
-    k2=rotation_matrices[:, :, 1] # [B,3] second col
-    k1=k1.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
-    k2=k2.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
+        # Compute rotation matrices
+        rotation_matrices = I + torch.sin(angles) * K + (1 - torch.cos(angles)) * torch.bmm(K, K)
+        k1=rotation_matrices[:, :, 0] # [B,3] first col
+        k2=rotation_matrices[:, :, 1] # [B,3] second col
+        k1=k1.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
+        k2=k2.unsqueeze(1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,3]
 
-    k1=k1.to(device)
-    k2=k2.to(device)
+        k1=k1.to(device)
+        k2=k2.to(device)
 
-    tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
+        tensor_k = k.clone().detach().unsqueeze(-1).unsqueeze(-1).expand(-1,nxyz.shape[1], -1) # [B,Ho*num_pts,1]
+    else:
+        k1=k[...,0:3]
+        k2=k[...,3:6]
 
     if config['Ho_in_B']:
         nxyz=nxyz.reshape(B*Ho_num_point,-1).unsqueeze(1)
@@ -474,16 +487,24 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config):
 
     # ref_output=torch.cat((noisy_ori_actions,noisy_trans_actions), dim=-1)
 
+    latent_pc_as_feat=config['latent_pc_as_feat']
     if config['k_option']==1:
             # # 1 diffusion steps as type 0 rotation
             # num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-            feature = torch.cat((k1,k2,gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
+            if latent_pc_as_feat:
+                feature = torch.cat((k1,k2,gripper_pose,nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+            else:
+                feature = torch.cat((k1,k2,gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
+
     elif config['k_option']==3:
         # no k
-        feature = torch.cat((gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
+        if latent_pc_as_feat:
+            feature = torch.cat((gripper_pose,nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+        else:
+            feature = torch.cat((gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
     else:
         raise NotImplementedError
-    
+
     model_input = {
         'xyz': nxyz.to(device='cuda',dtype=torch.float32),
         'feature': feature.to(device='cuda',dtype=torch.float32)
@@ -672,6 +693,8 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             # 0: the default, predict the gt H0
             # 1: predict relative transformation from Ht to H0
             k = torch.randint(0, config["diffusion_steps"], (bz,), device=device)
+        elif config['diffusion_option']==2: 
+            k = torch.zeros(bz, device=device).long()
         else:
             raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
     
@@ -679,7 +702,35 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     latent_pc=nets["pointcloud_encoder"](pc) # b,l,f (l:x*Hp; f:3x)
 
     num_point = config['pred_horizon']    
-    model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
+    if not config['use_ddpm'] and  (config['diffusion_option']==0 or config['diffusion_option']==1 or config['diffusion_option']==2):
+        noisy_actions, actions_noise,actions = noise_scheduler.add_noise9(naction, k, device=device,no_noise=config['no_noise'])
+    if config['noisy_action_as_k']:
+        if config['k_on_lie']:
+            if config['k_target']=='noise':
+                _cond=se3.log(actions_noise) #[b,hp,trans+rots=6]
+            elif config['k_target']=='noisy_actions':
+                _cond=se3.log(noisy_actions) #[b,hp,trans+rots=6]
+            elif config['k_target']=='actions':
+                _cond=se3.log(actions) #[b,hp,trans+rots=6]
+            else:
+                raise NotImplementedError
+        else:
+            def hom2cols(matrix4by4):
+                col1=matrix4by4[...,:3, 0]
+                col2=matrix4by4[...,:3, 1]
+                return torch.concatenate([col1,col2],dim=-1)
+            if config['k_target']=='noise':
+                _cond=hom2cols(actions_noise) #[b,hp,rot col1 col2=6]
+            elif config['k_target']=='noisy_actions':
+                _cond=hom2cols(noisy_actions) #[b,hp,rot col1 col2=6]
+            elif config['k_target']=='actions':
+                _cond=hom2cols(actions) #[b,hp,rot col1 col2=6]
+            else:
+                raise NotImplementedError
+        _cond=_cond.repeat_interleave(config['obs_horizon'],dim=1)
+        model_input = prepare_model_input2(latent_pc, neefpose, _cond, num_point,config)
+    else:
+        model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
 
     if config['testing']==1:
         model_input = prepare_model_input3(latent_pc,neefpose, k,num_point,config)
@@ -736,11 +787,10 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         else:
 
             # Options
-            if config['diffusion_option']==0 or config['diffusion_option']==1:
+            if config['diffusion_option']==0 or config['diffusion_option']==1 or config['diffusion_option']==2:
                 # 0: the default, predict the gt H0
                 # 1: predict relative transformation from Ht to H0
                 # [B,Ho,4,4]
-                noisy_actions, actions_noise = noise_scheduler.add_noise(naction, k, device=device,no_noise=config['no_noise'])
 
                 gripper_noise = torch.randn(gt_gripper_action.shape, device=device)
                 noisy_gripper = gripper_noise_scheduler.add_noise(gt_gripper_action, gripper_noise, k)
@@ -817,13 +867,13 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
                 final_action=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
                 output_gripper_action=unet_output[...,9:10]
             # Options
-            if config['diffusion_option']==0:
+            if config['diffusion_option']==0 or config['diffusion_option']==2:
                 # 0: the default, predict the gt H0
                 # see algorithm 1, but no more naction @torch.inverse(noisy_actions)
-                loss, dist_r, dist_t, dist_g = compute_loss(final_action.reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action)  
+                loss, dist_r, dist_t, dist_g = compute_loss(final_action.reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'])  
             elif config['diffusion_option']==1:
                 # 1: predict relative transformation from Ht to H0
-                loss, dist_r, dist_t, dist_g = compute_loss(torch.einsum('bhij,bhjk->bhjk',final_action,noisy_actions).reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action)  
+                loss, dist_r, dist_t, dist_g = compute_loss(torch.einsum('bhij,bhjk->bhjk',final_action,noisy_actions).reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'])  
             else:
                 raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 
