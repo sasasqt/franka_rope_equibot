@@ -12,6 +12,7 @@ from tqdm.auto import tqdm
 from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Fused, SE3VisionNet_Hierarchical
 from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
 from equibot.policies.utils.etseed.utils.group_utils import process_action #, orthogonalization
+from equibot.policies.utils.etseed.utils.se_math import se3
 
 import hydra
 import logging
@@ -178,8 +179,13 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
         neefpose=neefpose.view(bz,ho,-1) # ([B, Ho, num_eef * (pose gripper action etc)])
 
         H_Identity = torch.eye(4)[None].expand(bz,hp, -1, -1).to(device) # H_T: [B,Ho,4,4]
-        k=torch.full((bz,), config['diffusion_steps'] - 1).long().to(device)
-
+        if config['diffusion_option']==0 or config['diffusion_option']==1:
+            k=torch.full((bz,), config['diffusion_steps'] - 1).long().to(device)
+        elif config['diffusion_option']==2: 
+            k=torch.full((bz,), 0).long().to(device)
+        else:
+            raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
+    
         if config['use_ddpm']:
             noise = torch.randn(H_Identity.shape, device=device)
             noise[:, :,:3, :3]=noise[:, :,:3, :3]
@@ -327,10 +333,30 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                 if (denoise_idx +1==config['diffusion_steps'] or not config['k_option']==3):
                 # if (denoise_idx +1==config['diffusion_steps'] ):
 
-                    k=torch.full((bz,), denoise_idx).long().to(device)
+                    if config['diffusion_option']==0 or config['diffusion_option']==1:
+                        k=torch.full((bz,), denoise_idx).long().to(device)
+                    elif config['diffusion_option']==2: 
+                        k=torch.full((bz,), 0).long().to(device)
+                    else:
+                        raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
+                
 
                     num_point = config['pred_horizon']
-                    model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
+
+                    if config['noisy_action_as_k']:
+                        # TODO: is this correct? do we need noise in denoise?
+                        if config['k_target']=='noise':
+                            _cond=se3.log(noise) #[b,hp,trans+rots=6]
+                        elif config['k_target']=='noisy_actions':
+                            _cond=se3.log(noisy_actions+noise) #[b,hp,trans+rots=6]
+                        elif config['k_target']=='actions':
+                            _cond=se3.log(noisy_actions) #[b,hp,trans+rots=6]
+                        else:
+                            raise NotImplementedError
+                        _cond=_cond.repeat_interleave(config['obs_horizon'],dim=1)
+                        model_input = prepare_model_input2(latent_pc, neefpose, _cond, num_point,config)
+                    else:
+                        model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
 
                     if config['testing']==1:
                         model_input = prepare_model_input3(latent_pc,neefpose, k,num_point,config)
@@ -392,7 +418,7 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                 if config['diffusion_option']==0:
                     # 0: the default, predict the gt H0
                     reconstructed_H_0 = action
-                    noisy_actions = noise_scheduler.denoise(
+                    noisy_actions,noise = noise_scheduler.denoise9(
                         reconstructed_H_0=reconstructed_H_0,
                         timestep = k,
                         sample = noisy_actions,
@@ -401,7 +427,7 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                 elif config['diffusion_option']==1:
                     # 1: predict relative transformation from Ht to H0
                     reconstructed_H_0 = torch.einsum('bhij,bhjk->bhjk',action,noisy_actions)
-                    noisy_actions = noise_scheduler.denoise(
+                    noisy_actions = noise_scheduler.denoise9(
                         reconstructed_H_0=reconstructed_H_0,
                         timestep = k,
                         sample = noisy_actions,

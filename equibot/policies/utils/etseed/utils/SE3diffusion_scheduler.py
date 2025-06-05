@@ -105,6 +105,7 @@ class DiffusionScheduler(torch.nn.Module):
 
         # add noise
         # the gamma in perturbation
+        # BUG SHOULD BE SIGMA_T, SIGMA_R in kornia
         scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
         noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
             
@@ -118,6 +119,40 @@ class DiffusionScheduler(torch.nn.Module):
         
 
         return noisy_interpolated_H_t, H_pure_noise
+
+    
+    def add_noise9(self,
+        original_samples: torch.FloatTensor, # [B, Ho, 4, 4]
+        timesteps: torch.IntTensor, # [B]
+        device,
+        no_noise=False):
+        B = original_samples.shape[0] # batch
+        Ho = original_samples.size(1)  # horizon
+        
+        # H_T the identity transformation
+        H_T = torch.eye(4)[None].expand(B,Ho, -1, -1).to(device) # H_T: [B,Ho,4,4]
+        alpha_bars = self.alpha_bars[timesteps].to(device) # [B]
+      
+        # H_t [B,Ho,4,4] the interpolation part, see eq 35
+        H_t = se3.exp((1. - torch.sqrt(alpha_bars)).unsqueeze(-1).unsqueeze(-1) * se3.log(H_T @ (torch.inverse(original_samples).to(torch.float32)))) @ original_samples.to(torch.float32)
+
+        # add noise
+        # the gamma in perturbation
+        # BUG SHOULD BE SIGMA_T, SIGMA_R in kornia
+        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
+        noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
+            
+        # perturbation part in eq 34
+        H_pure_noise = se3.exp(noise) #  [B,Ho,4,4]
+        if no_noise:
+            return H_t,H_pure_noise
+        
+        # perturbation + interpolation, see eq 34
+        noisy_interpolated_H_t = H_pure_noise @ H_t #  [B,Ho,4,4]
+        
+
+        return noisy_interpolated_H_t, H_pure_noise,H_t
+
 
     def add_noise2(self,
         original_samples: torch.FloatTensor, # [B, Ho, 4, 4]
@@ -259,6 +294,40 @@ class DiffusionScheduler(torch.nn.Module):
         return sample # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
     
 
+    def denoise9(self,
+                reconstructed_H_0, # [B,Ho,4,4]
+                timestep, # [B]
+                sample, # [B,Ho,4,4]
+                device,
+                abs_to_rel=False):
+        
+        timestep = timestep[0].cpu() # scalar
+        B = sample.shape[0]
+        Ho = sample.shape[1]
+        # see algorithm 2, but no longer use A^{k->0}A^k
+        gamma0 = self.gamma0[timestep].to(device)
+        gamma1 = self.gamma1[timestep].to(device)
+        self.gamma2[-1]=0.0
+        gamma2 = self.gamma2[timestep].to(device)
+        if timestep>0: 
+            timestep=timestep-1
+        alpha_bars = self.alpha_bars[timestep].to(device) # [B]
+
+        # scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)
+        # print(reconstructed_H_0)
+        # print(se3.log(reconstructed_H_0))
+        # print("^^^^^")
+        if abs_to_rel: 
+            reconstructed_H_0=reconstructed_H_0@sample
+        
+        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample))# + scale*gamma2*torch.randn(B,Ho,6).to(device))#torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
+        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
+        noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
+            
+        # perturbation part in eq 34
+        H_pure_noise = se3.exp(noise)
+        return sample,H_pure_noise # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
+    
     def denoise2(self,
                 lie_H_0, # [B,Ho,6]
                 timestep, # [B]

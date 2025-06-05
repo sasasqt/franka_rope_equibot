@@ -113,6 +113,7 @@ def main(cfg):
         'testing': cfg.dev.testing,
         'pc_xyz_feat': cfg.dev.pc_xyz_feat,
         'eef_xyz_feat': cfg.dev.eef_xyz_feat,
+        'latent_pc_as_feat': cfg.dev.latent_pc_as_feat,
         'num_degrees':cfg.dev.num_degrees,
         'num_channels':cfg.dev.num_channels,
         'num_heads':cfg.dev.num_heads,
@@ -122,6 +123,10 @@ def main(cfg):
         'arch':cfg.dev.arch,
         "cfg":cfg,
         "loadFromCkpt": False,
+        'pc_inv':cfg.dev.pc_inv,
+        'trans_norm':cfg.dev.trans_norm,
+        'noisy_action_as_k':cfg.dev.noisy_action_as_k,
+        'k_target': cfg.dev.k_target,
 
     }
 

@@ -43,6 +43,7 @@ dev:
   sh_basis_compute_gradients: True
   rot_aggregation: mean # mean/separate_mean/min/abs_min/max
   trans_aggregation: mean # mean/separate_mean/min/abs_min/max
+  trans_norm: False
   ddpm_predict_noise: True
   no_noise: False # only for se3 diffusion
   low_memory: True
@@ -58,6 +59,9 @@ dev:
   sanity_check: 0 # 1: se3 pc enc + unet;
   pc_xyz_feat: True # use xyz position of pc explicitly as features
   eef_xyz_feat: False # use xyz position of end effector explicitly as features # only works w/ testing
+  latent_pc_as_feat: False
+  pc_inv: False
+  noisy_action_as_k: False
   test_lr_scheduler: False
   num_degrees: 4 # 5
   num_channels: 16 # 32
@@ -65,6 +69,8 @@ dev:
   channels_div: 2
   global_cond: 0 # 0: proposed actions as global; 1: latent pc as global 2: None
   local_cond: 0 # 0: None; 1: proposed actions as local
+  sign_mismatch: True
+  k_target: noise # noise; noisy_actions; actions; (action=lie_h_t)
 
 training:
   ckpt: null
