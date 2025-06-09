@@ -5,7 +5,7 @@ from dgl.readout import mean_nodes
 from .se3_transformer.model.basis import get_basis, update_basis_with_fused
 from .se3_transformer.model.layers.attention import AttentionBlockSE3
 from .se3_transformer.model.layers.convolution import ConvSE3, ConvSE3FuseLevel
-from .se3_transformer.model.layers.norm import NormSE3
+from .se3_transformer.model.layers.norm import NormSE3, LinearSE3
 from .se3_transformer.model.fiber import Fiber
 from ...utils.utils import build_graph
 from equibot.policies.utils.diffusion.positional_embedding import SinusoidalPosEmb
@@ -33,6 +33,53 @@ class Sequential(ExtendedSequential):
             input = module(input, *args, **kwargs)
         return input
 
+
+class LinearModule(torch.nn.Module):
+    """
+    Operates only within a node, so it basically applies nn.Linear to every node.
+    """
+
+    def __init__(
+        self,
+        fiber_in: Fiber,
+        fiber_hidden: Fiber,
+        fiber_out: Fiber,
+        n_layer: Optional[int] = 2,
+        use_norm: Optional[bool] = True,
+        nonlinearity: Optional[torch.nn.Module] = torch.nn.ReLU(),
+        **kwargs,
+    ):
+        """
+        arguments:
+        - fiber_in: Fiber, numbers of input features
+        - fiber_hidden: Fiber, numbers of intermediate features
+        - fiber_out: Fiber, numbers of output features
+        - n_layer: int, the number linear layers
+        - use_norm: bool, if True, NormSE3 will be inserted before a LinearSE3 layer
+        - nonlinearity: activation function for NormSE3
+        """
+
+        super().__init__()
+        #
+        linear_module = []
+        #
+        if n_layer >= 2:
+            linear_module.append(LinearSE3(Fiber(fiber_in), Fiber(fiber_hidden)))
+            #
+            for _ in range(n_layer - 2):
+                if use_norm:
+                    linear_module.append(NormSE3(Fiber(fiber_hidden), nonlinearity=nonlinearity))
+                linear_module.append(LinearSE3(Fiber(fiber_hidden), Fiber(fiber_hidden)))
+            #
+            linear_module.append(LinearSE3(Fiber(fiber_hidden), Fiber(fiber_out)))
+        else:
+            linear_module.append(LinearSE3(Fiber(fiber_in), Fiber(fiber_out)))
+        #
+        self.linear_module = Sequential(*linear_module)
+
+    def forward(self, node_feats,edge_feats,**kwargs):
+        return self.linear_module(node_feats)
+    
 class EquivariantNet(ExtendedModule):
     def __init__(self,
                  num_layers: int,
@@ -86,6 +133,13 @@ class EquivariantNet(ExtendedModule):
             self.fuse_level = ConvSE3FuseLevel.FULL if tensor_cores else ConvSE3FuseLevel.PARTIAL
 
         graph_modules = []
+
+        _fiber_hidden=Fiber({
+            "0":32,
+            "1":32,
+        })
+        graph_modules.append(LinearModule(fiber_in=fiber_in,fiber_hidden=_fiber_hidden,fiber_out=fiber_in,n_layer=num_layers))
+
         for i in range(num_layers):
             graph_modules.append(AttentionBlockSE3(fiber_in=fiber_in,
                                                    fiber_out=fiber_hidden,
@@ -140,7 +194,6 @@ class EquivariantNet(ExtendedModule):
                                             fully_fused=self.fuse_level == ConvSE3FuseLevel.FULL)
         else:
             basis = given_basis
-        
         node_feats = self.graph_modules(node_feats, edge_feats, graph=batch_graph, basis=basis)
         
         output = node_feats[list(node_feats.keys())[0]].reshape(node_feats[list(node_feats.keys())[0]].shape[0], -1)
