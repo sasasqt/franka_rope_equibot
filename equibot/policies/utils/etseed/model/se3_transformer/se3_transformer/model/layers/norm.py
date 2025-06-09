@@ -88,5 +88,43 @@ class NormSE3(nn.Module):
                     norm = clamped_norm(feat, self.NORM_CLAMP)
                     new_norm = self.nonlinearity(self.layer_norms[degree](norm.squeeze(-1)).unsqueeze(-1))
                     output[degree] = rescale(new_norm, feat, norm)
-
             return output
+
+from typing import Dict
+
+import numpy as np
+
+
+class LinearSE3(nn.Module):
+    """
+    Graph Linear SE(3)-equivariant layer, equivalent to a 1x1 convolution.
+    Maps a fiber to a fiber with the same degrees (channels may be different).
+    No interaction between degrees, but interaction between channels.
+
+    type-0 features (C_0 channels) ────> Linear(bias=False) ────> type-0 features (C'_0 channels)
+    type-1 features (C_1 channels) ────> Linear(bias=False) ────> type-1 features (C'_1 channels)
+                                                 :
+    type-k features (C_k channels) ────> Linear(bias=False) ────> type-k features (C'_k channels)
+    """
+
+    def __init__(self, fiber_in: Fiber, fiber_out: Fiber):
+        super().__init__()
+        self.weights = nn.ParameterDict(
+            {
+                str(degree_out): nn.Parameter(
+                    torch.randn(channels_out, fiber_in[degree_out])
+                    / np.sqrt(fiber_in[degree_out])
+                )
+                for degree_out, channels_out in fiber_out
+            }
+        )
+
+    def forward(
+        self, features: Dict[str, Tensor], *args, **kwargs
+    ) -> Dict[str, Tensor]:
+
+        output= {
+            degree: self.weights[degree] @ features[degree]
+            for degree, weight in self.weights.items() if degree in features.keys()
+        }
+        return output
