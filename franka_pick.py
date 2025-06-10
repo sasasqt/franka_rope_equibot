@@ -320,7 +320,7 @@ class FrankaRope(BaseSample):
 
         _scale=0.4
         from omni.isaac.core.prims import XFormPrimView
-        prims = XFormPrimView(prim_paths_expr=f'{cube_str}/cube',name=f'{cube_str}/cube',scales=[[_scale,_scale,_scale]]) # BUG inconsistency in isaacsim 4.2.0
+        prims = XFormPrimView(prim_paths_expr=f'{cube_str}/cube',name=f'{cube_str}/cube',scales=[[_scale,_scale,_scale]],translations=[[0,-0.15,0]]) # BUG inconsistency in isaacsim 4.2.0
         self._world.scene.add(prims)
         self._cube=self._world.scene.get_object(f'{cube_str}/cube')
 
@@ -504,8 +504,8 @@ class FrankaRope(BaseSample):
             position=default.position
             orientation=default.orientation
             sphere.set_world_pose(position=position,orientation=orientation)
+        self._motion_planning()
 
-            
     def world_cleanup(self):
         try:
             del self._robot_articulation_solver
@@ -572,7 +572,9 @@ class FrankaRope(BaseSample):
             )
             franka_robot_name=f"{_str}_franka"
             franka_prim_path=f"/World/{franka_robot_name}"
-            target_position=[0.2*idx-0.1, 0.0, 0.015]
+            # target_position=[0.2*idx-0.1, 0.0, 0.015]
+            target_position=[0.4*idx-0.2, -0.15, 0.1]
+
             self._franka_position[_str]=position=[0.0,0.8*idx-0.4,0.0] # (np.linalg.inv(euler_to_rot_matrix(_world_ori)) @ np.array([0.0,0.8*idx-0.4,0.0])).tolist() 
             self._franka_inverse_position[_str]=[0.0,-0.8*idx+0.4,0.0] # (np.linalg.inv(euler_to_rot_matrix(_world_ori)) @ np.array([0.0,-0.8*idx+0.4,0.0])).tolist() 
 
@@ -607,6 +609,7 @@ class FrankaRope(BaseSample):
         #         self.extras[extra](self)
 
         self._add_cube()
+        self._motion_planning()
     # manually reset _task_scene_built to call initialize() in reset(), if task not setted up in seteup_scene
     # world._task_scene_built=False
     # await world.reset_async()
@@ -885,6 +888,76 @@ class FrankaRope(BaseSample):
         if (self._post_physics_callback is not None):
             self._post_physics_callback(step_size)
 
+    def _motion_planning(self):
+        def _cube(pos,ori,xform="/VCXform",name="cube"):
+            # scene=self._world.scene
+            # if not scene.object_exists(xform):
+            #     stage=self._world.stage
+            #     _cube_xform=stage.DefinePrim(xform, 'Xform')
+            #     from omni.isaac.core.prims import XFormPrimView
+            #     prims = XFormPrimView(prim_paths_expr=xform,name=xform)
+            #     scene.add(prims)
+            
+            from omni.isaac.core.objects import VisualCuboid
+            cube=VisualCuboid(
+                prim_path=f'{xform}/{name}',
+                position=pos,
+                orientation=ori,
+                color=np.array([1.0, 0.0, 0.0]),
+                scale=[0.01,0.01,0.01],
+                name=f'{xform}/{name}'
+            )
+            return cube
+            # scene.add(sphere)
+
+        import numpy as np  
+        from scipy.spatial.transform import Rotation, Slerp  
+
+        
+        # Start and goal positions
+        start = np.array([-0.2, -0.15, 0.1])
+        goal = np.array([0.02, -0.17, 0.03])
+        steps = 150
+
+        x = np.linspace(start[0], goal[0], steps)
+        y = np.linspace(start[1], goal[1], steps)
+        z = np.linspace(start[2], goal[2], steps)
+
+        x_offset,y_offset,z_offset=0.0,0.0,0.0
+        t = np.linspace(-1, 1, steps)  
+        x_offset = 1 - t**2
+
+        theta = np.linspace(0, np.pi, steps)  
+        y_offset = np.sin(theta)
+
+        t = np.linspace(0, 1, steps)  
+        z_offset = 4 * t * (1 - t)
+
+        # Stack arc points
+        points = np.column_stack((x+(0.02-0.01*random.random())*x_offset, y+(0.3-0.01*random.random())*y_offset, z+(0.15-0.01*random.random())*z_offset))
+
+
+        R_init = Rotation.from_euler('xyz', [-180,0,-180], degrees=True)  
+        R_target = Rotation.from_euler('xyz', [180,-90,90], degrees=True)  
+        slerp = Slerp([0,1], Rotation.concatenate([R_target,R_init]))  
+        
+        
+        self._trajectory=trajectory = []  
+        for i,index in enumerate(np.sort(np.random.choice(np.arange(0,steps), size=100, replace=False))[::-1]):          
+            # if i == 0:
+            #     pos = start
+            # elif i == steps - 1:
+            #     pos = end
+            pos=points[index]
+            noisy_pos=pos+np.random.randn(3)*0.0005
+            rot = slerp(i/100)
+            noise = Rotation.from_euler('zyx',np.random.randn(3)*0.1,degrees=True)
+            noisy_rot=rot*noise
+            trajectory.append((noisy_pos, noisy_rot.as_quat(scalar_first=True)))  
+            _cube(noisy_pos,noisy_rot.as_quat(scalar_first=True),name=f"cube{i}")
+
+
+        
     def _on_follow_target_simulation_step(self, step_size) -> None:
         # pos, ori: via get_local_pose()
         observations =  self._world.get_observations()
@@ -1044,14 +1117,16 @@ class FrankaRope(BaseSample):
                     position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                 )
-            cube.set_world_pose(
-                position=np.array(data_frame.data["Cube"]["cube_world_position"]),
-                orientation=np.array(data_frame.data["Cube"]["cube_world_orientation"]),
+            cube.set_world_poses(
+                positions=np.array([data_frame.data["Cube"]["cube_world_position"]]),
+                orientations=np.tile(np.array(data_frame.data["Cube"]["cube_world_orientation"]),(1,1)),
             )
             # if world.current_time_step_index-time_offset<40:
             print(cube.get_world_poses()[0],world.scene.get_object(target_name).get_world_pose()[0],world.scene.get_object(target_name).get_world_pose()[1],world.current_time_step_index-time_offset)            
             
-            
+            for i,point in enumerate(data_frame.data["Cube"]["pc"]):
+                p=np.array(point)
+                self._spheres[i].set_world_pose(p)
         else:
             pass
             # TODO find a better to to handle world xform transformation
@@ -1511,7 +1586,7 @@ class ControlFlow:
 
     @classmethod
     def on_save_data_button_event(cls,callback_fn=None):
-        cls._sample._on_save_data_event(callback_fn)
+        cls._sample._on_save_data_event(callback_fn=callback_fn)
 
     @classmethod
     def on_replay_recording_button_event(cls,datafile,callback_fn=None):
@@ -1575,8 +1650,47 @@ class IsaacUIUtils(ControlFlow):
             cls.ui_window = omni.ui.Window(window_name, width=300, height=300)
             cls.ui_window.flags = (omni.ui.WINDOW_FLAGS_NO_CLOSE)
             cls.add_buttons()
+
+            await omni.kit.app.get_app().next_update_async()
+            await omni.kit.app.get_app().next_update_async()
+            
+            cls._this()
+
+
         asyncio.ensure_future(_setUp_async(cls))
         return
+    
+    @classmethod
+    def _this(cls):
+
+        self=cls._sample
+        _on_reset=partial(super().on_reset,callback_fn=cls._this)
+        _on_save_and_reset=partial(super().on_save_data_button_event,callback_fn=_on_reset)
+        def pre_physics_callback(self,step_size):
+            if not self._trajectory and self._internal_flag:
+                self._internal_flag=False
+                _on_save_and_reset()
+
+            if self._trajectory:
+                self._internal_flag=True
+                pos,quat=self._trajectory.pop()
+                pos=np.array(pos)
+                quat=np.array(quat)
+                observations=self._world.get_observations()
+                for _str in ["Left"]:
+                    _,old_target_rot=observations[self._target_name[_str]]["position"],observations[self._target_name[_str]]["orientation"]
+
+                    # quat=mu.mul(quat,old_target_rot)
+                    self._target[_str].set_local_pose(translation=pos, orientation=quat) 
+
+        self._pre_physics_callback=partial(pre_physics_callback,self)
+
+                    
+        _on_follow_target_button_event=partial(super().on_follow_target_button_event)
+        _on_logging_button_event=partial(super().on_logging_button_event,callback_fn=_on_follow_target_button_event)
+        _on_simulation_button_event=partial(super().on_simulation_button_event,callback_fn=_on_logging_button_event)
+
+        _on_simulation_button_event()
     
     @classmethod
     def tearDown(cls,window_name: str = "Franka Rope") -> None:

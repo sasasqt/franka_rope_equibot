@@ -133,10 +133,10 @@ wandb:
   project: equibot
 
 franka_rope:
-  physics_dt: 1.0/90.0 # 1/90 when grasp using tgs solver
-  rendering_dt: 1.0/30.0
+  physics_dt: 1.0/10.0 # 1/90 when grasp using tgs solver
+  rendering_dt: 1.0/10.0
   _randomize: True
-  _randomize_on_reset: True
+  _randomize_on_reset: False
   pusht_pos: [0.1,0.1,0] # [0,0,0] or [0.1,0.1,0]
   pusht_ori: [0,0,-30] # [0,0,0] or [0,0,-30]
   test_pc_permutation: False
