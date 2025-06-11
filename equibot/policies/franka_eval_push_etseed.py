@@ -128,6 +128,8 @@ def main(cfg):
         'noisy_action_as_k':cfg.dev.noisy_action_as_k,
         'k_on_lie':cfg.dev.k_on_lie,
         'k_target': cfg.dev.k_target,
+        'k_on_lie': cfg.dev.k_on_lie,
+        'proper_se3_test': cfg.dev.proper_se3_test,
 
     }
 

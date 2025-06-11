@@ -127,7 +127,8 @@ def main(cfg):
         'trans_norm':cfg.dev.trans_norm,
         'noisy_action_as_k':cfg.dev.noisy_action_as_k,
         'k_target': cfg.dev.k_target,
-
+        'k_on_lie': cfg.dev.k_on_lie,
+        'proper_se3_test': cfg.dev.proper_se3_test,
     }
 
     device = torch.device('cuda')

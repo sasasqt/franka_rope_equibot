@@ -415,6 +415,7 @@ class SE3ManiNet_Fused(ExtendedModule):
                 batchi_type1_feature=batchi_type1_feature.view(batchi_type1_feature.shape[0],self.pred_horizon,-1)
                 if self.config['trans_norm']:
                     norms=batchi_type1_feature.detach().norm(dim=2,keepdim=True)
+                    # print(norms,">>> norm <<<")
                     batchi_type1_feature=0.01*batchi_type1_feature/norms
                 trans_feature=batchi_type1_feature
 
@@ -487,7 +488,10 @@ class SE3ManiNet_Fused(ExtendedModule):
 
                 batchi_type1_feature = pos_net_features[i][:,(1+1)*self.pred_horizon:(1+1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]
                 batchi_type1_feature=batchi_type1_feature.view(batchi_type1_feature.shape[0],self.pred_horizon,-1)
-                trans_feature=batchi_type1_feature
+                if self.config['trans_norm']:
+                    norms=batchi_type1_feature.detach().norm(dim=2,keepdim=True)
+                    # print(norms,">>> norm <<<")
+                    batchi_type1_feature=0.01*batchi_type1_feature/norms                
                 if self.config['trans_aggregation']=='mean':
                     trans_feature=torch.mean(batchi_type1_feature* trans_mag_feature, dim=0) # [Hp, 3]
                 elif self.config['trans_aggregation']=='separate_mean':

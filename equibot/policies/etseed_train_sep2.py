@@ -83,7 +83,9 @@ def main(cfg):
         'pc_inv':cfg.dev.pc_inv,
         'noisy_action_as_k':cfg.dev.noisy_action_as_k,
         'k_target': cfg.dev.k_target,
-        'k_on_lie': cfg.dev.k_on_lie
+        'k_on_lie': cfg.dev.k_on_lie,
+        'proper_se3_test': cfg.dev.proper_se3_test,
+        'rel_gripper_pos': cfg.dev.rel_gripper_pos,
     }
 
 
@@ -399,12 +401,11 @@ def prepare_model_input1(nxyz, tgt_nxyz,diff=False,pc_xyz_feat=False):
     }
     assert model_input["xyz"].dtype == torch.float32
     assert model_input["feature"].dtype == torch.float32
-
     return model_input #,ref_output
 
 
 # Prepare the input for the model
-def prepare_model_input2(nxyz, neefpose, k, num_point,config):
+def prepare_model_input2(nxyz, neefpose, k, num_point,config,mean=None):
     B = nxyz.shape[0]
     Ho_num_point=nxyz.shape[1]
     # nxyz is the latent pc, [B,Ho*num_pts,type_1_feat*3]
@@ -464,7 +465,17 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config):
     gravity=neefpose[...,9:12]
     gripper_pose=neefpose[...,12:13]
 
-    
+    if config['proper_se3_test']:
+        new_shape = nxyz.shape[:-1] + (3, 3)
+        t_reshaped = nxyz.view(new_shape)
+        pred_mean = t_reshaped.mean(dim=-2)
+
+        col1=col1+pred_mean
+        col2=col2+pred_mean
+        gravity=gravity+pred_mean
+
+    if config['rel_gripper_pos']:
+        right_eef_world_pos=right_eef_world_pos-mean.unsqueeze(1)
     # # Options
     # if config['k_option']==0:
     #     # # 0 diffusion steps as type 0 scalar
@@ -728,9 +739,9 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             else:
                 raise NotImplementedError
         _cond=_cond.repeat_interleave(config['obs_horizon'],dim=1)
-        model_input = prepare_model_input2(latent_pc, neefpose, _cond, num_point,config)
+        model_input = prepare_model_input2(latent_pc, neefpose, _cond, num_point,config,mean=nxyz.mean(dim=-2))
     else:
-        model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
+        model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config,mean=nxyz.mean(dim=-2))
 
     if config['testing']==1:
         model_input = prepare_model_input3(latent_pc,neefpose, k,num_point,config)

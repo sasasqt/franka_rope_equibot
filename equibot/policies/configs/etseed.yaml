@@ -72,6 +72,8 @@ dev:
   sign_mismatch: True
   k_target: noise # noise; noisy_actions; actions; (action=lie_h_t)
   k_on_lie: True
+  proper_se3_test: False
+  rel_gripper_pos: False
   
 training:
   ckpt: null
