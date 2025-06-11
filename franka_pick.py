@@ -889,7 +889,7 @@ class FrankaRope(BaseSample):
             self._post_physics_callback(step_size)
 
     def _motion_planning(self):
-        def _cube(pos,ori,xform="/VCXform",name="cube"):
+        def _cube(pos,ori,xform="/World/VCXform",name="cube"):
             # scene=self._world.scene
             # if not scene.object_exists(xform):
             #     stage=self._world.stage

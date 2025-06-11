@@ -319,9 +319,9 @@ class DiffusionScheduler(torch.nn.Module):
         # print("^^^^^")
         if abs_to_rel: 
             reconstructed_H_0=reconstructed_H_0@sample
-        
-        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample))# + scale*gamma2*torch.randn(B,Ho,6).to(device))#torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
+            
         scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
+        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample) + scale*gamma2*torch.randn(B,Ho,6).to(device))#torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
         noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
             
         # perturbation part in eq 34

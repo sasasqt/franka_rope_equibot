@@ -327,7 +327,6 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
             # predict action instead of noise might due to https://github.com/lucidrains/denoising-diffusion-pytorch/issues/58#issuecomment-2676085515
             # but why does the predicted action at denoise_idx=num_steps already good, if not the best action?
             for denoise_idx in range(config['diffusion_steps'] - 1, 0, -1):
-                print(denoise_idx)
                 g_step+=1
 
                 if (denoise_idx +1==config['diffusion_steps'] or not config['k_option']==3):
@@ -344,15 +343,34 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                     num_point = config['pred_horizon']
 
                     if config['noisy_action_as_k']:
-                        # TODO: is this correct? do we need noise in denoise?
-                        if config['k_target']=='noise':
-                            _cond=se3.log(noise) #[b,hp,trans+rots=6]
-                        elif config['k_target']=='noisy_actions':
-                            _cond=se3.log(noisy_actions+noise) #[b,hp,trans+rots=6]
-                        elif config['k_target']=='actions':
-                            _cond=se3.log(noisy_actions) #[b,hp,trans+rots=6]
+                        if config['k_on_lie']:
+                            # TODO: is this correct? do we need noise in denoise?
+                            if config['k_target']=='noise':
+                                _cond=se3.log(noise) #[b,hp,trans+rots=6]
+                            elif config['k_target']=='noisy_actions':
+                                if config['diffusion_steps'] - 1==denoise_idx:
+                                    _cond=se3.log(noisy_actions) #[b,hp,rot col1 col2=6]
+                                else:
+                                    _cond=se3.log(noise@noisy_actions) #[b,hp,rot col1 col2=6]                            elif config['k_target']=='actions':
+                                _cond=se3.log(noisy_actions) #[b,hp,trans+rots=6]
+                            else:
+                                raise NotImplementedError
                         else:
-                            raise NotImplementedError
+                            def hom2cols(matrix4by4):
+                                col1=matrix4by4[...,:3, 0]
+                                col2=matrix4by4[...,:3, 1]
+                                return torch.concatenate([col1,col2],dim=-1)
+                            if config['k_target']=='noise':
+                                _cond=hom2cols(noise) #[b,hp,rot col1 col2=6]
+                            elif config['k_target']=='noisy_actions':
+                                if config['diffusion_steps'] - 1==denoise_idx:
+                                    _cond=hom2cols(noisy_actions) #[b,hp,rot col1 col2=6]
+                                else:
+                                    _cond=hom2cols(noise@noisy_actions) #[b,hp,rot col1 col2=6]
+                            elif config['k_target']=='actions':
+                                _cond=hom2cols(actions) #[b,hp,rot col1 col2=6]
+                            else:
+                                raise NotImplementedError
                         _cond=_cond.repeat_interleave(config['obs_horizon'],dim=1)
                         model_input = prepare_model_input2(latent_pc, neefpose, _cond, num_point,config)
                     else:
