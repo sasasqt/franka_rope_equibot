@@ -80,7 +80,21 @@ class EvalUtils(ControlFlow):
         target_name=cls.target_name
         cls.gravity_dir=[0,0,-1]
 
+        if cls.cfg.translation is not None:
+        # rotate world first after play(), otherwise the franka will compensate the rotation somehow in their code
+        # rotate in simulation not in usd
+            sample._world_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(list(cls.cfg.translation))) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
 
+        if cls.cfg.rotation is not None:
+            sample._world_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(list(cls.cfg.rotation)))
+
+        if cls.cfg.scale is not None:
+            sample._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(cls.cfg.scale)))
+
+            await omni.kit.app.get_app().next_update_async()
+            # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
+            await omni.kit.app.get_app().next_update_async()
+            
         await asyncio.sleep(3)
         await cls._sample._on_follow_target_event_async(True)
 
@@ -138,15 +152,15 @@ class EvalUtils(ControlFlow):
                     # )
                     # await omni.kit.app.get_app().next_update_async()        
 
-                    world.scene.get_object(target_name).set_world_pose(
-                        position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
+                    world.scene.get_object(target_name).set_local_pose(
+                        translation=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                         orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                     )
 
 
                 quat=np.array([data_frame.data["Cube"]["cube_world_orientation"]])
-                cls._sample._cube.set_world_poses(
-                    positions=np.array([data_frame.data["Cube"]["cube_world_position"]]),
+                cls._sample._cube.set_local_poses(
+                    translations=np.array([data_frame.data["Cube"]["cube_world_position"]]),
                     orientations=np.array(quat),
                 )
             
@@ -158,7 +172,8 @@ class EvalUtils(ControlFlow):
 
             Left_target_world_pos=scene.get_object(target_name).get_world_pose()[0]
             Left_target_world_rot=scene.get_object(target_name).get_world_pose()[1]
-
+            Left_target_world_pos=scene.get_object(target_name).get_world_pose()[0]
+            print("pos !!!!!!!!!!!: ", Left_target_world_pos)
             ori=R.from_quat(Left_target_world_rot,scalar_first=True).as_matrix()
             ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
             cols = [ori[i, j] for i, j in ori_indices]
@@ -272,14 +287,14 @@ class EvalUtils(ControlFlow):
                 )
 
             for idx,_str in enumerate(["Left"]):   
-                world.scene.get_object(target_name).set_world_pose(
-                    position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
+                world.scene.get_object(target_name).set_local_pose(
+                    translation=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                 )
 
             quat=np.array([data_frame.data["Cube"]["cube_world_orientation"]])
-            cls._sample._cube.set_world_poses(
-                positions=np.array([data_frame.data["Cube"]["cube_world_position"]]),
+            cls._sample._cube.set_local_poses(
+                translations=np.array([data_frame.data["Cube"]["cube_world_position"]]),
                 orientations=np.array(quat),
             )
 
@@ -333,6 +348,9 @@ class EvalUtils(ControlFlow):
         # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
         await omni.kit.app.get_app().next_update_async()
 
+        cls.sample._pre_physics_callback=None
+
+
         cls.sample._pre_physics_callback=partial(cls._reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
         
         await omni.kit.app.get_app().next_update_async()
@@ -342,21 +360,6 @@ class EvalUtils(ControlFlow):
         while cls.count<-1:
             await asyncio.sleep(0.01)
 
-        cls.sample._pre_physics_callback=None
-        if cls.cfg.translation is not None:
-        # rotate world first after play(), otherwise the franka will compensate the rotation somehow in their code
-        # rotate in simulation not in usd
-            sample._world_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(list(cls.cfg.translation))) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
-
-        if cls.cfg.rotation is not None:
-            sample._world_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(list(cls.cfg.rotation)))
-
-        if cls.cfg.scale is not None:
-            sample._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(cls.cfg.scale)))
-
-            await omni.kit.app.get_app().next_update_async()
-            # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
-            await omni.kit.app.get_app().next_update_async()
 
         cls.sample._pre_physics_callback=partial(cls._post_reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
 
@@ -476,14 +479,14 @@ class EvalUtils(ControlFlow):
         if cls.cfg.from_demo is not None and cls.count < 0 and cls.count>=-2:
             data_frame = cls.data_logger.get_data_frame(data_frame_index=cls.start_time+1+cls.count)
             for idx,_str in enumerate(["Left"]):  
-                world.scene.get_object(target_name).set_world_pose(
-                    position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
+                world.scene.get_object(target_name).set_local_pose(
+                    translation=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                 )
 
                 quat=np.array([data_frame.data["Cube"]["cube_world_orientation"]])
-                cls._sample._cube.set_world_poses(
-                    positions=np.array([data_frame.data["Cube"]["cube_world_position"]]),
+                cls._sample._cube.set_local_poses(
+                    translations=np.array([data_frame.data["Cube"]["cube_world_position"]]),
                     orientations=np.array(quat),
                 )
 
