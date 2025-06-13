@@ -129,6 +129,7 @@ def main(cfg):
         'k_target': cfg.dev.k_target,
         'k_on_lie': cfg.dev.k_on_lie,
         'k1_type_1': cfg.dev.k1_type_1,
+        'k2_type_1': cfg.dev.k2_type_1,
         'proper_se3_test': cfg.dev.proper_se3_test,
         'rel_gripper_pos': cfg.dev.rel_gripper_pos,
     }

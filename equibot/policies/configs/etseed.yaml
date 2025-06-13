@@ -73,6 +73,7 @@ dev:
   k_target: noise # noise; noisy_actions; actions; (action=lie_h_t)
   k_on_lie: True
   k1_type_1: False
+  k2_type_1: False
   proper_se3_test: False
   rel_gripper_pos: False
   

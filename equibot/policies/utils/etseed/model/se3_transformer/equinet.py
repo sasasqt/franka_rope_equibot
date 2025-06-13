@@ -247,10 +247,15 @@ class SE3ManiNet_Fused(ExtendedModule):
         channels_div= config['channels_div']
         
         k1_type_1=config['k1_type_1']
+        k2_type_1=config['k2_type_1']
         type0_cnt=0
         type1_cnt=0
 
         if k1_type_1 and config['k_option']==1:
+            type0_cnt+=3
+            type1_cnt-=1
+
+        if k2_type_1 and config['k_option']==1:
             type0_cnt+=3
             type1_cnt-=1
 
