@@ -84,6 +84,7 @@ def main(cfg):
         'noisy_action_as_k':cfg.dev.noisy_action_as_k,
         'k_target': cfg.dev.k_target,
         'k_on_lie': cfg.dev.k_on_lie,
+        'k1_type_1': cfg.dev.k1_type_1,
         'proper_se3_test': cfg.dev.proper_se3_test,
         'rel_gripper_pos': cfg.dev.rel_gripper_pos,
     }
@@ -502,11 +503,16 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config,mean=None):
     if config['k_option']==1:
             # # 1 diffusion steps as type 0 rotation
             # num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
-            if latent_pc_as_feat:
-                feature = torch.cat((k1,k2,gripper_pose,nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+            if not config['k1_type_1']:
+                if latent_pc_as_feat:
+                    feature = torch.cat((k1,k2,gripper_pose,nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+                else:
+                    feature = torch.cat((k1,k2,gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
             else:
-                feature = torch.cat((k1,k2,gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
-
+                if latent_pc_as_feat:
+                    feature = torch.cat((k2,gripper_pose,k1,nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+                else:
+                    feature = torch.cat((k2,gripper_pose,k1,right_eef_world_pos,col1,col2,gravity), dim=-1)
     elif config['k_option']==3:
         # no k
         if latent_pc_as_feat:

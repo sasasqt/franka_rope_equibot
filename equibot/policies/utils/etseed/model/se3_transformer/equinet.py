@@ -246,7 +246,14 @@ class SE3ManiNet_Fused(ExtendedModule):
         num_heads= config['num_heads']
         channels_div= config['channels_div']
         
+        k1_type_1=config['k1_type_1']
+        type0_cnt=0
         type1_cnt=0
+
+        if k1_type_1 and config['k_option']==1:
+            type0_cnt+=3
+            type1_cnt-=1
+
         if eef_abs_position_as_node:
             type1_cnt+=1
 
@@ -277,7 +284,7 @@ class SE3ManiNet_Fused(ExtendedModule):
         # num_fib_in = [1,5-type1_cnt] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
         if config['k_option']==1:
             # 1 diffusion steps as type 0 rotation
-            num_fib_in = [7,5-type1_cnt] # 22 in total, 7 type0: k1,k2; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+            num_fib_in = [7-type0_cnt,5-type1_cnt] # 22 in total, 7 type0: k1,k2; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
         elif config['k_option']==3:
             # no k
             num_fib_in = [1,5-type1_cnt] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity

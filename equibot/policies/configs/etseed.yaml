@@ -72,6 +72,7 @@ dev:
   sign_mismatch: True
   k_target: noise # noise; noisy_actions; actions; (action=lie_h_t)
   k_on_lie: True
+  k1_type_1: False
   proper_se3_test: False
   rel_gripper_pos: False
   
@@ -165,7 +166,7 @@ franka_rope:
   from_demo: null
   start_time: 150
   manually_close: False
-  max_end: 333 #360 # 600
+  max_end: 111 #360 # 600
   seed: 42
   rel: True
   rpy: False
