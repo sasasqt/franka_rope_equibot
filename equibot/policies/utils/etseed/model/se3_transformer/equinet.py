@@ -5,7 +5,7 @@ from .se3_transformer.model.fiber import Fiber
 from ...utils.group_utils import process_action #, orthogonalization
 
 class SE3ManiNet_Equivariant_Separate(ExtendedModule):
-    def __init__(self, voxelize=False):
+    def __init__(self, voxelize=False,nonlinear=False):
         super().__init__()
         ''' 
         input features:
@@ -33,6 +33,7 @@ class SE3ManiNet_Equivariant_Separate(ExtendedModule):
             num_heads= 1,
             channels_div= 2,
             voxelize = voxelize,
+            nonlinear=nonlinear,
         )
         self.ori_net = SE3Backbone(
             fiber_in=Fiber({
@@ -48,6 +49,7 @@ class SE3ManiNet_Equivariant_Separate(ExtendedModule):
             num_heads= 1,
             channels_div= 2,
             voxelize = voxelize,
+            nonlinear=nonlinear,
         )
 
     def forward(self, inputs,return_raw=False,**kwargs):
@@ -81,7 +83,7 @@ class SE3ManiNet_Equivariant_Separate(ExtendedModule):
 
 
 class SE3ManiNet_Invariant_Separate(ExtendedModule):
-    def __init__(self, voxelize=False):
+    def __init__(self, voxelize=False,nonlinear=False):
         super().__init__()
         num_fib_in = [7,2] # 13 in total, 7 type0:tensor_k,noisy_ori_actions, 2 type1: noisy_trans_actions,tgt_nxyz
         num_fib_out = [6]
@@ -99,6 +101,7 @@ class SE3ManiNet_Invariant_Separate(ExtendedModule):
             num_heads= 1,
             channels_div= 2,
             voxelize = voxelize,
+            nonlinear=nonlinear,
         )
         self.ori_net = SE3Backbone(
             fiber_in=Fiber({
@@ -114,6 +117,7 @@ class SE3ManiNet_Invariant_Separate(ExtendedModule):
             num_heads= 1,
             channels_div= 2,
             voxelize = voxelize,
+            nonlinear=nonlinear,
         )
 
     def forward(self, inputs,return_raw=False,**kwargs):
@@ -234,6 +238,7 @@ class SE3ManiNet_Fused(ExtendedModule):
             latent_pc_as_feat=False,
             eef_xyz_feat=False,
             fused=True,
+            nonlinear=False
             ):
         assert not config==None
         super().__init__()
@@ -331,6 +336,7 @@ class SE3ManiNet_Fused(ExtendedModule):
                 k_neighbours=k_neighbours,
                 compute_gradients=config['sh_basis_compute_gradients'],
                 low_memory=config['low_memory'],
+                nonlinear=nonlinear,
             )
         else:
             self.ori_net=SE3Backbone(
@@ -350,6 +356,7 @@ class SE3ManiNet_Fused(ExtendedModule):
                 k_neighbours=k_neighbours,
                 compute_gradients=config['sh_basis_compute_gradients'],
                 low_memory=config['low_memory'],
+                nonlinear=nonlinear,
             )
 
             self.pos_net = SE3Backbone(
@@ -375,6 +382,7 @@ class SE3ManiNet_Fused(ExtendedModule):
                 k_neighbours=k_neighbours,
                 compute_gradients=config['sh_basis_compute_gradients'],
                 low_memory=config['low_memory'],
+                nonlinear=nonlinear,
             )
 
     def forward(self, inputs,num_point,return_raw=False,Ho_in_B=False):
@@ -547,7 +555,7 @@ class SE3ManiNet_Fused(ExtendedModule):
 
 
 class SE3ManiNet_ori_pos_sep(ExtendedModule):
-    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None,no_tgt_nxyz=False,eef_abs_position_as_node=False):
+    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None,no_tgt_nxyz=False,eef_abs_position_as_node=False,nonlinear=False):
         super().__init__()
         self.pred_horizon=pred_horizon
         self.config=config
@@ -593,6 +601,7 @@ class SE3ManiNet_ori_pos_sep(ExtendedModule):
             k_neighbours=k_neighbours,
             compute_gradients=config['sh_basis_compute_gradients'],
             low_memory=config['low_memory'],
+            nonlinear=nonlinear,
         )
 
 
@@ -614,6 +623,7 @@ class SE3ManiNet_ori_pos_sep(ExtendedModule):
             k_neighbours=k_neighbours,
             compute_gradients=config['sh_basis_compute_gradients'],
             low_memory=config['low_memory'],
+            nonlinear=nonlinear,
         )
 
     def forward(self, inputs,num_point,return_raw=False,Ho_in_B=False):
@@ -710,7 +720,8 @@ class SE3VisionNet(ExtendedModule):
             num_heads= 2,
             channels_div= 2,
             voxelize=False,
-            config=None
+            config=None,
+            nonlinear=False
             ):
         super().__init__()
         self.config=config
@@ -745,6 +756,7 @@ class SE3VisionNet(ExtendedModule):
             voxelize = voxelize,
             k_neighbours=k_neighbours, # BUG FIXED 1 should be 'k_neighbours*obs_horizon'
             compute_gradients=config['sh_basis_compute_gradients'],
+            nonlinear=nonlinear,
         )
 
         
@@ -792,7 +804,8 @@ class SE3VisionNet_Hierarchical(ExtendedModule):
             num_heads= 8,
             channels_div= 2,
             voxelize=False,
-            config=None):
+            config=None,
+            nonlinear=False):
         super().__init__()
         num_degrees= config['num_degrees']
         num_channels= config['num_channels']
@@ -816,6 +829,7 @@ class SE3VisionNet_Hierarchical(ExtendedModule):
                 channels_div= channels_div,
                 voxelize=voxelize,
                 config=config,
+                nonlinear=nonlinear
             ))
 
         self.weights_nets = torch.nn.Sequential(*weights_nets)

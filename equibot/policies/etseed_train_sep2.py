@@ -88,6 +88,7 @@ def main(cfg):
         'k2_type_1': cfg.dev.k2_type_1,
         'proper_se3_test': cfg.dev.proper_se3_test,
         'rel_gripper_pos': cfg.dev.rel_gripper_pos,
+        'nonlinear': cfg.dev.nonlinear,
     }
 
 
@@ -284,12 +285,12 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
     loadFromCkpt=config['loadFromCkpt']
     # TODO do not hardcode
     SE3VisionNet_Hierarchical_input_type_1_feat=2 if config['pc_xyz_feat'] else 1
-    pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=config['pred_horizon*obs_horizon'],input_type_1_feat=SE3VisionNet_Hierarchical_input_type_1_feat,output_type_1_feat=3,config=config)
+    pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=config['pred_horizon*obs_horizon'],input_type_1_feat=SE3VisionNet_Hierarchical_input_type_1_feat,output_type_1_feat=3,config=config,nonlinear=config['nonlinear'])
     if config['se3']==0:
         # action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
-        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,latent_pc_as_feat=config['latent_pc_as_feat'])
+        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,latent_pc_as_feat=config['latent_pc_as_feat'],nonlinear=config['nonlinear'])
     elif config['se3']==1:
-        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'],fused=False)
+        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'],fused=False,nonlinear=config['nonlinear'])
         # from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
         # action_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
     else:

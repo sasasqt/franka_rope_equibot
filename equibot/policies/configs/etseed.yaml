@@ -76,6 +76,7 @@ dev:
   k2_type_1: False
   proper_se3_test: False
   rel_gripper_pos: False
+  nonlinear: False
   
 training:
   ckpt: null

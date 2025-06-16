@@ -101,6 +101,7 @@ class EquivariantNet(ExtendedModule):
                  final_layer_norm = False,
                  k_neighbours=8,
                  use_knn=True,
+                 nonlinear=False,
                  **kwargs):
         
         super().__init__()
@@ -134,11 +135,12 @@ class EquivariantNet(ExtendedModule):
 
         graph_modules = []
 
-        _fiber_hidden=Fiber({
-            "0":32,
-            "1":32,
-        })
-        graph_modules.append(LinearModule(fiber_in=fiber_in,fiber_hidden=_fiber_hidden,fiber_out=fiber_in,n_layer=num_layers))
+        if nonlinear:
+            _fiber_hidden=Fiber({
+                "0":num_channels,
+                "1":num_channels,
+            })
+            graph_modules.append(LinearModule(fiber_in=fiber_in,fiber_hidden=_fiber_hidden,fiber_out=fiber_in,n_layer=num_layers))
 
         for i in range(num_layers):
             graph_modules.append(AttentionBlockSE3(fiber_in=fiber_in,
@@ -255,7 +257,7 @@ class SE3Backbone(ExtendedModule):
         k_neighbours=8,
         compute_gradients=False,
         low_memory=True,
-
+        nonlinear=False,
     ):
         super().__init__()
         self.net = EquivariantNet(
@@ -274,6 +276,7 @@ class SE3Backbone(ExtendedModule):
             use_knn=True,
             compute_gradients=compute_gradients,
             low_memory=low_memory,
+            nonlinear=nonlinear,
         )
 
     
