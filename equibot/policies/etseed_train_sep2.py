@@ -461,7 +461,7 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config,mean=None):
     if config['Ho_in_B']:
         nxyz=nxyz.reshape(B*Ho_num_point,-1).unsqueeze(1)
         neefpose=neefpose.reshape(B*Ho_num_point,-1).unsqueeze(1)
-        tensor_k=tensor_k.reshape(B*Ho_num_point,-1).unsqueeze(1)
+        # tensor_k=tensor_k.reshape(B*Ho_num_point,-1).unsqueeze(1)
         k1=k1.reshape(B*Ho_num_point,-1).unsqueeze(1)
         k2=k2.reshape(B*Ho_num_point,-1).unsqueeze(1)
 
@@ -481,7 +481,11 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config,mean=None):
         gravity=gravity+pred_mean
 
     if config['rel_gripper_pos']:
-        right_eef_world_pos=right_eef_world_pos-mean.unsqueeze(1)
+        if not config['Ho_in_B']:
+            right_eef_world_pos=right_eef_world_pos-mean.unsqueeze(1) 
+        else:
+            right_eef_world_pos=right_eef_world_pos-mean.unsqueeze(1).expand(-1,Ho_num_point,-1).reshape(B*Ho_num_point,-1).unsqueeze(1) 
+            
     # # Options
     # if config['k_option']==0:
     #     # # 0 diffusion steps as type 0 scalar
