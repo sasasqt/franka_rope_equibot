@@ -524,6 +524,8 @@ class SE3ManiNet_Fused(ExtendedModule):
 
                 batchi_type1_feature = pos_net_features[i][:,(1+1)*self.pred_horizon:(1+1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]
                 batchi_type1_feature=batchi_type1_feature.view(batchi_type1_feature.shape[0],self.pred_horizon,-1)
+                trans_feature=batchi_type1_feature
+
                 if self.config['trans_norm']:
                     norms=batchi_type1_feature.detach().norm(dim=2,keepdim=True)
                     # print(norms,">>> norm <<<")
