@@ -77,6 +77,9 @@ dev:
   proper_se3_test: False
   rel_gripper_pos: False
   nonlinear: False
+  bias: False
+  gate: False
+  gate_weight: 1.0
   
 training:
   ckpt: null

@@ -133,6 +133,8 @@ def main(cfg):
         'proper_se3_test': cfg.dev.proper_se3_test,
         'rel_gripper_pos': cfg.dev.rel_gripper_pos,
         'nonlinear': cfg.dev.nonlinear,
+        'bias': cfg.dev.bias,
+        'gate': cfg.dev.gate
     }
 
     device = torch.device('cuda')

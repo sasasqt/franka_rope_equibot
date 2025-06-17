@@ -89,6 +89,9 @@ def main(cfg):
         'proper_se3_test': cfg.dev.proper_se3_test,
         'rel_gripper_pos': cfg.dev.rel_gripper_pos,
         'nonlinear': cfg.dev.nonlinear,
+        'bias': cfg.dev.bias,
+        'gate': cfg.dev.gate,
+        'gate_weight': cfg.dev.gate_weight,
     }
 
 
@@ -288,9 +291,9 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
     pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=config['pred_horizon*obs_horizon'],input_type_1_feat=SE3VisionNet_Hierarchical_input_type_1_feat,output_type_1_feat=3,config=config,nonlinear=config['nonlinear'])
     if config['se3']==0:
         # action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
-        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,latent_pc_as_feat=config['latent_pc_as_feat'],nonlinear=config['nonlinear'])
+        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,latent_pc_as_feat=config['latent_pc_as_feat'],nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'])
     elif config['se3']==1:
-        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'],fused=False,nonlinear=config['nonlinear'])
+        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'],fused=False,nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'])
         # from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
         # action_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
     else:
@@ -909,6 +912,11 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             else:
                 raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 
+    if config['gate']:
+        _losses=[m.matched_loss() for key in nets.keys() for m in nets[key].modules() if hasattr(m, "matched_loss") and m.matched_loss() is not None]
+        penalty_loss=sum(_losses)/len(_losses)
+        loss=loss+config['gate_weight']*penalty_loss
+        print(penalty_loss.item(),">>> penalty loss <<<")
 
     loss.backward()
     optimizer.step()

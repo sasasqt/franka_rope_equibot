@@ -95,7 +95,7 @@ from typing import Dict
 import numpy as np
 
 
-class LinearSE3(nn.Module):
+class _LinearSE3(nn.Module):
     """
     Graph Linear SE(3)-equivariant layer, equivalent to a 1x1 convolution.
     Maps a fiber to a fiber with the same degrees (channels may be different).
@@ -107,7 +107,7 @@ class LinearSE3(nn.Module):
     type-k features (C_k channels) ────> Linear(bias=False) ────> type-k features (C'_k channels)
     """
 
-    def __init__(self, fiber_in: Fiber, fiber_out: Fiber):
+    def __init__(self, fiber_in: Fiber, fiber_out: Fiber,bias=False):
         super().__init__()
         self.weights = nn.ParameterDict(
             {
@@ -118,13 +118,35 @@ class LinearSE3(nn.Module):
                 for degree_out, channels_out in fiber_out
             }
         )
+        self.bias=bias
+        if bias:
+            self.biases = nn.ParameterDict(
+                {
+                    str(degree_out): nn.Parameter(
+                        torch.zeros(channels_out, 1)  # Shape: (channels_out, 1)
+                    )
+                    for degree_out, channels_out in fiber_out
+                }
+            )
 
     def forward(
         self, features: Dict[str, Tensor], *args, **kwargs
     ) -> Dict[str, Tensor]:
-
-        output= {
-            degree: self.weights[degree] @ features[degree]
-            for degree, weight in self.weights.items() if degree in features.keys()
-        }
+        if not self.bias:
+            output= {
+                degree: self.weights[degree] @ features[degree]
+                for degree, weight in self.weights.items() if degree in features.keys()
+            }
+        else:
+            for degree, weight in self.weights.items():
+                if not degree in features.keys():
+                    continue
+                data=self.biases[degree]
+                # print(f">>> bias min/max <<< degree:{degree}",torch.min(data).data.item(),torch.max(data).data.item())
+            output= {
+                degree: self.weights[degree] @ features[degree] + self.biases[degree]
+                for degree, weight in self.weights.items() if degree in features.keys()
+            }            
         return output
+
+

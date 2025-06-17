@@ -5,7 +5,7 @@ from dgl.readout import mean_nodes
 from .se3_transformer.model.basis import get_basis, update_basis_with_fused
 from .se3_transformer.model.layers.attention import AttentionBlockSE3
 from .se3_transformer.model.layers.convolution import ConvSE3, ConvSE3FuseLevel
-from .se3_transformer.model.layers.norm import NormSE3, LinearSE3
+from .se3_transformer.model.layers.norm import NormSE3, _LinearSE3
 from .se3_transformer.model.fiber import Fiber
 from ...utils.utils import build_graph
 from equibot.policies.utils.diffusion.positional_embedding import SinusoidalPosEmb
@@ -47,6 +47,7 @@ class LinearModule(torch.nn.Module):
         n_layer: Optional[int] = 2,
         use_norm: Optional[bool] = True,
         nonlinearity: Optional[torch.nn.Module] = torch.nn.ReLU(),
+        bias=False,
         **kwargs,
     ):
         """
@@ -64,22 +65,63 @@ class LinearModule(torch.nn.Module):
         linear_module = []
         #
         if n_layer >= 2:
-            linear_module.append(LinearSE3(Fiber(fiber_in), Fiber(fiber_hidden)))
+            linear_module.append(_LinearSE3(Fiber(fiber_in), Fiber(fiber_hidden),bias=bias))
             #
             for _ in range(n_layer - 2):
                 if use_norm:
                     linear_module.append(NormSE3(Fiber(fiber_hidden), nonlinearity=nonlinearity))
-                linear_module.append(LinearSE3(Fiber(fiber_hidden), Fiber(fiber_hidden)))
+                linear_module.append(_LinearSE3(Fiber(fiber_hidden), Fiber(fiber_hidden),bias=bias))
             #
-            linear_module.append(LinearSE3(Fiber(fiber_hidden), Fiber(fiber_out)))
+            linear_module.append(_LinearSE3(Fiber(fiber_hidden), Fiber(fiber_out),bias=bias))
         else:
-            linear_module.append(LinearSE3(Fiber(fiber_in), Fiber(fiber_out)))
+            linear_module.append(_LinearSE3(Fiber(fiber_in), Fiber(fiber_out),bias=bias))
         #
         self.linear_module = Sequential(*linear_module)
 
     def forward(self, node_feats,edge_feats,**kwargs):
         return self.linear_module(node_feats)
     
+
+class ResidualBlock(torch.nn.Module):
+    """
+    Generic residual wrapper: y = f(x) + g(x)
+
+    f   se3 nn.Module
+    g   relaxed se3
+    """
+    def __init__(self, f: torch.nn.Module, g: torch.nn.Module | None = None):
+        super().__init__()
+        self.f = f
+        self.g = g if g is not None else torch.nn.Identity()  
+        
+    def forward(
+        self,
+        node_feats, edge_feats, graph, basis
+    ):
+        se3=self.f(node_feats, edge_feats, graph, basis)
+        free=self.g(node_feats, edge_feats, graph, basis)
+        self._match_loss = self.matching_loss(free, se3)
+
+        alpha=0.5
+        output= {
+            degree: alpha*se3[degree]+(1-alpha)*free[degree]
+            for degree in se3.keys()
+        }
+        return output
+    
+    def matched_loss(self):
+        return self._match_loss
+    
+    def matching_loss(self,free, se3):
+        loss = 0.0
+        for degree in se3.keys():
+            diff = free[degree] - se3[degree].detach()
+            loss = loss + torch.sum(diff*diff,dim=-1).sqrt().mean()
+        return loss
+    
+
+
+
 class EquivariantNet(ExtendedModule):
     def __init__(self,
                  num_layers: int,
@@ -102,6 +144,8 @@ class EquivariantNet(ExtendedModule):
                  k_neighbours=8,
                  use_knn=True,
                  nonlinear=False,
+                 bias=False,
+                 gate=False,
                  **kwargs):
         
         super().__init__()
@@ -126,7 +170,8 @@ class EquivariantNet(ExtendedModule):
         self.max_degree = max(*fiber_in.degrees, *fiber_hidden.degrees, *fiber_out.degrees)
         self.tensor_cores = tensor_cores
         self.low_memory = low_memory
-
+        self.gate=gate
+        
         if low_memory:
             self.fuse_level = ConvSE3FuseLevel.NONE
         else:
@@ -134,16 +179,17 @@ class EquivariantNet(ExtendedModule):
             self.fuse_level = ConvSE3FuseLevel.FULL if tensor_cores else ConvSE3FuseLevel.PARTIAL
 
         graph_modules = []
-
+        gate_graph_modules = []
         if nonlinear:
             _fiber_hidden=Fiber({
                 "0":num_channels,
                 "1":num_channels,
             })
-            graph_modules.append(LinearModule(fiber_in=fiber_in,fiber_hidden=_fiber_hidden,fiber_out=fiber_in,n_layer=num_layers))
+            graph_modules.append(LinearModule(fiber_in=fiber_in,fiber_hidden=_fiber_hidden,fiber_out=fiber_in,n_layer=num_layers,bias=bias))
 
         for i in range(num_layers):
-            graph_modules.append(AttentionBlockSE3(fiber_in=fiber_in,
+            if not gate:
+                graph_modules.append(AttentionBlockSE3(fiber_in=fiber_in,
                                                    fiber_out=fiber_hidden,
                                                    fiber_edge=fiber_edge,
                                                    num_heads=num_heads,
@@ -152,9 +198,31 @@ class EquivariantNet(ExtendedModule):
                                                    max_degree=self.max_degree,
                                                    fuse_level=self.fuse_level,
                                                    low_memory=low_memory))
+            else:
+                f=AttentionBlockSE3(fiber_in=fiber_in,
+                                                   fiber_out=fiber_hidden,
+                                                   fiber_edge=fiber_edge,
+                                                   num_heads=num_heads,
+                                                   channels_div=channels_div,
+                                                   use_layer_norm=use_layer_norm,
+                                                   max_degree=self.max_degree,
+                                                   fuse_level=self.fuse_level,
+                                                   low_memory=low_memory)
+                g=AttentionBlockSE3(fiber_in=fiber_in,
+                                                   fiber_out=fiber_hidden,
+                                                   fiber_edge=fiber_edge,
+                                                   num_heads=num_heads,
+                                                   channels_div=channels_div,
+                                                   use_layer_norm=use_layer_norm,
+                                                   max_degree=self.max_degree,
+                                                   fuse_level=self.fuse_level,
+                                                   low_memory=low_memory,
+                                                   gate=True)
+                graph_modules.append(ResidualBlock(f,g))
             if norm:
                 graph_modules.append(NormSE3(fiber_hidden))
-            fiber_in = fiber_hidden
+            fiber_in = fiber_hidden              
+
 
         graph_modules.append(ConvSE3(fiber_in=fiber_in,
                                      fiber_out=fiber_out,
@@ -258,6 +326,8 @@ class SE3Backbone(ExtendedModule):
         compute_gradients=False,
         low_memory=True,
         nonlinear=False,
+        bias=False,
+        gate=False
     ):
         super().__init__()
         self.net = EquivariantNet(
@@ -277,6 +347,8 @@ class SE3Backbone(ExtendedModule):
             compute_gradients=compute_gradients,
             low_memory=low_memory,
             nonlinear=nonlinear,
+            bias=bias,
+            gate=gate
         )
 
     

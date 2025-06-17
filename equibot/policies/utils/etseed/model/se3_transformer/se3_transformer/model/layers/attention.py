@@ -33,6 +33,7 @@ from typing import Dict, Optional, Union
 from ....se3_transformer.model.fiber import Fiber
 from ....se3_transformer.model.layers.convolution import ConvSE3, ConvSE3FuseLevel
 from ....se3_transformer.model.layers.linear import LinearSE3
+from ....se3_transformer.model.layers.norm import  _LinearSE3
 from ....se3_transformer.runtime.utils import degree_to_dim, aggregate_residual, unfuse_features
 from torch.cuda.nvtx import range as nvtx_range
 
@@ -117,6 +118,7 @@ class AttentionBlockSE3(nn.Module):
             max_degree: bool = 4,
             fuse_level: ConvSE3FuseLevel = ConvSE3FuseLevel.FULL,
             low_memory: bool = False,
+            gate=False,
             **kwargs
     ):
         """
@@ -142,9 +144,16 @@ class AttentionBlockSE3(nn.Module):
         self.to_key_value = ConvSE3(fiber_in, value_fiber + key_query_fiber, pool=False, fiber_edge=fiber_edge,
                                     use_layer_norm=use_layer_norm, max_degree=max_degree, fuse_level=fuse_level,
                                     allow_fused_output=True, low_memory=low_memory)
-        self.to_query = LinearSE3(fiber_in, key_query_fiber)
+        if not gate:
+            self.to_query = LinearSE3(fiber_in, key_query_fiber)
+        else:
+            self.to_query = _LinearSE3(fiber_in, key_query_fiber,bias=True)
+
         self.attention = AttentionSE3(num_heads, key_query_fiber, value_fiber)
-        self.project = LinearSE3(value_fiber + fiber_in, fiber_out)
+        if not gate:
+            self.project = LinearSE3(value_fiber + fiber_in, fiber_out)
+        else:
+            self.project = _LinearSE3(value_fiber + fiber_in, fiber_out,bias=True)
 
     def forward(
             self,
