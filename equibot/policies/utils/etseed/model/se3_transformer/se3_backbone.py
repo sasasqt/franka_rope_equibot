@@ -107,10 +107,6 @@ class ResidualBlock(torch.nn.Module):
             degree: alpha*se3[degree]+(1-alpha)*free[degree]
             for degree in se3.keys()
         }
-        print(se3.keys(),free.keys())
-        for k in output.keys():
-            print(output[k].isnan().any())
-        print("---")
         return output
     
     def matched_loss(self):
@@ -120,7 +116,8 @@ class ResidualBlock(torch.nn.Module):
         loss = 0.0
         for degree in se3.keys():
             diff = free[degree] - se3[degree].detach()
-            loss = loss + torch.sum(diff*diff,dim=-1).sqrt().mean()
+            df_df=torch.clamp(diff * diff, min=1e-32, max=1.0)
+            loss = loss + torch.sum(df_df,dim=-1).sqrt().mean()
         return loss
     
 

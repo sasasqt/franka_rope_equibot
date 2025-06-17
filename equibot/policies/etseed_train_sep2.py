@@ -550,6 +550,8 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config,mean=None):
     }
     assert model_input["xyz"].dtype == torch.float32
     assert model_input["feature"].dtype == torch.float32
+    assert not model_input["xyz"].isnan().any()
+    assert not model_input["feature"].isnan().any()
 
     return model_input #,ref_output
 
