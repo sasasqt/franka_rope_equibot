@@ -106,7 +106,8 @@ class DiffusionScheduler(torch.nn.Module):
         # add noise
         # the gamma in perturbation
         # BUG SHOULD BE SIGMA_T, SIGMA_R in kornia
-        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
+        # scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
+        scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
         noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
             
         # perturbation part in eq 34
@@ -139,7 +140,8 @@ class DiffusionScheduler(torch.nn.Module):
         # add noise
         # the gamma in perturbation
         # BUG SHOULD BE SIGMA_T, SIGMA_R in kornia
-        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
+        # scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
+        scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
         noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
             
         # perturbation part in eq 34
@@ -312,7 +314,6 @@ class DiffusionScheduler(torch.nn.Module):
         if timestep>0: 
             timestep=timestep-1
         alpha_bars = self.alpha_bars[timestep].to(device) # [B]
-
         # scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)
         # print(reconstructed_H_0)
         # print(se3.log(reconstructed_H_0))
@@ -321,13 +322,28 @@ class DiffusionScheduler(torch.nn.Module):
             reconstructed_H_0=reconstructed_H_0@sample
             
         scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
-        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample) + scale*gamma2*torch.randn(B,Ho,6).to(device))#torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
-        noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
-            
+        
+        noise = scale*gamma2*torch.randn(B,Ho,6).to(device)  # [B,Ho, 6]
+        # noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
+
+        H_pure_noise=se3.exp(noise)
+        # sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample))# + scale*gamma2*torch.randn(B,Ho,6).to(device))#scale*torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
+        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample) + scale*gamma2*torch.randn(B,Ho,6).to(device))#scale*torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
+        # sample = seW3.exp(scale*gamma1 * se3.log(sample))@se3.exp(scale*gamma0 * se3.log(reconstructed_H_0))
+
+        # noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
+        # H_pure_noise = se3.exp(noise)
+        # original_samples=H_pure_noise@reconstructed_H_0
+        # H_T = torch.eye(4)[None].expand(B,Ho, -1, -1).to(device) # H_T: [B,Ho,4,4]
+        # sample = se3.exp((1. - torch.sqrt(alpha_bars)).unsqueeze(-1).unsqueeze(-1) * se3.log(H_T @ (torch.inverse(original_samples).to(torch.float32)))) @ original_samples.to(torch.float32)
+
         # perturbation part in eq 34
-        H_pure_noise = se3.exp(noise)
         return sample,H_pure_noise # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
-    
+        
+        # noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
+        # noise = se3.exp(noise)
+        # return H_pure_noise@sample,noise # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
+
     def denoise2(self,
                 lie_H_0, # [B,Ho,6]
                 timestep, # [B]

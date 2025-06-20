@@ -102,7 +102,7 @@ class ResidualBlock(torch.nn.Module):
         free=self.g(node_feats, edge_feats, graph, basis)
         self._match_loss = self.matching_loss(free, se3)
 
-        alpha=0.5
+        alpha=0.999
         output= {
             degree: alpha*se3[degree]+(1-alpha)*free[degree]
             for degree in se3.keys()

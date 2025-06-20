@@ -96,8 +96,9 @@ def main(cfg):
 
 
     assert config["mode"] == "train"
-    np.random.seed(config["seed"])
 
+    set_seed(config['seed'],torch_deterministic=True)
+    
     logging.basicConfig(level=logging.INFO)
 
     # initialize parameters
@@ -125,7 +126,7 @@ def main(cfg):
     )
     if config['test_lr_scheduler']:
         config["num_training_steps"]=cfg.data.dataset.num_training_steps = (
-            config["num_epochs"] * len(train_dataset)
+            config["num_epochs"] * (len(train_dataset)//config['batch_size'])
         )
 
     if config['loadFromCkpt'] and ".pth" not in config["checkpoint_path"]:
@@ -947,6 +948,34 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     # wandb.log({"dist_T_eq": dist_equiv_t})
     return loss_cpu
 
+def set_seed(seed, torch_deterministic=False):
+    """set seed across modules"""
+    if seed == -1 and torch_deterministic:
+        seed = 42
+    elif seed == -1:
+        seed = np.random.randint(0, 10000)
+    print("Setting seed: {}".format(seed))
+
+    import random
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # wp.rand_init(seed)
+
+    if torch_deterministic:
+        # refer to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        torch.use_deterministic_algorithms(True)
+    else:
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = False
+
+    return seed
 
 if __name__ == "__main__":
     main()

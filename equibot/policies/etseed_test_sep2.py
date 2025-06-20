@@ -329,17 +329,16 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
             for denoise_idx in range(config['diffusion_steps'] - 1, 0, -1):
                 g_step+=1
 
+                if config['diffusion_option']==0 or config['diffusion_option']==1:
+                    k=torch.full((bz,), denoise_idx).long().to(device)
+                elif config['diffusion_option']==2: 
+                    k=torch.full((bz,), 0).long().to(device)
+                else:
+                    raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
+            
                 if (denoise_idx +1==config['diffusion_steps'] or not config['k_option']==3):
                 # if (denoise_idx +1==config['diffusion_steps'] ):
-
-                    if config['diffusion_option']==0 or config['diffusion_option']==1:
-                        k=torch.full((bz,), denoise_idx).long().to(device)
-                    elif config['diffusion_option']==2: 
-                        k=torch.full((bz,), 0).long().to(device)
-                    else:
-                        raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
-                
-
+            
                     num_point = config['pred_horizon']
 
                     if config['noisy_action_as_k']:
@@ -351,7 +350,9 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                                 if config['diffusion_steps'] - 1==denoise_idx:
                                     _cond=se3.log(noisy_actions) #[b,hp,rot col1 col2=6]
                                 else:
-                                    _cond=se3.log(noise@noisy_actions) #[b,hp,rot col1 col2=6]                            elif config['k_target']=='actions':
+                                    # _cond=se3.log(noise@noisy_actions) #[b,hp,rot col1 col2=6]
+                                    _cond=se3.log(noisy_actions) #[b,hp,rot col1 col2=6]
+                            elif config['k_target']=='actions':
                                 _cond=se3.log(noisy_actions) #[b,hp,trans+rots=6]
                             else:
                                 raise NotImplementedError
@@ -372,9 +373,9 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                             else:
                                 raise NotImplementedError
                         _cond=_cond.repeat_interleave(config['obs_horizon'],dim=1)
-                        model_input = prepare_model_input2(latent_pc, neefpose, _cond, num_point,config)
+                        model_input = prepare_model_input2(latent_pc, neefpose, _cond, num_point,config,mean=nxyz.mean(dim=-2))
                     else:
-                        model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config)
+                        model_input = prepare_model_input2(latent_pc, neefpose, k, num_point,config,mean=nxyz.mean(dim=-2))
 
                     if config['testing']==1:
                         model_input = prepare_model_input3(latent_pc,neefpose, k,num_point,config)
@@ -388,7 +389,6 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                     pos=model_output['pos']
                     gripper=model_output['gripper']
                     model_output=torch.cat((ori, pos,gripper), dim=-1) # [B,Hp,6+3+1]
-                
 
                 ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
                 selected_ori_actions = [noisy_actions[:, :, i, j] for i, j in ori_indices]
@@ -441,7 +441,8 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                         timestep = k,
                         sample = noisy_actions,
                         device = device
-                    )                
+                    )      
+                    # noisy_actions=noise@noisy_actions          
                 elif config['diffusion_option']==1:
                     # 1: predict relative transformation from Ht to H0
                     reconstructed_H_0 = torch.einsum('bhij,bhjk->bhjk',action,noisy_actions)
@@ -502,7 +503,7 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                     break
 
             if isVisualEval:
-                actions=noisy_actions
+                actions=noisy_actions#reconstructed_H_0#noisy_actions
                 # TODO BUG?
                 actions[...,3,3]=output_gripper_action.squeeze(-1)
                 return actions
