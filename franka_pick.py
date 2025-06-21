@@ -934,7 +934,11 @@ class FrankaRope(BaseSample):
         z_offset = 4 * t * (1 - t)
 
         # Stack arc points
-        points = np.column_stack((x+(0.02-0.01*random.random())*x_offset, y+(0.3-0.01*random.random())*y_offset, z+(0.15-0.01*random.random())*z_offset))
+        # v1
+        # points = np.column_stack((x+(0.02-0.01*random.random())*x_offset, y+(0.3-0.01*random.random())*y_offset, z+(0.15-0.01*random.random())*z_offset))
+        
+        # v2
+        points = np.column_stack((x+(0.2-0.01*random.random())*x_offset, y+(0.3-0.01*random.random())*y_offset, z+(0.25-0.01*random.random())*z_offset))
 
 
         R_init = Rotation.from_euler('xyz', [-180,0,-180], degrees=True)  
