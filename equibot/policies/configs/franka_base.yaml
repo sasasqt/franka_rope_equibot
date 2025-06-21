@@ -57,6 +57,7 @@ data:
     pred_horizon: ${model.pred_horizon}
     reduce_horizon_dim: false
     min_demo_length: 15
+    homogen_to_rvt: True
 
   valid_dataset:
     num_training_steps: ???
@@ -81,6 +82,7 @@ data:
     pred_horizon:  ${data.dataset.pred_horizon}
     reduce_horizon_dim:  ${data.dataset.reduce_horizon_dim}
     min_demo_length:  ${data.dataset.min_demo_length}
+    homogen_to_rvt: True
 
 model:
   hidden_dim: 32

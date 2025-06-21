@@ -121,6 +121,7 @@ data:
     reduce_horizon_dim: false
     min_demo_length: 15
     keys_to_keep: ["pc","eef_pos", "action"]
+    homogen_to_rvt: False
 
 
   valid_dataset:
@@ -147,6 +148,7 @@ data:
     reduce_horizon_dim:  ${data.dataset.reduce_horizon_dim}
     min_demo_length:  ${data.dataset.min_demo_length}
     keys_to_keep: ["pc","eef_pos", "action"]
+    homogen_to_rvt: False
 
 wandb:
   entity: ab36

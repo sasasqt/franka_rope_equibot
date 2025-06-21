@@ -38,6 +38,8 @@ class BaseDataset(Dataset):
         self.aug_zero_z_offset = cfg["aug_zero_z_offset"]
         self.reduce_horizon_dim = cfg["reduce_horizon_dim"]
         self.shuffle_pc = cfg["shuffle_pc"]
+        self.homogen_to_rvt=cfg['homogen_to_rvt']
+
         if "latency" in cfg:
             self.state_latency = cfg["latency"]["state"]
             self.state_latency_random = cfg["latency"]["random"]
@@ -222,6 +224,15 @@ class BaseDataset(Dataset):
                     offset = offset[::step, :][: self.num_points, :]
         if "action" in keys:
             action = data["action"].astype(np.float32)
+            if action.shape[-2:] == (4, 4) and self.homogen_to_rvt==True: 
+                from scipy.spatial.transform import Rotation
+                # homogen. matrix back to action,pos, rot
+                gripper_action=action[...,3,3]
+                action[...,3,3]=1
+                t = action[...,:3, 3].squeeze()                            
+                R = action[...,:3, :3]
+                rv = Rotation.from_matrix(R).as_rotvec().squeeze()
+                action = np.concatenate((gripper_action, t, rv), axis=-1)
 
         if self.num_augment > 0:
             assert aug_idx is not None

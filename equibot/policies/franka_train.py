@@ -19,7 +19,7 @@ import logging
 @hydra.main(config_path="configs", config_name="fold_synthetic")
 def main(cfg):
     assert cfg.mode == "train"
-    np.random.seed(cfg.seed)
+    set_seed(cfg.seed,torch_deterministic=True)
 
     logging.basicConfig(level=logging.INFO)
 
@@ -104,7 +104,7 @@ def main(cfg):
             or epoch_ix == cfg.training.num_epochs - 1
         ):
             save_path = os.path.join(log_dir, f"ckpt{epoch_ix:05d}.pth")
-            num_ckpt_to_keep = 10000 # keep them all
+            num_ckpt_to_keep = 3 # # keep them all
             if len(list(glob(os.path.join(log_dir, "ckpt*.pth")))) > num_ckpt_to_keep:
                 # remove old checkpoints
                 for fn in list(sorted(glob(os.path.join(log_dir, "ckpt*.pth"))))[
@@ -133,6 +133,35 @@ def main(cfg):
                 #     break
             diff/=count
             wandb.log({"valid_loss":diff},step=global_step)
+
+def set_seed(seed, torch_deterministic=False):
+    """set seed across modules"""
+    if seed == -1 and torch_deterministic:
+        seed = 42
+    elif seed == -1:
+        seed = np.random.randint(0, 10000)
+    print("Setting seed: {}".format(seed))
+
+    import random
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # wp.rand_init(seed)
+
+    if torch_deterministic:
+        # refer to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        torch.use_deterministic_algorithms(True)
+    else:
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = False
+
+    return seed
 
 if __name__ == "__main__":
     main()
