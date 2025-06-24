@@ -175,7 +175,7 @@ class DiffusionScheduler(torch.nn.Module):
 
         # add noise
         # the gamma in perturbation
-        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
+        scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
         lie_noise= scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)
         # lie_noise= torch.randn(B,Ho, 6).to(device)
         noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * lie_noise  # [B,Ho, 6]
@@ -206,7 +206,7 @@ class DiffusionScheduler(torch.nn.Module):
         a = self.alphas.to(device)[timesteps.to(device)].unsqueeze(-1).unsqueeze(-1) # [B]
         lie_h_0=se3.log(original_samples)
 
-        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
+        scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
         lie_noise= scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)
         lie_h_t = a*lie_h_0+(1.0-a)*se3.log(H_T)+(1.0-a)*lie_noise
         return lie_h_t,se3.exp(lie_h_t),lie_h_0
@@ -225,7 +225,7 @@ class DiffusionScheduler(torch.nn.Module):
         # see algorithm 2, but no longer use A^{k->0}A^k
         alpha = self._alpha[timestep].to(device)
         beta = self._beta[timestep].to(device)
-        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)
+        scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
         lie_noise= scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)
         lie_sample=alpha*lie_h_0+beta*lie_sample+beta*scale*lie_noise        
         return lie_sample,se3.exp(lie_sample)    
@@ -314,22 +314,22 @@ class DiffusionScheduler(torch.nn.Module):
         if timestep>0: 
             timestep=timestep-1
         alpha_bars = self.alpha_bars[timestep].to(device) # [B]
-        # scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)
+        # scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
         # print(reconstructed_H_0)
         # print(se3.log(reconstructed_H_0))
         # print("^^^^^")
         if abs_to_rel: 
             reconstructed_H_0=reconstructed_H_0@sample
             
-        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
+        scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
         
         noise = scale*gamma2*torch.randn(B,Ho,6).to(device)  # [B,Ho, 6]
         # noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
 
         H_pure_noise=se3.exp(noise)
-        # sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample))# + scale*gamma2*torch.randn(B,Ho,6).to(device))#scale*torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
-        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample) + scale*gamma2*torch.randn(B,Ho,6).to(device))#scale*torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
-        # sample = seW3.exp(scale*gamma1 * se3.log(sample))@se3.exp(scale*gamma0 * se3.log(reconstructed_H_0))
+        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample))# + scale*gamma2*torch.randn(B,Ho,6).to(device))#scale*torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
+        # sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample) + scale*gamma2*torch.randn(B,Ho,6).to(device))#scale*torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
+        # sample = se3.exp(scale*gamma1 * se3.log(sample))@se3.exp(scale*gamma0 * se3.log(reconstructed_H_0))
 
         # noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
         # H_pure_noise = se3.exp(noise)
@@ -362,7 +362,7 @@ class DiffusionScheduler(torch.nn.Module):
         lambda1 = self.lambda1[timestep].to(device)
         alpha_bars = self.alpha_bars[timestep].to(device) # [B]
 
-        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)
+        scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
         scale=scale.unsqueeze(0)
         # lie_noise=torch.randn(B,Ho,6).to(device)
         # prev_lie_h_t=lambda0*(lie_H_t-lambda1*lie_pred) + gamma2*scale*lie_noise
@@ -392,7 +392,7 @@ class DiffusionScheduler(torch.nn.Module):
         v_coeff1=self.v_coeff1[timestep].to(device).unsqueeze(-1).unsqueeze(-1)
         v_coeff2=self.v_coeff2[timestep].to(device).unsqueeze(-1).unsqueeze(-1)
 
-        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)
+        scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
         scale=scale.unsqueeze(0)
         # lie_noise=torch.randn(B,Ho,6).to(device)
         # prev_lie_h_t=lambda0*(lie_H_t-lambda1*lie_pred) + gamma2*scale*lie_noise
@@ -440,7 +440,7 @@ class DiffusionScheduler(torch.nn.Module):
         lie_noise_pred = v_coeff1 * lie_v_pred + v_coeff2 * lie_H_t
         lie_x0_pred = v_coeff1 * lie_H_t - v_coeff2 * lie_v_pred
 
-        scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device).unsqueeze(0)
+        scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
         # prev_h_t = se3.exp(gamma0 * lie_x0_pred + gamma1 * lie_H_t + scale*gamma2*torch.randn(B,Ho,6).to(device))
         prev_lie_h_t=gamma0 * lie_x0_pred + gamma1 * lie_H_t + gamma2*lie_noise_pred
         # lie_noise=torch.randn(B,Ho,6).to(device)

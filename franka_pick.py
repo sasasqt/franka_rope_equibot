@@ -594,6 +594,20 @@ class FrankaRope(BaseSample):
                                 ) # core task api which also set_robot(), bad practice but in api # TODO
             world.add_task(task)
 
+
+        # stage = omni.usd.get_context().get_stage()
+        # from omni.kit.viewport.utility import get_active_viewport, capture_viewport_to_file
+
+        # alternative_camera_xform=UsdGeom.Xform.Define(stage, f'/World/Camera')
+        # alternative_camera_xform.AddTranslateOp().Set(Gf.Vec3f([0,0,0]))
+        # alternative_camera_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
+
+        # alternative_camera_prim=UsdGeom.Camera.Define(stage, f'/World/Camera/Camera')
+        # alternative_camera_prim.AddTranslateOp().Set(Gf.Vec3f([5.0,-0.3,3.2]))
+        # alternative_camera_prim.AddRotateXYZOp().Set(Gf.Vec3f([57,0,85]))
+        # # UsdGeom.Camera.Define(stage, alternative_camera_path_str)
+        # get_active_viewport().camera_path='/World/Camera/Camera'
+
         # rope=self._rope=RigidBodyRope(_world=world,_ropeLength=self._ropeLength,_rope_damping=self._rope_damping,_rope_stiffness=self._rope_stiffness,_rope_y_pos=self._rope_y_pos,_randomize=self._randomize,_randomize_on_reset=self._randomize_on_reset)
         RigidBodyRope
         # try:
@@ -933,20 +947,31 @@ class FrankaRope(BaseSample):
         t = np.linspace(0, 1, steps)  
         z_offset = 4 * t * (1 - t)
 
-        # Stack arc points
-        # v1
-        # points = np.column_stack((x+(0.02-0.01*random.random())*x_offset, y+(0.3-0.01*random.random())*y_offset, z+(0.15-0.01*random.random())*z_offset))
-        
-        # v2
-        points = np.column_stack((x+(0.2-0.01*random.random())*x_offset, y+(0.3-0.01*random.random())*y_offset, z+(0.25-0.01*random.random())*z_offset))
-
-
         R_init = Rotation.from_euler('xyz', [-180,0,-180], degrees=True)  
         R_target = Rotation.from_euler('xyz', [180,-90,90], degrees=True)  
         slerp = Slerp([0,1], Rotation.concatenate([R_target,R_init]))  
-        
-        
         self._trajectory=trajectory = []  
+
+        # Stack arc points
+        # v1
+        points = np.column_stack((x+(0.02-0.01*random.random())*x_offset, y+(0.3-0.01*random.random())*y_offset, z+(0.15-0.01*random.random())*z_offset))
+
+        for i,index in enumerate(np.sort(np.random.choice(np.arange(0,steps), size=100, replace=False))[::-1]):          
+            # if i == 0:
+            #     pos = start
+            # elif i == steps - 1:
+            #     pos = end
+            pos=points[index]
+            noisy_pos=pos+np.random.randn(3)*0.0005
+            rot = slerp(i/100)
+            noise = Rotation.from_euler('zyx',np.random.randn(3)*0.1,degrees=True)
+            noisy_rot=rot*noise
+            # trajectory.append((noisy_pos, noisy_rot.as_quat(scalar_first=True)))  
+            _cube(noisy_pos,noisy_rot.as_quat(scalar_first=True),name=f"cubev1{i}")
+        
+        # v2
+        points = np.column_stack((x+(0.2-0.02*random.random())*x_offset, y+(0.1-0.02*random.random())*y_offset, z+(0.4-0.02*random.random())*z_offset))
+
         for i,index in enumerate(np.sort(np.random.choice(np.arange(0,steps), size=100, replace=False))[::-1]):          
             # if i == 0:
             #     pos = start
@@ -958,8 +983,7 @@ class FrankaRope(BaseSample):
             noise = Rotation.from_euler('zyx',np.random.randn(3)*0.1,degrees=True)
             noisy_rot=rot*noise
             trajectory.append((noisy_pos, noisy_rot.as_quat(scalar_first=True)))  
-            _cube(noisy_pos,noisy_rot.as_quat(scalar_first=True),name=f"cube{i}")
-
+            _cube(noisy_pos,noisy_rot.as_quat(scalar_first=True),name=f"cubev2{i}")        
 
         
     def _on_follow_target_simulation_step(self, step_size) -> None:
