@@ -150,7 +150,8 @@ class DiffusionScheduler(torch.nn.Module):
             return H_t,H_pure_noise
         
         # perturbation + interpolation, see eq 34
-        noisy_interpolated_H_t = H_pure_noise @ H_t #  [B,Ho,4,4]
+        # noisy_interpolated_H_t = H_pure_noise @ H_t #  [B,Ho,4,4]
+        noisy_interpolated_H_t = se3.exp(noise + se3.log(H_t)) #  [B,Ho,4,4]
         
 
         return noisy_interpolated_H_t, H_pure_noise,H_t
