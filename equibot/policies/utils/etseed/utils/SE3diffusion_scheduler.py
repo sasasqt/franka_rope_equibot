@@ -135,7 +135,8 @@ class DiffusionScheduler(torch.nn.Module):
         alpha_bars = self.alpha_bars[timesteps].to(device) # [B]
       
         # H_t [B,Ho,4,4] the interpolation part, see eq 35
-        H_t = se3.exp((1. - torch.sqrt(alpha_bars)).unsqueeze(-1).unsqueeze(-1) * se3.log(H_T @ (torch.inverse(original_samples).to(torch.float32)))) @ original_samples.to(torch.float32)
+        # H_t = se3.exp((1. - torch.sqrt(alpha_bars)).unsqueeze(-1).unsqueeze(-1) * se3.log(H_T @ (torch.inverse(original_samples).to(torch.float32)))) @ original_samples.to(torch.float32)
+        H_t = se3.exp((torch.sqrt(alpha_bars)).unsqueeze(-1).unsqueeze(-1) * se3.log(original_samples.to(torch.float32)))
 
         # add noise
         # the gamma in perturbation
