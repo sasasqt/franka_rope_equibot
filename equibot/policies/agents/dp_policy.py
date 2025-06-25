@@ -94,11 +94,20 @@ class DPPolicy(nn.Module):
 
         if self.obs_mode.startswith("pc"):
             if not self.flow:
+                # pc = self.pc_normalizer.normalize(pc)
+                _pc=pc.view(-1, 6)[:,::2]
+                _flow=pc.view(-1, 6)[:,1::2]
+                pc=torch.cat((_pc, _flow), dim=0) #  torch.Size([81920x2, 3])
                 pc = self.pc_normalizer.normalize(pc)
+                pc_shape=list(pc_shape)
+                pc_shape[-1]=int(pc_shape[-1]//2)
+                pc_shape[-2]=int(2*pc_shape[-2])
+                pc=pc.reshape(pc_shape)
             else:
                 _pc=self.pc_normalizer.normalize(pc.view(-1, 6)[:,::2])
                 _flow=self.flow_normalizer.normalize(pc.view(-1, 6)[:,1::2])
-                pc=torch.cat((_pc, _flow), dim=-1) #  torch.Size([81920, 6])
+                # pc=torch.cat((_pc, _flow), dim=-1) #  torch.Size([81920, 6])
+                pc=torch.cat((_pc, _flow-_pc), dim=-1) #  torch.Size([81920, 6])
                 pc=pc.reshape(pc_shape) # torch.Size([1024, 2, 40, 6])
         state = self.state_normalizer.normalize(state)
 
