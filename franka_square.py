@@ -463,7 +463,7 @@ class FrankaRope(BaseSample):
         self.pusht_pos=None
         self.pusht_ori=None
         self._spheres=[]
-        set_seed(42)
+        set_seed(cfg.seed)
 
         if cfg is not None:
             print(cfg)
@@ -481,7 +481,7 @@ class FrankaRope(BaseSample):
             
             self.pusht_pos=list(cfg.pusht_pos)
             self.pusht_ori=list(cfg.pusht_ori)
-            random.seed(int(cfg.seed))
+            # random.seed(int(cfg.seed))
 
         self._init_vars()
         self._world_settings = {

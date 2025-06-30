@@ -397,7 +397,7 @@ class FrankaRope(BaseSample):
         self._rope_y_pos=None
         self.pusht_pos=None
         self.pusht_ori=None
-        set_seed(42)
+        set_seed(cfg.seed)
 
         if cfg is not None:
             print(cfg)
