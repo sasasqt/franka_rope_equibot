@@ -27,7 +27,7 @@ enable_extension("omni.videoencoding") # need to have g_video_encoding_api in th
 enable_extension("omni.kit.viewport.utility")
 # enable_extension("omni.kit.renderer.capture") # this capture the entire omniverse kit.exe window
 # enable_extension("omni.kit.capture.viewport") # this caused the timeline to pause after the last frame captured
-from franka_rope import IsaacUIUtils, VRUIUtils
+# from franka_rope import IsaacUIUtils, VRUIUtils
 from omni.isaac.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
 
 
