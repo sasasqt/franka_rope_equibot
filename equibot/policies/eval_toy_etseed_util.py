@@ -163,7 +163,9 @@ class EvalUtils(ControlFlow):
                     translations=np.array([data_frame.data["Cube"]["cube_world_position"]]),
                     orientations=np.array(quat),
                 )
-            
+                xform=world.scene.get_object("/Sphere")
+                xform.set_world_poses(positions=sample._cube.get_world_poses()[0],orientations=sample._cube.get_world_poses()[1])
+
                 # rope.set_world_pose(
                 #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
                 #     orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
@@ -186,6 +188,9 @@ class EvalUtils(ControlFlow):
 
             pc=[]
             i=0
+            xform=world.scene.get_object("/Sphere")
+            xform.set_world_poses(positions=sample._cube.get_world_poses()[0],orientations=sample._cube.get_world_poses()[1])
+
             while scene.object_exists(f'/Sphere/sphere{i}'):
                 sphere=scene.get_object(f'/Sphere/sphere{i}')
                 pc.append(sphere.get_world_pose()[0].tolist())
@@ -298,6 +303,8 @@ class EvalUtils(ControlFlow):
                 orientations=np.array(quat),
             )
 
+            xform=world.scene.get_object("/Sphere")
+            xform.set_world_poses(positions=sample._cube.get_world_poses()[0],orientations=sample._cube.get_world_poses()[1])
 
                 # rope.set_world_pose(
                 #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
@@ -489,6 +496,8 @@ class EvalUtils(ControlFlow):
                     translations=np.array([data_frame.data["Cube"]["cube_world_position"]]),
                     orientations=np.array(quat),
                 )
+                xform=world.scene.get_object("/Sphere")
+                xform.set_world_poses(positions=sample._cube.get_world_poses()[0],orientations=sample._cube.get_world_poses()[1])
 
                 # rope.set_world_pose(
                 #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
