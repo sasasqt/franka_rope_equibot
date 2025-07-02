@@ -80,16 +80,115 @@ class EvalUtils(ControlFlow):
         target_name=cls.target_name
         cls.gravity_dir=[0,0,-1]
 
-        if cls.cfg.translation is not None:
+        # cube at the end pick v1
+        cls._tgt_pc = np.array(
+                    [
+                        [
+                            0.02616778388619423,
+                            -0.17271608114242554,
+                            0.060000933706760406
+                        ],
+                        [
+                            0.026168517768383026,
+                            -0.17271505296230316,
+                            9.35697755721776e-07
+                        ],
+                        [
+                            0.017845619469881058,
+                            -0.23213613033294678,
+                            0.05999980866909027
+                        ],
+                        [
+                            -0.033252257853746414,
+                            -0.16439391672611237,
+                            0.060000352561473846
+                        ],
+                        [
+                            0.017846353352069855,
+                            -0.2321351021528244,
+                            -1.8844585270016978e-07
+                        ],
+                        [
+                            -0.03325152397155762,
+                            -0.16439288854599,
+                            3.523719840359263e-07
+                        ],
+                        [
+                            -0.041574422270059586,
+                            -0.2238139659166336,
+                            0.05999922752380371
+                        ],
+                        [
+                            -0.04157368838787079,
+                            -0.22381293773651123,
+                            -7.717716243860195e-07
+                        ]
+                    ]
+            )
+
+        # # cube at the beginning: toymix
+        # cls._tgt_pc = np.array(
+        #          [
+        #                 [
+        #                     0.030000003054738045,
+        #                     -0.12000000476837158,
+        #                     0.06000000238418579
+        #                 ],
+        #                 [
+        #                     0.030000003054738045,
+        #                     -0.12000000476837158,
+        #                     3.725290298461914e-09
+        #                 ],
+        #                 [
+        #                     0.030000003054738045,
+        #                     -0.18000000715255737,
+        #                     0.06000000238418579
+        #                 ],
+        #                 [
+        #                     -0.029999995604157448,
+        #                     -0.12000000476837158,
+        #                     0.06000000238418579
+        #                 ],
+        #                 [
+        #                     0.030000003054738045,
+        #                     -0.18000000715255737,
+        #                     3.725290298461914e-09
+        #                 ],
+        #                 [
+        #                     -0.029999995604157448,
+        #                     -0.12000000476837158,
+        #                     3.725290298461914e-09
+        #                 ],
+        #                 [
+        #                     -0.029999995604157448,
+        #                     -0.18000000715255737,
+        #                     0.06000000238418579
+        #                 ],
+        #                 [
+        #                     -0.029999995604157448,
+        #                     -0.18000000715255737,
+        #                     3.725290298461914e-09
+        #                 ]
+        #             ]
+        #     )
+        # random_rotation=np.eye(3)
+        random_translation=np.zeros(3)
         # rotate world first after play(), otherwise the franka will compensate the rotation somehow in their code
         # rotate in simulation not in usd
-            sample._world_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(list(cls.cfg.translation))) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
-
         if cls.cfg.rotation is not None:
             sample._world_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(list(cls.cfg.rotation)))
+            _rotation = R.from_euler('xyz', cls.cfg.rotation, degrees=True).as_matrix()
+            cls._tgt_pc=np.array([_rotation@vector for vector in cls._tgt_pc])
+
+        if cls.cfg.translation is not None:
+            sample._world_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(list(cls.cfg.translation))) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
+            _translation = cls.cfg.translation
+            cls._tgt_pc=np.array([vector+_translation for vector in cls._tgt_pc])
 
         if cls.cfg.scale is not None:
             sample._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(cls.cfg.scale)))
+            _scale=cls.cfg.scale
+            cls._tgt_pc=np.array([vector*_scale for vector in cls._tgt_pc])
 
             await omni.kit.app.get_app().next_update_async()
             # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
@@ -196,54 +295,8 @@ class EvalUtils(ControlFlow):
                 pc.append(sphere.get_world_pose()[0].tolist())
                 i+=1
             pc=np.array(pc)
-            # # NEW
-            tgt_pc = np.array(
-                    [
-                        [
-                            0.02616778388619423,
-                            -0.17271608114242554,
-                            0.060000933706760406
-                        ],
-                        [
-                            0.026168517768383026,
-                            -0.17271505296230316,
-                            9.35697755721776e-07
-                        ],
-                        [
-                            0.017845619469881058,
-                            -0.23213613033294678,
-                            0.05999980866909027
-                        ],
-                        [
-                            -0.033252257853746414,
-                            -0.16439391672611237,
-                            0.060000352561473846
-                        ],
-                        [
-                            0.017846353352069855,
-                            -0.2321351021528244,
-                            -1.8844585270016978e-07
-                        ],
-                        [
-                            -0.03325152397155762,
-                            -0.16439288854599,
-                            3.523719840359263e-07
-                        ],
-                        [
-                            -0.041574422270059586,
-                            -0.2238139659166336,
-                            0.05999922752380371
-                        ],
-                        [
-                            -0.04157368838787079,
-                            -0.22381293773651123,
-                            -7.717716243860195e-07
-                        ]
-                    ]
-            )
+            tgt_pc=cls._tgt_pc
 
-
-            tgt_pc=np.array(tgt_pc)
             pc=np.concatenate((pc,tgt_pc),axis=1)
             # if eval(str(cls.cfg.flow).title()):
             #     pc=np.concatenate((pc,tgt_pc-pc),axis=1) # [ 1.57756746e-01  9.57879238e-03  5.00003956e-02 -7.45579600e-04 -6.01215288e-04 -4.09781933e-07]
@@ -625,52 +678,8 @@ class EvalUtils(ControlFlow):
             i+=1
 
         pc=np.array(pc)
-        tgt_pc = np.array(
-                    [
-                        [
-                            0.02616778388619423,
-                            -0.17271608114242554,
-                            0.060000933706760406
-                        ],
-                        [
-                            0.026168517768383026,
-                            -0.17271505296230316,
-                            9.35697755721776e-07
-                        ],
-                        [
-                            0.017845619469881058,
-                            -0.23213613033294678,
-                            0.05999980866909027
-                        ],
-                        [
-                            -0.033252257853746414,
-                            -0.16439391672611237,
-                            0.060000352561473846
-                        ],
-                        [
-                            0.017846353352069855,
-                            -0.2321351021528244,
-                            -1.8844585270016978e-07
-                        ],
-                        [
-                            -0.03325152397155762,
-                            -0.16439288854599,
-                            3.523719840359263e-07
-                        ],
-                        [
-                            -0.041574422270059586,
-                            -0.2238139659166336,
-                            0.05999922752380371
-                        ],
-                        [
-                            -0.04157368838787079,
-                            -0.22381293773651123,
-                            -7.717716243860195e-07
-                        ]
-                    ]
-        )
+        tgt_pc=cls._tgt_pc
         
-        tgt_pc=np.array(tgt_pc)
         pc=np.concatenate((pc,tgt_pc),axis=1)
 
         # if eval(str(cls.cfg.flow).title()):
