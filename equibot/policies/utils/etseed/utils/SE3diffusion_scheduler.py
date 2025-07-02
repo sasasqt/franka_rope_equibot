@@ -376,19 +376,23 @@ class DiffusionScheduler(torch.nn.Module):
         
         # noise_t2 = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
 
-        eta=1 # 0 ,1 or what
+        eta=1 # 0 ,1 or what 
         sigma = eta * ((1 - alpha_bars / alpha_bars_prev) * (1 - alpha_bars_prev) / (1 - alpha_bars)).sqrt() # lucidrains/ddim d3
-        # dir_t=torch.sqrt(1-alpha_bars_prev-sigma**2)*noise_t
-        dir_t=torch.sqrt(1-alpha_bars_prev)*noise_t
+        dir_t=torch.sqrt(1-alpha_bars_prev-sigma**2)*noise_t
+        # dir_t=torch.sqrt(1-alpha_bars_prev)*noise_t
         sample=torch.sqrt(alpha_bars_prev)*log_x0+dir_t
         # nx0=se3.exp(torch.sqrt(alpha_bars_prev)*log_x0)
         # ndt=se3.exp(dir_t)
         # sample=torch.sqrt(alpha_bars_prev)*log_x0+noise_t*torch.sqrt(1-alpha_bars_prev-tau_t**2)
-        noise = scale*torch.randn(B,Ho,6).to(device)  # [B,Ho, 6]
+        
+        noise = sigma*scale*torch.randn(B,Ho,6).to(device)  # [B,Ho, 6]
+        # noise = scale*gamma2*torch.randn(B,Ho,6).to(device)  # [B,Ho, 6]
+        # noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
+        # noise=self.betas[timestep]* scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device) 
         sample=se3.exp(sample)
         # sample=se3.exp(sample+sigma*noise)
         # sample=ndt@nx0
-        H_pure_noise=se3.exp(sigma*noise)
+        H_pure_noise=se3.exp(noise)
 
 
         # noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
@@ -398,7 +402,7 @@ class DiffusionScheduler(torch.nn.Module):
         # sample = se3.exp((1. - torch.sqrt(alpha_bars)).unsqueeze(-1).unsqueeze(-1) * se3.log(H_T @ (torch.inverse(original_samples).to(torch.float32)))) @ original_samples.to(torch.float32)
 
         # perturbation part in eq 34
-        return H_pure_noise@sample,H_pure_noise # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
+        return sample,H_pure_noise # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
         
         # noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
         # noise = se3.exp(noise)
