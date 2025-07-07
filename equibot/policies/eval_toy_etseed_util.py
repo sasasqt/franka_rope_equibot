@@ -194,6 +194,17 @@ class EvalUtils(ControlFlow):
             # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
             await omni.kit.app.get_app().next_update_async()
             
+        import omni
+        import omni.usd
+        from pxr import Sdf
+        import omni.kit.commands
+
+        omni.kit.commands.execute('ChangeProperty',
+            prop_path=Sdf.Path('/World/defaultGroundPlane/Environment/Geometry.xformOp:orient'),
+            value=Gf.Quatd(1.0, Gf.Vec3d(0.0, 0.0, 0.0)),
+            prev=Gf.Quatd(1.0, Gf.Vec3d(0.0, 0.0, 0.0)),
+            usd_context_name=omni.usd.get_context().get_stage())
+
         await asyncio.sleep(3)
         await cls._sample._on_follow_target_event_async(True)
 
