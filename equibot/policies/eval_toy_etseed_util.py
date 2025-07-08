@@ -193,7 +193,9 @@ class EvalUtils(ControlFlow):
             await omni.kit.app.get_app().next_update_async()
             # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
             await omni.kit.app.get_app().next_update_async()
-            
+
+        # cls._tgt_pc=np.array([vector+np.array([0.1,0,0]) for vector in cls._tgt_pc]) # ood
+   
         import omni
         import omni.usd
         from pxr import Sdf

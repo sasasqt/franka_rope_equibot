@@ -321,6 +321,7 @@ class FrankaRope(BaseSample):
         _scale=0.4
         from omni.isaac.core.prims import XFormPrimView
         prims = XFormPrimView(prim_paths_expr=f'{cube_str}/cube',name=f'{cube_str}/cube',scales=[[_scale,_scale,_scale]],translations=[[0,-0.15,0]]) # BUG inconsistency in isaacsim 4.2.0
+        # prims = XFormPrimView(prim_paths_expr=f'{cube_str}/cube',name=f'{cube_str}/cube',scales=[[_scale,_scale,_scale]],translations=[[0.1,-0.15,0]]) # ood # BUG inconsistency in isaacsim 4.2.0
         self._world.scene.add(prims)
         self._cube=self._world.scene.get_object(f'{cube_str}/cube')
 
@@ -573,7 +574,8 @@ class FrankaRope(BaseSample):
             franka_robot_name=f"{_str}_franka"
             franka_prim_path=f"/World/{franka_robot_name}"
             # target_position=[0.2*idx-0.1, 0.0, 0.015]
-            target_position=[0.4*idx-0.2, -0.15, 0.1]
+            target_position=[0.4*idx-0.2, -0.15, 0.1] 
+            # target_position=[0.4*idx-0.3, -0.15, 0.1] # ood
 
             self._franka_position[_str]=position=[0.0,0.8*idx-0.4,0.0] # (np.linalg.inv(euler_to_rot_matrix(_world_ori)) @ np.array([0.0,0.8*idx-0.4,0.0])).tolist() 
             self._franka_inverse_position[_str]=[0.0,-0.8*idx+0.4,0.0] # (np.linalg.inv(euler_to_rot_matrix(_world_ori)) @ np.array([0.0,-0.8*idx+0.4,0.0])).tolist() 
@@ -587,6 +589,7 @@ class FrankaRope(BaseSample):
 
             # this is the default target orientation: it aligns the target xyz axis with unrotated franka eef in world coord.
             target_orientation=euler_angles_to_quat(np.array([0,np.pi, 0])) # grab from top
+            # target_orientation=euler_angles_to_quat(np.array([0,3, 0])) # grab from top # ood
 
             task_name=f"{_str}_follow_target_task"
             task = FollowTarget(name=task_name, target_prim_path=_target_prim_path,target_name=_target_name,target_position=target_position,target_orientation=target_orientation,franka_prim_path=franka_prim_path,franka_robot_name=franka_robot_name,

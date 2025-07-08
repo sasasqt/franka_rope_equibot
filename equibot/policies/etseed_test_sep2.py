@@ -351,6 +351,8 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                                     _cond=se3.log(noisy_actions) #[b,hp,rot col1 col2=6]
                                 else:
                                     _cond=se3.log(noise@noisy_actions) #[b,hp,rot col1 col2=6]
+                                    # _cond=se3.log(noise)+se3.log(noisy_actions) #[b,hp,rot col1 col2=6] # for lie  algebra
+
                                     # _cond=se3.log(noisy_actions) #[b,hp,rot col1 col2=6]
                             elif config['k_target']=='actions':
                                 _cond=se3.log(noisy_actions) #[b,hp,trans+rots=6]
@@ -503,6 +505,8 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                     break
 
             if isVisualEval:
+                # actions=noisy_actions#reconstructed_H_0#noisy_actions# for lie algebra
+
                 actions=reconstructed_H_0#reconstructed_H_0#noisy_actions
                 # TODO BUG?
                 actions[...,3,3]=output_gripper_action.squeeze(-1)

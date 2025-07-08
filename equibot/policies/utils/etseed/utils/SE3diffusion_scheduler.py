@@ -378,8 +378,8 @@ class DiffusionScheduler(torch.nn.Module):
 
         eta=1 # 0 ,1 or what 
         sigma = eta * ((1 - alpha_bars / alpha_bars_prev) * (1 - alpha_bars_prev) / (1 - alpha_bars)).sqrt() # lucidrains/ddim d3
-        dir_t=torch.sqrt(1-alpha_bars_prev-sigma**2)*noise_t
-        # dir_t=torch.sqrt(1-alpha_bars_prev)*noise_t
+        # dir_t=torch.sqrt(1-alpha_bars_prev-sigma**2)*noise_t # for lie algebra
+        dir_t=torch.sqrt(1-alpha_bars_prev)*noise_t
         sample=torch.sqrt(alpha_bars_prev)*log_x0+dir_t
         # nx0=se3.exp(torch.sqrt(alpha_bars_prev)*log_x0)
         # ndt=se3.exp(dir_t)
