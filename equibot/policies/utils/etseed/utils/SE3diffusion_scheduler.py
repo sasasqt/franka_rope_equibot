@@ -408,6 +408,81 @@ class DiffusionScheduler(torch.nn.Module):
         # noise = se3.exp(noise)
         # return H_pure_noise@sample,noise # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
 
+    def ddim_denoise(self,
+                reconstructed_H_0, # [B,Ho,4,4]
+                timestep, # [B]
+                sample, # [B,Ho,4,4]
+                device,
+                abs_to_rel=False):
+        
+        timestep = timestep[0].cpu() # scalar
+        B = sample.shape[0]
+        Ho = sample.shape[1]
+        # see algorithm 2, but no longer use A^{k->0}A^k
+        if timestep>0: 
+            timestep=timestep-1
+        alpha_bars = self.alpha_bars[timestep].to(device) # [B]
+        
+        if abs_to_rel: 
+            reconstructed_H_0=reconstructed_H_0@sample
+            
+        scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
+
+
+        # https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_ddim_inverse.py
+        alpha_bars = self.alpha_bars[timestep].to(device) # [B]
+        eta_t=self.betas[timestep]
+        if timestep>0: 
+            timestep=timestep-1
+
+        alpha_bars_prev = self.alpha_bars[timestep].to(device) # [B]
+        x0=reconstructed_H_0
+        xt=sample
+        log_x0=se3.log(x0)
+        log_xt=se3.log(xt)
+        noise_t = (log_xt-torch.sqrt(alpha_bars)*log_x0)/torch.sqrt(1-alpha_bars)#torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
+
+        eta=1 # 0 ,1 or what 
+        sigma = eta * ((1 - alpha_bars / alpha_bars_prev) * (1 - alpha_bars_prev) / (1 - alpha_bars)).sqrt() # lucidrains/ddim d3
+        dir_t=torch.sqrt(1-alpha_bars_prev)*noise_t
+        sample=torch.sqrt(alpha_bars_prev)*log_x0+dir_t
+        
+        noise = sigma*scale*torch.randn(B,Ho,6).to(device)  # [B,Ho, 6]
+        sample=se3.exp(sample)
+        H_pure_noise=se3.exp(noise)
+
+        # perturbation part in eq 34
+        return sample,H_pure_noise # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
+
+
+
+    def ddpm_denoise(self,
+                reconstructed_H_0, # [B,Ho,4,4]
+                timestep, # [B]
+                sample, # [B,Ho,4,4]
+                device,
+                abs_to_rel=False):
+        
+        timestep = timestep[0].cpu() # scalar
+        B = sample.shape[0]
+        Ho = sample.shape[1]
+        # see algorithm 2, but no longer use A^{k->0}A^k
+        gamma0 = self.gamma0[timestep].to(device)
+        gamma1 = self.gamma1[timestep].to(device)
+        self.gamma2[-1]=0.0
+        gamma2 = self.gamma2[timestep].to(device)
+        if abs_to_rel: 
+            reconstructed_H_0=reconstructed_H_0@sample
+            
+        scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
+        
+        noise=self.betas[timestep]* scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device) 
+        H_pure_noise=se3.exp(noise)
+        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample))# + scale*gamma2*torch.randn(B,Ho,6).to(device))#scale*torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
+
+        return sample,H_pure_noise # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
+
+
     def denoise2(self,
                 lie_H_0, # [B,Ho,6]
                 timestep, # [B]

@@ -168,3 +168,10 @@ franka_rope:
     rpy: ${franka_rope.rpy}
     flow: ${franka_rope.flow}
     
+
+eval_chart:
+  gt_dir: null
+  pred_dir: null
+  # output_dir: "/home/workstation/project/franka_rope_equibot/logs/eval/charts"
+  rotation: null
+  translation: null

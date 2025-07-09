@@ -438,7 +438,7 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                 if config['diffusion_option']==0:
                     # 0: the default, predict the gt H0
                     reconstructed_H_0 = action
-                    noisy_actions,noise = noise_scheduler.denoise9(
+                    noisy_actions,noise = noise_scheduler.ddim_denoise(
                         reconstructed_H_0=reconstructed_H_0,
                         timestep = k,
                         sample = noisy_actions,
@@ -448,7 +448,7 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                 elif config['diffusion_option']==1:
                     # 1: predict relative transformation from Ht to H0
                     reconstructed_H_0 = torch.einsum('bhij,bhjk->bhjk',action,noisy_actions)
-                    noisy_actions = noise_scheduler.denoise9(
+                    noisy_actions = noise_scheduler.ddim_denoise(
                         reconstructed_H_0=reconstructed_H_0,
                         timestep = k,
                         sample = noisy_actions,

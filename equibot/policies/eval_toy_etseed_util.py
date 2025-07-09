@@ -33,6 +33,8 @@ import torch
 import wandb
 # TODO dont block the ui: put the inference code in a new process, and cross processes communication
 # TODO the objective metrics?
+from collections import defaultdict
+import json
 
 # singleton
 class EvalUtils(ControlFlow):
@@ -80,97 +82,97 @@ class EvalUtils(ControlFlow):
         target_name=cls.target_name
         cls.gravity_dir=[0,0,-1]
 
-        # cube at the end pick v1
-        cls._tgt_pc = np.array(
-                    [
-                        [
-                            0.02616778388619423,
-                            -0.17271608114242554,
-                            0.060000933706760406
-                        ],
-                        [
-                            0.026168517768383026,
-                            -0.17271505296230316,
-                            9.35697755721776e-07
-                        ],
-                        [
-                            0.017845619469881058,
-                            -0.23213613033294678,
-                            0.05999980866909027
-                        ],
-                        [
-                            -0.033252257853746414,
-                            -0.16439391672611237,
-                            0.060000352561473846
-                        ],
-                        [
-                            0.017846353352069855,
-                            -0.2321351021528244,
-                            -1.8844585270016978e-07
-                        ],
-                        [
-                            -0.03325152397155762,
-                            -0.16439288854599,
-                            3.523719840359263e-07
-                        ],
-                        [
-                            -0.041574422270059586,
-                            -0.2238139659166336,
-                            0.05999922752380371
-                        ],
-                        [
-                            -0.04157368838787079,
-                            -0.22381293773651123,
-                            -7.717716243860195e-07
-                        ]
-                    ]
-            )
-
-        # # cube at the beginning: toymix
+        # # cube at the end pick v1
         # cls._tgt_pc = np.array(
-        #          [
+        #             [
         #                 [
-        #                     0.030000003054738045,
-        #                     -0.12000000476837158,
-        #                     0.06000000238418579
+        #                     0.02616778388619423,
+        #                     -0.17271608114242554,
+        #                     0.060000933706760406
         #                 ],
         #                 [
-        #                     0.030000003054738045,
-        #                     -0.12000000476837158,
-        #                     3.725290298461914e-09
+        #                     0.026168517768383026,
+        #                     -0.17271505296230316,
+        #                     9.35697755721776e-07
         #                 ],
         #                 [
-        #                     0.030000003054738045,
-        #                     -0.18000000715255737,
-        #                     0.06000000238418579
+        #                     0.017845619469881058,
+        #                     -0.23213613033294678,
+        #                     0.05999980866909027
         #                 ],
         #                 [
-        #                     -0.029999995604157448,
-        #                     -0.12000000476837158,
-        #                     0.06000000238418579
+        #                     -0.033252257853746414,
+        #                     -0.16439391672611237,
+        #                     0.060000352561473846
         #                 ],
         #                 [
-        #                     0.030000003054738045,
-        #                     -0.18000000715255737,
-        #                     3.725290298461914e-09
+        #                     0.017846353352069855,
+        #                     -0.2321351021528244,
+        #                     -1.8844585270016978e-07
         #                 ],
         #                 [
-        #                     -0.029999995604157448,
-        #                     -0.12000000476837158,
-        #                     3.725290298461914e-09
+        #                     -0.03325152397155762,
+        #                     -0.16439288854599,
+        #                     3.523719840359263e-07
         #                 ],
         #                 [
-        #                     -0.029999995604157448,
-        #                     -0.18000000715255737,
-        #                     0.06000000238418579
+        #                     -0.041574422270059586,
+        #                     -0.2238139659166336,
+        #                     0.05999922752380371
         #                 ],
         #                 [
-        #                     -0.029999995604157448,
-        #                     -0.18000000715255737,
-        #                     3.725290298461914e-09
+        #                     -0.04157368838787079,
+        #                     -0.22381293773651123,
+        #                     -7.717716243860195e-07
         #                 ]
         #             ]
         #     )
+
+        # cube at the beginning: toymix
+        cls._tgt_pc = np.array(
+                 [
+                        [
+                            0.030000003054738045,
+                            -0.12000000476837158,
+                            0.06000000238418579
+                        ],
+                        [
+                            0.030000003054738045,
+                            -0.12000000476837158,
+                            3.725290298461914e-09
+                        ],
+                        [
+                            0.030000003054738045,
+                            -0.18000000715255737,
+                            0.06000000238418579
+                        ],
+                        [
+                            -0.029999995604157448,
+                            -0.12000000476837158,
+                            0.06000000238418579
+                        ],
+                        [
+                            0.030000003054738045,
+                            -0.18000000715255737,
+                            3.725290298461914e-09
+                        ],
+                        [
+                            -0.029999995604157448,
+                            -0.12000000476837158,
+                            3.725290298461914e-09
+                        ],
+                        [
+                            -0.029999995604157448,
+                            -0.18000000715255737,
+                            0.06000000238418579
+                        ],
+                        [
+                            -0.029999995604157448,
+                            -0.18000000715255737,
+                            3.725290298461914e-09
+                        ]
+                    ]
+            )
         # random_rotation=np.eye(3)
         random_translation=np.zeros(3)
         # rotate world first after play(), otherwise the franka will compensate the rotation somehow in their code
@@ -620,7 +622,8 @@ class EvalUtils(ControlFlow):
             log_path=os.path.join(cls._output_folder, f"{cls._current_time}.json")
             print(log_path)
             cls._sample._on_save_data_event(log_path=log_path)
-
+            with open(os.path.join(cls._output_folder, f'my{cls._current_time}.json'), 'w') as f:
+                json.dump(myjson, f,  separators=(',', ':'))
             _frame_filenames=[]
             for i in range(cls.count-1):
                 frame_path=os.path.join(cls._output_folder, f"{cls._current_time}_{i}.png")
@@ -781,7 +784,7 @@ class EvalUtils(ControlFlow):
             return
         agent_ac = ac[0][cls.count% ac_horizon] # if len(ac.shape) > 1 else ac    
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
-        update_action(agent_ac[None,None,...],scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper,eval(str(cls.cfg.rel).title()),eval(str(cls.cfg.rpy).title()),cls._sample._eps,cap=cls.cfg.cap,cup=cls.cfg.cup,update_ori=cls.cfg.update_ori)
+        update_action(agent_ac[None,None,...],scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper,eval(str(cls.cfg.rel).title()),eval(str(cls.cfg.rpy).title()),cls._sample._eps,cap=cls.cfg.cap,cup=cls.cfg.cup,update_ori=cls.cfg.update_ori,cfg=cls.cfg)
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
     
     @classmethod
@@ -791,6 +794,8 @@ class EvalUtils(ControlFlow):
         cls.config=config
         cls.cfg=cfg
 
+        global myjson
+        myjson=defaultdict(dict)
         cls.simulation_app=simulation_app
         cls.obs_horizon = config['obs_horizon']
         cls.ac_horizon = config['action_horizon']
@@ -807,7 +812,8 @@ class EvalUtils(ControlFlow):
         # cls._post_reset(_onDone_async=cls._reset_async)
 
         
-def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,update_ori=True):
+def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,update_ori=True,cfg=None):
+    global myjson
     translations = agent_ac[:, :, :3, 3][0][0]
 
     norm = np.linalg.norm(translations)
@@ -835,6 +841,10 @@ def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,upda
  
     print(translations,'translations')
     print(quaternions,'quaternions')
+    idx=len(myjson)
+    myjson[idx]['delta_t']=translations.tolist()
+    myjson[idx]['delta_q']=quaternions.tolist()
+    
     tgt_pos=target_world_pos+translations.tolist()
 
     if tgt_pos[2]<=eps:
@@ -848,6 +858,23 @@ def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,upda
         orientation=None
     else:
         orientation=R.from_matrix(tgt_ori).as_quat(scalar_first=True,canonical=False)
+
+    myjson[idx]['abs_t']=tgt_pos.tolist()
+    myjson[idx]['abs_q']=orientation.tolist()
+
+    if cfg.translation is not None:
+       _translation = np.array(cfg.translation)
+    else:
+       _translation = np.array([0,0,0])
+    if cfg.rotation is not None:
+        _rotation = R.from_euler('xyz', cfg.rotation, degrees=True).as_matrix()
+    else:
+        _rotation=np.eye(3)
+    myjson[idx]['undo_abs_t']=(tgt_pos-_translation).tolist()
+    gripper_world_ori= np.linalg.inv(_rotation)@R.from_quat(np.array(orientation),scalar_first=True).as_matrix()
+    gripper_world_ori=R.from_matrix(gripper_world_ori).as_quat(scalar_first=True)
+    myjson[idx]['undo_abs_q']=(gripper_world_ori).tolist()
+
     target.set_world_pose(position=tgt_pos,orientation=orientation)#.data) # tgt_ori
     print("applied pos: ",tgt_pos)
     print("applied ori: ",tgt_ori)

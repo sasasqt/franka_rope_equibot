@@ -1695,6 +1695,7 @@ class IsaacUIUtils(ControlFlow):
     def _this(cls):
 
         self=cls._sample
+        self._internal_flag=True
         _on_reset=partial(super().on_reset,callback_fn=cls._this)
         _on_save_and_reset=partial(super().on_save_data_button_event,callback_fn=_on_reset)
         def pre_physics_callback(self,step_size):
