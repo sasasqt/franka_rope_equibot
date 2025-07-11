@@ -1,24 +1,116 @@
+# import plotly.graph_objects as go
+# import numpy as np
+
+# categories = ['R', 'P', 'R+P']
+# # 'DDPM', '1-step inference'
+# bar_names = ['DDIM', 'Equibot', 'DP']
+# bar_colors = ['#13343B', '#FFC185', "#A0A0A0"]  # Use brand colors, orange for 'Ours'
+# # ,'#5D878F', "#EEE313"
+# values = [
+#     [0.241,0.405,0.253],
+#     [0.244,0.009,0.0],
+#     [0.331, 0.063, 0.012],
+# ]
+
+# # errors = [
+# #     [0.05, 0.05, 0.05, 0.05],
+# #     [0.05, 0.05, 0.05, 0.05],
+# #     [0.05, 0.05, 0.05, 0.05],
+# #     [0.05, 0.05, 0.05, 0.05]
+# # ]
+
+# fig = go.Figure()
+
+# for i, (name, color) in enumerate(zip(bar_names, bar_colors)):
+#     fig.add_bar(
+#         x=categories,
+#         y=values[i],
+#         name=name,
+#         # error_y=dict(type='data', array=errors[i], visible=True),
+#         marker_color=color,
+#         cliponaxis=False
+#     )
+
+# fig.update_layout(
+#     barmode='group',
+#     title_text='Final Reward by Category',
+#     yaxis_title='Final Reward',
+#     xaxis_title='',
+#     legend=dict(orientation='h', yanchor='bottom', y=1.05, xanchor='center', x=0.5)
+# )
+# fig.update_yaxes(title_text='Final Reward')
+# fig.update_xaxes(title_text='')
+
+# fig.write_image('grouped_bar_error.png')
+
+
+# import plotly.graph_objects as go
+# import numpy as np
+
+# categories = ['R', 'P', 'R+P']
+# # 'DDPM', '1-step inference'
+# bar_names = ['DDIM seed 0 2 trajectories', 'DDIM seed 0 1 trajectory', 'DDIM seed 0 1 trajectory']
+# bar_colors = ['#13343B', "#2B55A3", "#456650"]  # Use brand colors, orange for 'Ours'
+# # ,'#5D878F', "#EEE313"
+# values = [
+#     [0.241,0.405,0.253],
+#     [0.321,0.415,0.323],
+#     [0.289,0.41,0.309],
+# ]
+
+# # errors = [
+# #     [0.05, 0.05, 0.05, 0.05],
+# #     [0.05, 0.05, 0.05, 0.05],
+# #     [0.05, 0.05, 0.05, 0.05],
+# #     [0.05, 0.05, 0.05, 0.05]
+# # ]
+
+# fig = go.Figure()
+
+# for i, (name, color) in enumerate(zip(bar_names, bar_colors)):
+#     fig.add_bar(
+#         x=categories,
+#         y=values[i],
+#         name=name,
+#         # error_y=dict(type='data', array=errors[i], visible=True),
+#         marker_color=color,
+#         cliponaxis=False
+#     )
+
+# fig.update_layout(
+#     barmode='group',
+#     title_text='Final Reward by Category',
+#     yaxis_title='Final Reward',
+#     xaxis_title='',
+#     legend=dict(orientation='h', yanchor='bottom', y=1.05, xanchor='center', x=0.5)
+# )
+# fig.update_yaxes(title_text='Final Reward')
+# fig.update_xaxes(title_text='')
+
+# fig.write_image('grouped_bar_error.png')
+
+
+
 import plotly.graph_objects as go
 import numpy as np
 
-categories = ['Original', 'OOD (R+Su)', 'OOD (R+Sn)', 'OOD (R+Sn+P)']
-
-bar_names = ['DP3', 'DP3+Aug', 'DP3 w/ Equivariance', 'Ours']
-bar_colors = ['#5D878F', '#ECEBD5', '#13343B', '#FFC185']  # Use brand colors, orange for 'Ours'
-
+categories = ['R', 'P', 'R+P']
+# 'DDPM', '1-step inference'
+bar_names = ['DDIM', 'DDPM', '1-step inference']
+bar_colors = ['#13343B', "#2B55A3", "#456650"]  # Use brand colors, orange for 'Ours'
+# ,'#5D878F', "#EEE313"
 values = [
-    [0.9, 0.1, 0.1, 0.1],
-    [0.55, 0.6, 0.55, 0.52],
-    [0.75, 0.75, 0.75, 0.75],
-    [0.8, 0.85, 0.85, 0.75]
+    [0.241,0.405,0.253],
+    [0.239,0.404,0.258],
+    [0.267,0.342,0.238],
 ]
 
-errors = [
-    [0.05, 0.05, 0.05, 0.05],
-    [0.05, 0.05, 0.05, 0.05],
-    [0.05, 0.05, 0.05, 0.05],
-    [0.05, 0.05, 0.05, 0.05]
-]
+# errors = [
+#     [0.05, 0.05, 0.05, 0.05],
+#     [0.05, 0.05, 0.05, 0.05],
+#     [0.05, 0.05, 0.05, 0.05],
+#     [0.05, 0.05, 0.05, 0.05]
+# ]
 
 fig = go.Figure()
 
@@ -27,7 +119,7 @@ for i, (name, color) in enumerate(zip(bar_names, bar_colors)):
         x=categories,
         y=values[i],
         name=name,
-        error_y=dict(type='data', array=errors[i], visible=True),
+        # error_y=dict(type='data', array=errors[i], visible=True),
         marker_color=color,
         cliponaxis=False
     )
