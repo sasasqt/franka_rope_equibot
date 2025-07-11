@@ -33,6 +33,8 @@ import torch
 import wandb
 # TODO dont block the ui: put the inference code in a new process, and cross processes communication
 # TODO the objective metrics?
+from collections import defaultdict
+import json
 
 # singleton
 class EvalUtils(ControlFlow):
@@ -82,6 +84,41 @@ class EvalUtils(ControlFlow):
         target_name=cls.target_name
         cls.gravity_dir=[0,0,-1]
 
+        
+        random_translation=np.zeros(3)
+        # rotate world first after play(), otherwise the franka will compensate the rotation somehow in their code
+        # rotate in simulation not in usd
+        if cls.cfg.rotation is not None:
+            sample._world_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(list(cls.cfg.rotation)))
+            _rotation = R.from_euler('xyz', cls.cfg.rotation, degrees=True).as_matrix()
+            cls._tgt_pc=np.array([_rotation@vector for vector in cls._tgt_pc])
+
+        if cls.cfg.translation is not None:
+            sample._world_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(list(cls.cfg.translation))) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
+            _translation = cls.cfg.translation
+            cls._tgt_pc=np.array([vector+_translation for vector in cls._tgt_pc])
+
+        if cls.cfg.scale is not None:
+            sample._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(cls.cfg.scale)))
+            _scale=cls.cfg.scale
+            cls._tgt_pc=np.array([vector*_scale for vector in cls._tgt_pc])
+
+            await omni.kit.app.get_app().next_update_async()
+            # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
+            await omni.kit.app.get_app().next_update_async()
+
+        # cls._tgt_pc=np.array([vector+np.array([0.1,0,0]) for vector in cls._tgt_pc]) # ood
+   
+        import omni
+        import omni.usd
+        from pxr import Sdf
+        import omni.kit.commands
+
+        omni.kit.commands.execute('ChangeProperty',
+            prop_path=Sdf.Path('/World/defaultGroundPlane/Environment/Geometry.xformOp:orient'),
+            value=Gf.Quatd(1.0, Gf.Vec3d(0.0, 0.0, 0.0)),
+            prev=Gf.Quatd(1.0, Gf.Vec3d(0.0, 0.0, 0.0)),
+            usd_context_name=omni.usd.get_context().get_stage())
 
         await asyncio.sleep(3)
         await cls._sample._on_follow_target_event_async(True)
@@ -140,11 +177,17 @@ class EvalUtils(ControlFlow):
                     # )
                     # await omni.kit.app.get_app().next_update_async()        
 
-                    world.scene.get_object(target_name).set_world_pose(
-                        position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
+                    world.scene.get_object(target_name).set_local_pose(
+                        translation=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                         orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                     )
 
+
+                quat=np.array([data_frame.data["Cube"]["cube_world_orientation"]])
+                cls._sample._cube.set_local_poses(
+                    translations=np.array([data_frame.data["Cube"]["cube_world_position"]]),
+                    orientations=np.array(quat),
+                )
 
                 world.scene.get_object('vbar').set_world_pose(
                     position=np.array(data_frame.data["T"]["vbar_world_position"]),
@@ -163,6 +206,7 @@ class EvalUtils(ControlFlow):
 
             right_target_world_pos=scene.get_object(target_name).get_world_pose()[0]
             right_target_world_rot=scene.get_object(target_name).get_world_pose()[1]
+            print("pos !!!!!!!!!!!: ", right_target_world_pos)
 
             ori=R.from_quat(right_target_world_rot,scalar_first=True).as_matrix()
             ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
@@ -412,6 +456,9 @@ class EvalUtils(ControlFlow):
         # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
         await omni.kit.app.get_app().next_update_async()
 
+        cls.sample._pre_physics_callback=None
+
+
         cls.sample._pre_physics_callback=partial(cls._reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
         
         await omni.kit.app.get_app().next_update_async()
@@ -421,21 +468,6 @@ class EvalUtils(ControlFlow):
         while cls.count<-1:
             await asyncio.sleep(0.01)
 
-        cls.sample._pre_physics_callback=None
-        if cls.cfg.translation is not None:
-        # rotate world first after play(), otherwise the franka will compensate the rotation somehow in their code
-        # rotate in simulation not in usd
-            sample._world_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(list(cls.cfg.translation))) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
-
-        if cls.cfg.rotation is not None:
-            sample._world_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(list(cls.cfg.rotation)))
-
-        if cls.cfg.scale is not None:
-            sample._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(cls.cfg.scale)))
-
-            await omni.kit.app.get_app().next_update_async()
-            # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
-            await omni.kit.app.get_app().next_update_async()
 
         cls.sample._pre_physics_callback=partial(cls._post_reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
 
@@ -556,17 +588,17 @@ class EvalUtils(ControlFlow):
         # ISSUE 2: during the initial alignment, the hand/gripper need to rotate to match the orientation of the taget cube
         if cls.cfg.from_demo is not None and cls.count < 0 and cls.count>=-2:
             data_frame = cls.data_logger.get_data_frame(data_frame_index=cls.start_time+1+cls.count)
-            for idx,_str in enumerate(["Left","Right"]):  
-                world.scene.get_object(target_name).set_world_pose(
-                    position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
+            for idx,_str in enumerate(["Left"]):  
+                world.scene.get_object(target_name).set_local_pose(
+                    translation=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                 )
 
-                world.scene.get_object('vbar').set_world_pose(
+                world.scene.get_object('vbar').set_world_pose(#TODO
                     position=np.array(data_frame.data["T"]["vbar_world_position"]),
                     orientation=np.array(data_frame.data["T"]["vbar_world_orientation"]),
                 )
-                world.scene.get_object('hbar').set_world_pose(
+                world.scene.get_object('hbar').set_world_pose(#TODO
                     position=np.array(data_frame.data["T"]["hbar_world_position"]),
                     orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
                 )
@@ -628,7 +660,8 @@ class EvalUtils(ControlFlow):
             log_path=os.path.join(cls._output_folder, f"{cls._current_time}.json")
             print(log_path)
             cls._sample._on_save_data_event(log_path=log_path)
-
+            with open(os.path.join(cls._output_folder, f'my{cls._current_time}.json'), 'w') as f:
+                json.dump(myjson, f,  separators=(',', ':'))
             _frame_filenames=[]
             for i in range(cls.count-1):
                 frame_path=os.path.join(cls._output_folder, f"{cls._current_time}_{i}.png")
@@ -918,6 +951,8 @@ class EvalUtils(ControlFlow):
         cls.config=config
         cls.cfg=cfg
 
+        global myjson
+        myjson=defaultdict(dict)
         cls.simulation_app=simulation_app
         cls.obs_horizon = config['obs_horizon']
         cls.ac_horizon = config['action_horizon']
@@ -934,7 +969,8 @@ class EvalUtils(ControlFlow):
         # cls._post_reset(_onDone_async=cls._reset_async)
 
         
-def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,update_ori=True):
+def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,update_ori=True,cfg=None):
+    global myjson
     translations = agent_ac[:, :, :3, 3][0][0]
 
     norm = np.linalg.norm(translations)
@@ -962,6 +998,10 @@ def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,upda
  
     print(translations,'translations')
     print(quaternions,'quaternions')
+    idx=len(myjson)
+    myjson[idx]['delta_t']=translations.tolist()
+    myjson[idx]['delta_q']=quaternions.tolist()
+    
     tgt_pos=target_world_pos+translations.tolist()
 
     if tgt_pos[2]<=eps:
@@ -975,6 +1015,23 @@ def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,upda
         orientation=None
     else:
         orientation=R.from_matrix(tgt_ori).as_quat(scalar_first=True,canonical=False)
+
+    myjson[idx]['abs_t']=tgt_pos.tolist()
+    myjson[idx]['abs_q']=orientation.tolist()
+
+    if cfg.translation is not None:
+       _translation = np.array(cfg.translation)
+    else:
+       _translation = np.array([0,0,0])
+    if cfg.rotation is not None:
+        _rotation = R.from_euler('xyz', cfg.rotation, degrees=True).as_matrix()
+    else:
+        _rotation=np.eye(3)
+    myjson[idx]['undo_abs_t']=(tgt_pos-_translation).tolist()
+    gripper_world_ori= np.linalg.inv(_rotation)@R.from_quat(np.array(orientation),scalar_first=True).as_matrix()
+    gripper_world_ori=R.from_matrix(gripper_world_ori).as_quat(scalar_first=True)
+    myjson[idx]['undo_abs_q']=(gripper_world_ori).tolist()
+
     target.set_world_pose(position=tgt_pos,orientation=orientation)#.data) # tgt_ori
     print("applied pos: ",tgt_pos)
     print("applied ori: ",tgt_ori)
