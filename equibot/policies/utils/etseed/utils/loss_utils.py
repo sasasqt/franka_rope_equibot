@@ -61,9 +61,6 @@ def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None,sign_mismatch=True,snr
     dist_T = _dist_T.mean()
     dist = dist_R + dist_T
 
-    coeffi=min(snr,5)
-    dist=coeffi*dist
-
     if sign_mismatch:
         _sign = (torch.sign(t_1) != torch.sign(t_2)).float()
         sign=_sign.mean()

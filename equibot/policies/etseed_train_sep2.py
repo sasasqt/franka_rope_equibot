@@ -759,7 +759,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     num_point = config['pred_horizon']    
     if not config['use_ddpm'] and  (config['diffusion_option']==0 or config['diffusion_option']==1 or config['diffusion_option']==2):
         noisy_actions, actions_noise,actions,snr = noise_scheduler.add_noise9(naction, k, device=device,no_noise=config['no_noise'])
-        print(snr," >> snr <<")
+        snr=None
     if config['noisy_action_as_k']:
         if config['k_on_lie']:
             if config['k_target']=='noise':
@@ -926,10 +926,10 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             if config['diffusion_option']==0 or config['diffusion_option']==2:
                 # 0: the default, predict the gt H0
                 # see algorithm 1, but no more naction @torch.inverse(noisy_actions)
-                loss, dist_r, dist_t, dist_g = compute_loss(final_action.reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'])  
+                loss, dist_r, dist_t, dist_g = compute_loss(final_action.reshape(-1,4,4),(actions_noise ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'],snr=snr)  
             elif config['diffusion_option']==1:
                 # 1: predict relative transformation from Ht to H0
-                loss, dist_r, dist_t, dist_g = compute_loss(torch.einsum('bhij,bhjk->bhjk',final_action,noisy_actions).reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'])  
+                loss, dist_r, dist_t, dist_g = compute_loss(torch.einsum('bhij,bhjk->bhjk',final_action,noisy_actions).reshape(-1,4,4),(actions_noise ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'],snr=snr)  
             else:
                 raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 
