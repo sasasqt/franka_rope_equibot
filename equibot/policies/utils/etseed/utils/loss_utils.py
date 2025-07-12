@@ -41,7 +41,7 @@ def double_geodesic_distance_between_poses(T1, T2, return_both=False):
         return dist.mean()
     
     
-def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None,sign_mismatch=True):
+def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None,sign_mismatch=True,snr=1.0):
 
     assert ((pred_gripper is None and gt_gripper is None) or (pred_gripper is not None and gt_gripper is not None))
     R_1, t_1 = T1[:, :3, :3], T1[:, :3, 3]
@@ -60,6 +60,10 @@ def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None,sign_mismatch=True):
     _dist_T=torch.sqrt(dist_t_square)
     dist_T = _dist_T.mean()
     dist = dist_R + dist_T
+
+    coeffi=min(snr,5)
+    dist=coeffi*dist
+
     if sign_mismatch:
         _sign = (torch.sign(t_1) != torch.sign(t_2)).float()
         sign=_sign.mean()
