@@ -34,6 +34,7 @@ diffusion_steps: 100
 diffusion_mode: squaredcos_cap_v2
 loadFromCkpt: True
 lr_cycle_scale_factor: 1.0
+robomimic: False
 
 dev:
   use_ddpm: False
@@ -67,6 +68,7 @@ dev:
   num_channels: 16 # 32
   num_heads: 8
   channels_div: 2
+  num_layers: 8
   global_cond: 0 # 0: proposed actions as global; 1: latent pc as global 2: None
   local_cond: 0 # 0: None; 1: proposed actions as local
   sign_mismatch: True

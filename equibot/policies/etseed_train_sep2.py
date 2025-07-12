@@ -7,6 +7,7 @@ import wandb
 from equibot.policies.utils.etseed.utils.loss_utils import compute_loss
 from diffusers.optimization import get_scheduler
 from tqdm.auto import tqdm
+import math
 
 # env import
 from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_Fused, SE3VisionNet_Hierarchical
@@ -92,6 +93,8 @@ def main(cfg):
         'bias': cfg.dev.bias,
         'gate': cfg.dev.gate,
         'gate_weight': cfg.dev.gate_weight,
+        'robomimic': cfg.robomimic,
+        'num_layers': cfg.dev.num_layers,
     }
 
 
@@ -139,15 +142,15 @@ def main(cfg):
         else:
             config["checkpoint_path"]=ckpt[-1]
         
-    valid_dataset = get_dataset(cfg, "train", valid=True)
-    valid_loader = torch.utils.data.DataLoader(
-        valid_dataset,
-        batch_size=4,
-        num_workers=num_workers,
-        shuffle=True,
-        drop_last=True, # was True
-        pin_memory=False,
-    )
+    # valid_dataset = get_dataset(cfg, "train", valid=True)
+    # valid_loader = torch.utils.data.DataLoader(
+    #     valid_dataset,
+    #     batch_size=4,
+    #     num_workers=num_workers,
+    #     shuffle=True,
+    #     drop_last=True, # was True
+    #     pin_memory=False,
+    # )
 
     checkpoint_dir = log_dir
 
@@ -289,12 +292,18 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
     loadFromCkpt=config['loadFromCkpt']
     # TODO do not hardcode
     SE3VisionNet_Hierarchical_input_type_1_feat=2 if config['pc_xyz_feat'] else 1
-    pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=config['pred_horizon*obs_horizon'],input_type_1_feat=SE3VisionNet_Hierarchical_input_type_1_feat,output_type_1_feat=3,config=config,nonlinear=config['nonlinear'])
+    if not config['robomimic']:
+        hierarchy_layers=config['pred_horizon*obs_horizon']
+    else:
+        hierarchy_layers=config['num_layers']
+        # hierarchy_layers=config['pred_horizon*obs_horizon']
+
+    pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=hierarchy_layers,input_type_1_feat=SE3VisionNet_Hierarchical_input_type_1_feat,output_type_1_feat=3,config=config,nonlinear=config['nonlinear'],input_type_1_feat_is_actually_type_0=config['robomimic'])
     if config['se3']==0:
         # action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
-        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,latent_pc_as_feat=config['latent_pc_as_feat'],nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'])
+        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,latent_pc_as_feat=config['latent_pc_as_feat'],nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'],gravity=not config['robomimic'],num_layers=config['num_layers'])
     elif config['se3']==1:
-        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'],fused=False,nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'])
+        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'],fused=False,nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'],gravity=not config['robomimic'],num_layers=config['num_layers'])
         # from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
         # action_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
     else:
@@ -391,17 +400,17 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
 
 
 # Prepare the input for the model
-def prepare_model_input1(nxyz, tgt_nxyz,diff=False,pc_xyz_feat=False):
+def prepare_model_input1(nxyz, tgt_nxyz,diff=False,pc_xyz_feat=False,rgb=False):
     B = nxyz.shape[0]
     Ho_num_point=nxyz.shape[1]
     # nxyz[B,Ho*num_pts,3]
     feature=tgt_nxyz
-    if diff:
-        feature=tgt_nxyz-nxyz
-    if pc_xyz_feat:
-        # [B,Ho*num_pts,6]
-        feature=torch.cat((nxyz, feature), dim=-1)  
-
+    if not rgb:
+        if diff:
+            feature=tgt_nxyz-nxyz
+        if pc_xyz_feat:
+            # [B,Ho*num_pts,6]
+            feature=torch.cat((nxyz, feature), dim=-1)  
     model_input = {
         'xyz': nxyz.to(device='cuda',dtype=torch.float32),
         'feature': feature.to(device='cuda',dtype=torch.float32)
@@ -414,7 +423,11 @@ def prepare_model_input1(nxyz, tgt_nxyz,diff=False,pc_xyz_feat=False):
 # Prepare the input for the model
 def prepare_model_input2(nxyz, neefpose, k, num_point,config,mean=None):
     B = nxyz.shape[0]
-    Ho_num_point=nxyz.shape[1]
+    _dim=nxyz.shape[1]
+    Ho_num_point=config['pred_horizon*obs_horizon']
+    repeat_times = math.ceil(Ho_num_point / _dim)          # how many complete repeats you need
+    nxyz = nxyz.repeat(1, repeat_times, 1)     # [b, a*repeat_times, x]
+    nxyz = nxyz[:, :Ho_num_point, :]  
     # nxyz is the latent pc, [B,Ho*num_pts,type_1_feat*3]
     neefpose=neefpose.repeat(1,num_point, 1)# neefpose ([B, Ho*num_point, num_eef * (pose gripper action etc = 13)])
     #   the order: 3d world position, 3d ori col1, 3d ori col2, 3d gravity, 1d gripper action
@@ -740,7 +753,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         else:
             raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
     
-    pc= prepare_model_input1(nxyz, tgt_nxyz,diff=config['diff'],pc_xyz_feat=config['pc_xyz_feat'])
+    pc= prepare_model_input1(nxyz, tgt_nxyz,diff=config['diff'],pc_xyz_feat=config['pc_xyz_feat'],rgb=config['robomimic'])
     latent_pc=nets["pointcloud_encoder"](pc) # b,l,f (l:x*Hp; f:3x)
 
     num_point = config['pred_horizon']    

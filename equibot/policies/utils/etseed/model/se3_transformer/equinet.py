@@ -249,6 +249,8 @@ class SE3ManiNet_Fused(ExtendedModule):
             nonlinear=False,
             bias=False,
             gate=False,
+            gravity=True,
+            num_layers=8,
             ):
         assert not config==None
         super().__init__()
@@ -286,6 +288,13 @@ class SE3ManiNet_Fused(ExtendedModule):
         if eef_xyz_feat:
             type1_cnt-=1
 
+        # if rgb:
+        #     type1_cnt+=1
+        #     type0_cnt-=3
+
+        if not gravity:
+            type1_cnt+=1
+
         # # Options
         # if config['k_option']==0:
         #     # 0 diffusion steps as type 0 scalar
@@ -304,7 +313,7 @@ class SE3ManiNet_Fused(ExtendedModule):
         # num_fib_in = [1,5-type1_cnt] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
         if config['k_option']==1:
             # 1 diffusion steps as type 0 rotation
-            num_fib_in = [7-type0_cnt,5-type1_cnt] # 22 in total, 7 type0: k1,k2; binary gripper_action 5 type1: tgt_nxyz; eef_abs_position, eef_abs_rotation (2cols); gravity
+            num_fib_in = [7-type0_cnt,5-type1_cnt] # 22 in total, 7 type0: k1,k2; binary gripper_action 5 type1:                ; eef_abs_position, eef_abs_rotation (2cols); gravity
         elif config['k_option']==3:
             # no k
             num_fib_in = [1,5-type1_cnt] # 16 in total, 1 type0: binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
@@ -337,7 +346,7 @@ class SE3ManiNet_Fused(ExtendedModule):
                     "0": (6+1+1+1)*pred_horizon, # 2 cols of rotation + magnitude of offset + weights of each rot cand. + gripper open(1)/close(0)
                     "1": (1)*pred_horizon, # offset/translation (not unit direction)
                 }),
-                num_layers= 8,
+                num_layers= num_layers,
                 num_degrees= num_degrees,
                 num_channels= num_channels,
                 num_heads= num_heads,
@@ -359,7 +368,7 @@ class SE3ManiNet_Fused(ExtendedModule):
                 fiber_out=Fiber({
                     "0": (6+1)*pred_horizon, # 2 cols of rotation + weights of each rot cand.
                 }),
-                num_layers= 8,
+                num_layers= num_layers,
                 num_degrees= num_degrees,
                 num_channels= num_channels,
                 num_heads= num_heads,
@@ -388,7 +397,7 @@ class SE3ManiNet_Fused(ExtendedModule):
                 # num_heads= 2,
                 # channels_div= 2,
                 # BUG SHOULD BE:
-                num_layers=8,
+                num_layers=num_layers,
                 num_degrees= num_degrees,
                 num_channels= num_channels,
                 num_heads= num_heads,
@@ -747,6 +756,7 @@ class SE3VisionNet(ExtendedModule):
             nonlinear=False,
             bias=False,
             gate=False,
+            input_type_1_feat_is_actually_type_0=False,
             ):
         super().__init__()
         self.config=config
@@ -766,12 +776,24 @@ class SE3VisionNet(ExtendedModule):
                 "0": 1+output_type_1_feat*3, # the weights/heatmap# the global feature
                 #"1": , 
             })
-
-        self.weights_net = SE3Backbone(
+        if input_type_1_feat_is_actually_type_0:
+            if extra_input_type_1_feat>0:
+                fiber_in=Fiber({
+                    "0": 3*input_type_1_feat, # rgb
+                    "1": extra_input_type_1_feat, # tgt_xyz + extras
+                })
+            else:
+                fiber_in=Fiber({
+                    "0": 3*input_type_1_feat, # rgb
+                    #"1": extra_input_type_1_feat, # tgt_xyz + extras
+                })
+        else:
             fiber_in=Fiber({
-                #"0": 3, # rgb
+                # "0": 0, # rgb
                 "1": input_type_1_feat+extra_input_type_1_feat, # tgt_xyz + extras
-            }),
+            })
+        self.weights_net = SE3Backbone(
+            fiber_in=fiber_in,
             fiber_out=fiber_out,
             num_layers= num_layers,
             num_degrees= num_degrees,
@@ -834,7 +856,8 @@ class SE3VisionNet_Hierarchical(ExtendedModule):
             config=None,
             nonlinear=False,
             bias=False,
-            gate=False):
+            gate=False,
+            input_type_1_feat_is_actually_type_0=False):
         super().__init__()
         num_degrees= config['num_degrees']
         num_channels= config['num_channels']
@@ -861,6 +884,7 @@ class SE3VisionNet_Hierarchical(ExtendedModule):
                 nonlinear=nonlinear,
                 bias=bias,
                 gate=gate,
+                input_type_1_feat_is_actually_type_0=input_type_1_feat_is_actually_type_0,
             ))
 
         self.weights_nets = torch.nn.Sequential(*weights_nets)
