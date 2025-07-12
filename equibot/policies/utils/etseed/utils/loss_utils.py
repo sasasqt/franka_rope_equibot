@@ -39,13 +39,11 @@ def double_geodesic_distance_between_poses(T1, T2, return_both=False):
         return torch.sqrt(dist_t_square).mean(), torch.sqrt(dist_R_square).mean()
     else:
         return dist.mean()
-    
-    
-def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None,sign_mismatch=True):
-
+        
+def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None,sign_mismatch=True,snr=None):
     assert ((pred_gripper is None and gt_gripper is None) or (pred_gripper is not None and gt_gripper is not None))
-    R_1, t_1 = T1[:, :3, :3], T1[:, :3, 3]
-    R_2, t_2 = T2[:, :3, :3], T2[:, :3, 3]
+    R_1, t_1 = T1[..., :3, :3], T1[..., :3, 3]
+    R_2, t_2 = T2[..., :3, :3], T2[..., :3, 3]
     t_err=torch.abs(t_1-t_2)
     print()
     print(torch.min(t_err,0).values.data,torch.max(t_err,0).values.data,'translation errors')
@@ -55,11 +53,19 @@ def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None,sign_mismatch=True):
     dist_R_square = geodesic_distance_between_R(R_1, R_2) ** 2
     dist_t_square = torch.sum((t_1-t_2) ** 2, dim=1)
     # dist = torch.sqrt(dist_R_square.squeeze(-1) + dist_t_square)    # [bs]
+
+    if snr is not None:
+        coeffi = snr.clamp_max(1)
+        _size=snr.shape[0]
+        dist_R_square=dist_R_square.view(_size,-1,1)*coeffi.unsqueeze(-1).unsqueeze(-1)
+        dist_t_square=dist_t_square.view(_size,-1,1)*coeffi.unsqueeze(-1).unsqueeze(-1)
+        
     _dist_R=torch.sqrt(dist_R_square)
     dist_R = _dist_R.mean()
     _dist_T=torch.sqrt(dist_t_square)
     dist_T = _dist_T.mean()
     dist = dist_R + dist_T
+
     if sign_mismatch:
         _sign = (torch.sign(t_1) != torch.sign(t_2)).float()
         sign=_sign.mean()
