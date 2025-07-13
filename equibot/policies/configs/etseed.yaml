@@ -177,7 +177,7 @@ franka_rope:
   from_demo: null
   start_time: 150
   manually_close: False
-  max_end: 166 #360 # 600
+  max_end: 666 #360 # 600
   seed: 42
   rel: True
   rpy: False

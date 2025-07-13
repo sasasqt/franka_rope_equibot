@@ -27,7 +27,7 @@ enable_extension("omni.videoencoding") # need to have g_video_encoding_api in th
 enable_extension("omni.kit.viewport.utility")
 # enable_extension("omni.kit.renderer.capture") # this capture the entire omniverse kit.exe window
 # enable_extension("omni.kit.capture.viewport") # this caused the timeline to pause after the last frame captured
-from franka_rope import IsaacUIUtils, VRUIUtils
+# from franka_rope import IsaacUIUtils, VRUIUtils
 from omni.isaac.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
 
 
@@ -100,6 +100,7 @@ def main(cfg):
         'rot_aggregation':cfg.dev.rot_aggregation,
         'trans_aggregation':cfg.dev.trans_aggregation,
         'ddpm_predict_noise':cfg.dev.ddpm_predict_noise,
+        'predict_h0': cfg.dev.predict_h0,
         'no_noise':cfg.dev.no_noise,
         'low_memory':cfg.dev.low_memory,
         'se3':cfg.dev.se3,
@@ -135,7 +136,10 @@ def main(cfg):
         'rel_gripper_pos': cfg.dev.rel_gripper_pos,
         'nonlinear': cfg.dev.nonlinear,
         'bias': cfg.dev.bias,
-        'gate': cfg.dev.gate
+        'gate': cfg.dev.gate,
+        'robomimic': cfg.robomimic,
+        'num_layers': cfg.dev.num_layers,
+        'snr': cfg.dev.snr,
     }
 
     device = torch.device('cuda')

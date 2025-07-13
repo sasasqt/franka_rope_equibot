@@ -40,6 +40,7 @@ def main(cfg):
         'rot_aggregation':cfg.dev.rot_aggregation,
         'trans_aggregation':cfg.dev.trans_aggregation,
         'ddpm_predict_noise':cfg.dev.ddpm_predict_noise,
+        'predict_h0': cfg.dev.predict_h0,
         'no_noise':cfg.dev.no_noise,
         'early_return':cfg.dev.early_return,
         "sigma_r":cfg.sigma_r,
@@ -64,7 +65,9 @@ def main(cfg):
         'global_cond':cfg.dev.global_cond,
         'local_cond':cfg.dev.local_cond,
         "loadFromCkpt": cfg.loadFromCkpt,
-
+        'robomimic': cfg.robomimic,
+        'num_layers': cfg.dev.num_layers,
+        'snr': cfg.dev.snr,
     }
 
     assert config["mode"] == "eval"

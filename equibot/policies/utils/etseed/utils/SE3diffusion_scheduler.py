@@ -413,7 +413,8 @@ class DiffusionScheduler(torch.nn.Module):
                 timestep, # [B]
                 sample, # [B,Ho,4,4]
                 device,
-                abs_to_rel=False):
+                abs_to_rel=False,
+                predict_h0=True):
         
         timestep = timestep[0].cpu() # scalar
         B = sample.shape[0]
@@ -424,7 +425,8 @@ class DiffusionScheduler(torch.nn.Module):
         alpha_bars = self.alpha_bars[timestep].to(device) # [B]
         
         if abs_to_rel: 
-            reconstructed_H_0=reconstructed_H_0@sample
+            # reconstructed_H_0=reconstructed_H_0@sample
+            raise NotImplementedError
             
         scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
 
@@ -438,7 +440,11 @@ class DiffusionScheduler(torch.nn.Module):
         alpha_bars_prev = self.alpha_bars[timestep].to(device) # [B]
         x0=reconstructed_H_0
         xt=sample
-        log_x0=se3.log(x0)
+        if not predict_h0:
+            _noise=x0
+            log_x0=se3.log(torch.inverse(_noise)@xt)/torch.sqrt(alpha_bars)
+        else:
+            log_x0=se3.log(x0)
         log_xt=se3.log(xt)
         noise_t = (log_xt-torch.sqrt(alpha_bars)*log_x0)/torch.sqrt(1-alpha_bars)#torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
 
@@ -461,7 +467,8 @@ class DiffusionScheduler(torch.nn.Module):
                 timestep, # [B]
                 sample, # [B,Ho,4,4]
                 device,
-                abs_to_rel=False):
+                abs_to_rel=False,
+                predict_h0=True):
         
         timestep = timestep[0].cpu() # scalar
         B = sample.shape[0]
@@ -472,13 +479,24 @@ class DiffusionScheduler(torch.nn.Module):
         self.gamma2[-1]=0.0
         gamma2 = self.gamma2[timestep].to(device)
         if abs_to_rel: 
-            reconstructed_H_0=reconstructed_H_0@sample
-            
+            # reconstructed_H_0=reconstructed_H_0@sample
+            raise NotImplementedError
+        
         scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
         
         noise=self.betas[timestep]* scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device) 
         H_pure_noise=se3.exp(noise)
-        sample = se3.exp(gamma0 * se3.log(reconstructed_H_0) + gamma1 * se3.log(sample))# + scale*gamma2*torch.randn(B,Ho,6).to(device))#scale*torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
+
+        x0=reconstructed_H_0
+        xt=sample
+        if not predict_h0:
+            alpha_bars = self.alpha_bars[timestep].to(device) # [B]
+            _noise=x0
+            log_x0=se3.log(torch.inverse(_noise)@xt)/torch.sqrt(alpha_bars)
+        else:
+            log_x0=se3.log(x0)
+        log_xt=se3.log(xt)
+        sample = se3.exp(gamma0 * log_x0 + gamma1 * log_xt)# + scale*gamma2*torch.randn(B,Ho,6).to(device))#scale*torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*
 
         return sample,H_pure_noise # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
 

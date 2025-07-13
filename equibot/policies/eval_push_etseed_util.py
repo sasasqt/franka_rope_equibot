@@ -22,7 +22,10 @@ from itertools import product
 from datetime import datetime
 
 from pxr import Gf, UsdGeom
+import omni
 import omni.usd
+from pxr import Sdf
+import omni.kit.commands
 
 from equibot.policies.etseed_train import init_model_and_optimizer, prepare_model_input, prepare_model_output
 
@@ -85,34 +88,31 @@ class EvalUtils(ControlFlow):
         cls.gravity_dir=[0,0,-1]
 
         
+        
         random_translation=np.zeros(3)
         # rotate world first after play(), otherwise the franka will compensate the rotation somehow in their code
         # rotate in simulation not in usd
         if cls.cfg.rotation is not None:
             sample._world_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(list(cls.cfg.rotation)))
-            _rotation = R.from_euler('xyz', cls.cfg.rotation, degrees=True).as_matrix()
-            cls._tgt_pc=np.array([_rotation@vector for vector in cls._tgt_pc])
+            cls._rotation=_rotation = R.from_euler('xyz', cls.cfg.rotation, degrees=True).as_matrix()
+            # cls._tgt_pc=np.array([_rotation@vector for vector in cls._tgt_pc])
 
         if cls.cfg.translation is not None:
             sample._world_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(list(cls.cfg.translation))) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
-            _translation = cls.cfg.translation
-            cls._tgt_pc=np.array([vector+_translation for vector in cls._tgt_pc])
+            cls._translation=_translation = np.array(cls.cfg.translation)
+            # cls._tgt_pc=np.array([vector+_translation for vector in cls._tgt_pc])
 
         if cls.cfg.scale is not None:
             sample._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(cls.cfg.scale)))
             _scale=cls.cfg.scale
-            cls._tgt_pc=np.array([vector*_scale for vector in cls._tgt_pc])
+            # cls._tgt_pc=np.array([vector*_scale for vector in cls._tgt_pc])
 
-            await omni.kit.app.get_app().next_update_async()
-            # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
-            await omni.kit.app.get_app().next_update_async()
+        #     await omni.kit.app.get_app().next_update_async()
+        #     # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
+        await omni.kit.app.get_app().next_update_async()
+        await omni.kit.app.get_app().next_update_async()
 
         # cls._tgt_pc=np.array([vector+np.array([0.1,0,0]) for vector in cls._tgt_pc]) # ood
-   
-        import omni
-        import omni.usd
-        from pxr import Sdf
-        import omni.kit.commands
 
         omni.kit.commands.execute('ChangeProperty',
             prop_path=Sdf.Path('/World/defaultGroundPlane/Environment/Geometry.xformOp:orient'),
@@ -181,21 +181,18 @@ class EvalUtils(ControlFlow):
                         translation=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                         orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                     )
-
-
-                quat=np.array([data_frame.data["Cube"]["cube_world_orientation"]])
-                cls._sample._cube.set_local_poses(
-                    translations=np.array([data_frame.data["Cube"]["cube_world_position"]]),
-                    orientations=np.array(quat),
-                )
-
+                ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
+                ori=R.from_matrix(ori).as_quat(scalar_first=True)
                 world.scene.get_object('vbar').set_world_pose(
-                    position=np.array(data_frame.data["T"]["vbar_world_position"]),
-                    orientation=np.array(data_frame.data["T"]["vbar_world_orientation"]),
+                    position=np.array(data_frame.data["T"]["vbar_world_position"])+cls._translation,
+                    orientation=ori,
                 )
+
+                ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
+                ori=R.from_matrix(ori).as_quat(scalar_first=True)
                 world.scene.get_object('hbar').set_world_pose(
-                    position=np.array(data_frame.data["T"]["hbar_world_position"]),
-                    orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
+                    position=np.array(data_frame.data["T"]["hbar_world_position"])+cls._translation,
+                    orientation=ori,
                 )
             
                 # rope.set_world_pose(
@@ -394,18 +391,23 @@ class EvalUtils(ControlFlow):
                 )
 
             for idx,_str in enumerate(["Left","Right"]):   
-                world.scene.get_object(target_name).set_world_pose(
-                    position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
+                world.scene.get_object(target_name).set_local_pose(
+                    translation=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                 )
 
+            ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
+            ori=R.from_matrix(ori).as_quat(scalar_first=True)
             world.scene.get_object('vbar').set_world_pose(
-                position=np.array(data_frame.data["T"]["vbar_world_position"]),
-                orientation=np.array(data_frame.data["T"]["vbar_world_orientation"]),
+                position=np.array(data_frame.data["T"]["vbar_world_position"])+cls._translation,
+                orientation=ori,
             )
+
+            ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
+            ori=R.from_matrix(ori).as_quat(scalar_first=True)
             world.scene.get_object('hbar').set_world_pose(
-                position=np.array(data_frame.data["T"]["hbar_world_position"]),
-                orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
+                position=np.array(data_frame.data["T"]["hbar_world_position"])+cls._translation,
+                orientation=ori,
             )
                 # rope.set_world_pose(
                 #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
@@ -588,19 +590,24 @@ class EvalUtils(ControlFlow):
         # ISSUE 2: during the initial alignment, the hand/gripper need to rotate to match the orientation of the taget cube
         if cls.cfg.from_demo is not None and cls.count < 0 and cls.count>=-2:
             data_frame = cls.data_logger.get_data_frame(data_frame_index=cls.start_time+1+cls.count)
-            for idx,_str in enumerate(["Left"]):  
+            for idx,_str in enumerate(["Right"]):  
                 world.scene.get_object(target_name).set_local_pose(
                     translation=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                 )
 
+                ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
+                ori=R.from_matrix(ori).as_quat(scalar_first=True)
                 world.scene.get_object('vbar').set_world_pose(#TODO
-                    position=np.array(data_frame.data["T"]["vbar_world_position"]),
-                    orientation=np.array(data_frame.data["T"]["vbar_world_orientation"]),
+                    position=np.array(data_frame.data["T"]["vbar_world_position"])+cls._translation,
+                    orientation=ori,
                 )
+
+                ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
+                ori=R.from_matrix(ori).as_quat(scalar_first=True)
                 world.scene.get_object('hbar').set_world_pose(#TODO
-                    position=np.array(data_frame.data["T"]["hbar_world_position"]),
-                    orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
+                    position=np.array(data_frame.data["T"]["hbar_world_position"])+cls._translation,
+                    orientation=ori,
                 )
 
                 # rope.set_world_pose(
@@ -941,7 +948,7 @@ class EvalUtils(ControlFlow):
             return
         agent_ac = ac[0][cls.count% ac_horizon] # if len(ac.shape) > 1 else ac    
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
-        update_action(agent_ac[None,None,...],scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper,eval(str(cls.cfg.rel).title()),eval(str(cls.cfg.rpy).title()),cls._sample._eps,cap=cls.cfg.cap,cup=cls.cfg.cup,update_ori=cls.cfg.update_ori)
+        update_action(agent_ac[None,None,...],scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper,eval(str(cls.cfg.rel).title()),eval(str(cls.cfg.rpy).title()),cls._sample._eps,cap=cls.cfg.cap,cup=cls.cfg.cup,update_ori=cls.cfg.update_ori,cfg=cls.cfg)
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
     
     @classmethod
