@@ -59,6 +59,7 @@ def main(cfg):
         'trans_aggregation':cfg.dev.trans_aggregation,
         'trans_norm':cfg.dev.trans_norm,
         'ddpm_predict_noise':cfg.dev.ddpm_predict_noise,
+        'predict_h0': cfg.dev.predict_h0,
         'no_noise':cfg.dev.no_noise,
         'low_memory':cfg.dev.low_memory,
         'se3':cfg.dev.se3,
@@ -95,6 +96,7 @@ def main(cfg):
         'gate_weight': cfg.dev.gate_weight,
         'robomimic': cfg.robomimic,
         'num_layers': cfg.dev.num_layers,
+        'snr': cfg.dev.snr,
     }
 
 
@@ -764,8 +766,10 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     num_point = config['pred_horizon']    
     if not config['use_ddpm'] and  (config['diffusion_option']==0 or config['diffusion_option']==1 or config['diffusion_option']==2):
         noisy_actions, actions_noise,actions,snr = noise_scheduler.add_noise9(naction, k, device=device,no_noise=config['no_noise'])
-        # snr=None
-        print(snr," >> snr <<")
+        if not config['snr']:
+            snr=None
+        else:
+            print(snr," >> raw snr <<")
     if config['noisy_action_as_k']:
         if config['k_on_lie']:
             if config['k_target']=='noise':
@@ -929,13 +933,17 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
                 final_action=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
                 output_gripper_action=unet_output[...,9:10]
             # Options
+            if config['predict_h0']:
+                target=naction
+            else:
+                target=noisy_actions
             if config['diffusion_option']==0 or config['diffusion_option']==2:
                 # 0: the default, predict the gt H0
                 # see algorithm 1, but no more naction @torch.inverse(noisy_actions)
-                loss, dist_r, dist_t, dist_g = compute_loss(final_action.reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'],snr=snr)  
+                loss, dist_r, dist_t, dist_g = compute_loss(final_action.reshape(-1,4,4),(target ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'],snr=snr)  
             elif config['diffusion_option']==1:
                 # 1: predict relative transformation from Ht to H0
-                loss, dist_r, dist_t, dist_g = compute_loss(torch.einsum('bhij,bhjk->bhjk',final_action,noisy_actions).reshape(-1,4,4),(naction ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'],snr=snr)  
+                loss, dist_r, dist_t, dist_g = compute_loss(torch.einsum('bhij,bhjk->bhjk',final_action,noisy_actions).reshape(-1,4,4),(target ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'],snr=snr)  
             else:
                 raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 

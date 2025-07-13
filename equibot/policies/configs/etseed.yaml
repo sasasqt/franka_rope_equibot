@@ -46,6 +46,7 @@ dev:
   trans_aggregation: mean # mean/separate_mean/min/abs_min/max
   trans_norm: False
   ddpm_predict_noise: True
+  predict_h0: True
   no_noise: False # only for se3 diffusion
   low_memory: True
   se3: 0 # 0=SE3ManiNet_Fused 1=SE3ManiNet_ori_pos_sep
@@ -82,6 +83,7 @@ dev:
   bias: False
   gate: False
   gate_weight: 1.0
+  snr: False
   
 training:
   ckpt: null
