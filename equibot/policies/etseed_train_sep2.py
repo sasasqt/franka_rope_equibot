@@ -97,6 +97,8 @@ def main(cfg):
         'robomimic': cfg.robomimic,
         'num_layers': cfg.dev.num_layers,
         'snr': cfg.dev.snr,
+        'adaptive_knn':cfg.dev.adaptive_knn,
+        'amp': cfg.dev.amp,
     }
 
 
@@ -220,6 +222,7 @@ def main(cfg):
             "diffusion_sigma_r": noise_scheduler.sigma_r,
             "diffusion_sigma_t": noise_scheduler.sigma_t,
             'dev': cfg.dev,
+            'cfg':cfg,
         }
 
     wandb.init(
@@ -300,12 +303,12 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
         hierarchy_layers=config['num_layers']
         # hierarchy_layers=config['pred_horizon*obs_horizon']
 
-    pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=hierarchy_layers,input_type_1_feat=SE3VisionNet_Hierarchical_input_type_1_feat,output_type_1_feat=3,config=config,nonlinear=config['nonlinear'],input_type_1_feat_is_actually_type_0=config['robomimic'])
+    pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=hierarchy_layers,input_type_1_feat=SE3VisionNet_Hierarchical_input_type_1_feat,output_type_1_feat=3,config=config,nonlinear=config['nonlinear'],input_type_1_feat_is_actually_type_0=config['robomimic'],amp=config['amp'])
     if config['se3']==0:
         # action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
-        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,latent_pc_as_feat=config['latent_pc_as_feat'],nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'],gravity=not config['robomimic'],num_layers=config['num_layers'])
+        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,latent_pc_as_feat=config['latent_pc_as_feat'],nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'],gravity=not config['robomimic'],num_layers=config['num_layers'],amp=config['amp'])
     elif config['se3']==1:
-        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'],fused=False,nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'],gravity=not config['robomimic'],num_layers=config['num_layers'])
+        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'],fused=False,nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'],gravity=not config['robomimic'],num_layers=config['num_layers'],amp=config['amp'])
         # from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
         # action_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
     else:

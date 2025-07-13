@@ -84,6 +84,8 @@ dev:
   gate: False
   gate_weight: 1.0
   snr: False
+  adaptive_knn: False
+  amp: False
   
 training:
   ckpt: null

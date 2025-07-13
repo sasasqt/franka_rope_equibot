@@ -147,6 +147,7 @@ class EquivariantNet(ExtendedModule):
                  nonlinear=False,
                  bias=False,
                  gate=False,
+                 amp=False,
                  **kwargs):
         
         super().__init__()
@@ -172,7 +173,8 @@ class EquivariantNet(ExtendedModule):
         self.tensor_cores = tensor_cores
         self.low_memory = low_memory
         self.gate=gate
-        
+        self.amp=amp
+
         if low_memory:
             self.fuse_level = ConvSE3FuseLevel.NONE
         else:
@@ -237,70 +239,79 @@ class EquivariantNet(ExtendedModule):
             graph_modules.append(NormSE3(fiber_out))
         self.graph_modules = Sequential(*graph_modules)
 
+    from contextlib import contextmanager
+    @contextmanager
+    def dummy_ctx(*args, **kwargs):
+        yield
+        
     def forward(self, inputs, given_graph=None, given_basis=None, compute_gradients=False, **kwargs):
-        #with torch.autocast(device_type='cuda', dtype=torch.float16):
-        xyz = inputs["xyz"]
-        feature = inputs["feature"]
-        if isinstance(xyz, torch.Tensor):
-            batch_size = xyz.shape[0]
-        else:
-            batch_size = len(xyz)
-        
-        if not given_graph:
-            batch_graph, node_feats, edge_feats, pcds, raw_node_feats = build_graph(xyz, feature,k_neighbours=self.k_neighbours, dist_threshold=self.radius_threshold, voxelize=self.voxelize, voxel_size=self.voxel_size, fiber_in=self.fiber_in,use_knn=self.use_knn)
-        else:
-            batch_graph = given_graph["batch_graph"] 
-            node_feats = given_graph["node_feats"]
-            edge_feats = given_graph["edge_feats"]
-            pcds = given_graph["pcds"]
-            raw_node_feats = given_graph["raw_node_feats"]  # raw node feats are flattened node_feats
 
-        if not given_basis:
-            # Compute bases in case they weren't precomputed as part of the data loading
-            basis = get_basis(batch_graph.edata['rel_pos'], max_degree=self.max_degree, compute_gradients=compute_gradients,
-                                    use_pad_trick=self.tensor_cores and not self.low_memory,
-                                    amp=torch.is_autocast_enabled())
 
-            # Add fused bases (per output degree, per input degree, and fully fused) to the dict
-            basis = update_basis_with_fused(basis, self.max_degree, use_pad_trick=self.tensor_cores and not self.low_memory,
-                                            fully_fused=self.fuse_level == ConvSE3FuseLevel.FULL)
-        else:
-            basis = given_basis
-        node_feats = self.graph_modules(node_feats, edge_feats, graph=batch_graph, basis=basis)
-        
-        output = node_feats[list(node_feats.keys())[0]].reshape(node_feats[list(node_feats.keys())[0]].shape[0], -1)
-        for type_l in list(node_feats.keys())[1:]:
-            output = torch.cat(
-                [output, node_feats[type_l].reshape(node_feats[type_l].shape[0], -1)], dim=1
-            )
-        assert output.shape[-1] == self.fiber_out.num_features    # n, output_dim (no bs!)
-        
-        if self.pooling:
-            with batch_graph.local_scope():
-                batch_graph.ndata["h"] = output
-                output = mean_nodes(batch_graph, "h")
+
+        autocast_ctx = torch.autocast if self.amp else self.dummy_ctx
+        with autocast_ctx(device_type='cuda', dtype=torch.float16):
+            xyz = inputs["xyz"]
+            feature = inputs["feature"]
+            if isinstance(xyz, torch.Tensor):
+                batch_size = xyz.shape[0]
+            else:
+                batch_size = len(xyz)
+            
+            if not given_graph:
+                batch_graph, node_feats, edge_feats, pcds, raw_node_feats = build_graph(xyz, feature,k_neighbours=self.k_neighbours, dist_threshold=self.radius_threshold, voxelize=self.voxelize, voxel_size=self.voxel_size, fiber_in=self.fiber_in,use_knn=self.use_knn)
+            else:
+                batch_graph = given_graph["batch_graph"] 
+                node_feats = given_graph["node_feats"]
+                edge_feats = given_graph["edge_feats"]
+                pcds = given_graph["pcds"]
+                raw_node_feats = given_graph["raw_node_feats"]  # raw node feats are flattened node_feats
+
+            if not given_basis:
+                # Compute bases in case they weren't precomputed as part of the data loading
+                basis = get_basis(batch_graph.edata['rel_pos'], max_degree=self.max_degree, compute_gradients=compute_gradients,
+                                        use_pad_trick=self.tensor_cores and not self.low_memory,
+                                        amp=torch.is_autocast_enabled())
+
+                # Add fused bases (per output degree, per input degree, and fully fused) to the dict
+                basis = update_basis_with_fused(basis, self.max_degree, use_pad_trick=self.tensor_cores and not self.low_memory,
+                                                fully_fused=self.fuse_level == ConvSE3FuseLevel.FULL)
+            else:
+                basis = given_basis
+            node_feats = self.graph_modules(node_feats, edge_feats, graph=batch_graph, basis=basis)
+            
+            output = node_feats[list(node_feats.keys())[0]].reshape(node_feats[list(node_feats.keys())[0]].shape[0], -1)
+            for type_l in list(node_feats.keys())[1:]:
+                output = torch.cat(
+                    [output, node_feats[type_l].reshape(node_feats[type_l].shape[0], -1)], dim=1
+                )
+            assert output.shape[-1] == self.fiber_out.num_features    # n, output_dim (no bs!)
+            
+            if self.pooling:
+                with batch_graph.local_scope():
+                    batch_graph.ndata["h"] = output
+                    output = mean_nodes(batch_graph, "h")
+                return {
+                    "batch_graph": batch_graph,
+                    "node_feats": node_feats,
+                    "edge_feats": edge_feats,
+                    "pcds": pcds,
+                    "raw_node_feats": raw_node_feats,
+                }, basis, output # list, list, basis, tensor
+
+            # reshape raw_features to batch_sizes
+            reshaped_output = []
+            idx = 0
+            for i in range(batch_size):
+                reshaped_output.append(output[idx:(idx+pcds[i].shape[0])])
+                idx += pcds[i].shape[0]
+
             return {
                 "batch_graph": batch_graph,
                 "node_feats": node_feats,
                 "edge_feats": edge_feats,
                 "pcds": pcds,
                 "raw_node_feats": raw_node_feats,
-            }, basis, output # list, list, basis, tensor
-
-        # reshape raw_features to batch_sizes
-        reshaped_output = []
-        idx = 0
-        for i in range(batch_size):
-            reshaped_output.append(output[idx:(idx+pcds[i].shape[0])])
-            idx += pcds[i].shape[0]
-
-        return {
-            "batch_graph": batch_graph,
-            "node_feats": node_feats,
-            "edge_feats": edge_feats,
-            "pcds": pcds,
-            "raw_node_feats": raw_node_feats,
-        }, basis, reshaped_output # list, list, basis, list
+            }, basis, reshaped_output # list, list, basis, list
 
 
 class SE3Backbone(ExtendedModule):
@@ -329,7 +340,8 @@ class SE3Backbone(ExtendedModule):
         low_memory=True,
         nonlinear=False,
         bias=False,
-        gate=False
+        gate=False,
+        amp=False,
     ):
         super().__init__()
         self.net = EquivariantNet(
@@ -350,7 +362,8 @@ class SE3Backbone(ExtendedModule):
             low_memory=low_memory,
             nonlinear=nonlinear,
             bias=bias,
-            gate=gate
+            gate=gate,
+            amp=amp,
         )
 
     

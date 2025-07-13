@@ -5,7 +5,7 @@ from .se3_transformer.model.fiber import Fiber
 from ...utils.group_utils import process_action #, orthogonalization
 
 class SE3ManiNet_Equivariant_Separate(ExtendedModule):
-    def __init__(self, voxelize=False,nonlinear=False,bias=False,gate=False):
+    def __init__(self, voxelize=False,nonlinear=False,bias=False,gate=False,amp=False):
         super().__init__()
         ''' 
         input features:
@@ -36,6 +36,7 @@ class SE3ManiNet_Equivariant_Separate(ExtendedModule):
             nonlinear=nonlinear,
             bias=bias,
             gate=gate,
+            amp=amp,
         )
         self.ori_net = SE3Backbone(
             fiber_in=Fiber({
@@ -53,7 +54,8 @@ class SE3ManiNet_Equivariant_Separate(ExtendedModule):
             voxelize = voxelize,
             nonlinear=nonlinear,
             bias=bias,
-            gate=gate
+            gate=gate,
+            amp=amp
         )
 
     def forward(self, inputs,return_raw=False,**kwargs):
@@ -87,7 +89,7 @@ class SE3ManiNet_Equivariant_Separate(ExtendedModule):
 
 
 class SE3ManiNet_Invariant_Separate(ExtendedModule):
-    def __init__(self, voxelize=False,nonlinear=False,bias=False,gate=False):
+    def __init__(self, voxelize=False,nonlinear=False,bias=False,gate=False,amp=False):
         super().__init__()
         num_fib_in = [7,2] # 13 in total, 7 type0:tensor_k,noisy_ori_actions, 2 type1: noisy_trans_actions,tgt_nxyz
         num_fib_out = [6]
@@ -108,6 +110,7 @@ class SE3ManiNet_Invariant_Separate(ExtendedModule):
             nonlinear=nonlinear,
             bias=bias,
             gate=gate,
+            amp=amp,
         )
         self.ori_net = SE3Backbone(
             fiber_in=Fiber({
@@ -126,6 +129,7 @@ class SE3ManiNet_Invariant_Separate(ExtendedModule):
             nonlinear=nonlinear,
             bias=bias,
             gate=gate,
+            amp=amp,
         )
 
     def forward(self, inputs,return_raw=False,**kwargs):
@@ -251,6 +255,7 @@ class SE3ManiNet_Fused(ExtendedModule):
             gate=False,
             gravity=True,
             num_layers=8,
+            amp=False,
             ):
         assert not config==None
         super().__init__()
@@ -358,6 +363,7 @@ class SE3ManiNet_Fused(ExtendedModule):
                 nonlinear=nonlinear,
                 bias=bias,
                 gate=gate,
+                amp=amp,
             )
         else:
             self.ori_net=SE3Backbone(
@@ -380,6 +386,7 @@ class SE3ManiNet_Fused(ExtendedModule):
                 nonlinear=nonlinear,
                 bias=bias,
                 gate=gate,
+                amp=amp,
             )
 
             self.pos_net = SE3Backbone(
@@ -409,6 +416,7 @@ class SE3ManiNet_Fused(ExtendedModule):
                 nonlinear=nonlinear,
                 bias=bias,
                 gate=gate,
+                amp=amp,
             )
 
     def forward(self, inputs,num_point,return_raw=False,Ho_in_B=False):
@@ -583,7 +591,7 @@ class SE3ManiNet_Fused(ExtendedModule):
 
 
 class SE3ManiNet_ori_pos_sep(ExtendedModule):
-    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None,no_tgt_nxyz=False,eef_abs_position_as_node=False,nonlinear=False,bias=False,gate=False):
+    def __init__(self, voxelize=False,k_neighbours=8,pred_horizon=8,config=None,no_tgt_nxyz=False,eef_abs_position_as_node=False,nonlinear=False,bias=False,gate=False,amp=False):
         super().__init__()
         self.pred_horizon=pred_horizon
         self.config=config
@@ -632,6 +640,7 @@ class SE3ManiNet_ori_pos_sep(ExtendedModule):
             nonlinear=nonlinear,
             bias=bias,
             gate=gate,
+            amp=amp,
         )
 
 
@@ -656,6 +665,7 @@ class SE3ManiNet_ori_pos_sep(ExtendedModule):
             nonlinear=nonlinear,
             bias=bias,
             gate=gate,
+            amp=amp,
         )
 
     def forward(self, inputs,num_point,return_raw=False,Ho_in_B=False):
@@ -757,15 +767,16 @@ class SE3VisionNet(ExtendedModule):
             bias=False,
             gate=False,
             input_type_1_feat_is_actually_type_0=False,
+            k_neighbours=8,
+            amp=False,
             ):
         super().__init__()
         self.config=config
         self.input_type_1_feat=input_type_1_feat
         self.extra_input_type_1_feat=extra_input_type_1_feat
         self.output_type_1_feat=output_type_1_feat
-        k_neighbours=config['k_neighbours']
-        if config['bugfix'] % 10 == 1:
-            k_neighbours=config['k_neighbours*obs_horizon']
+        # k_neighbours=config['k_neighbours']
+        k_neighbours=k_neighbours*config['obs_horizon']
 
         fiber_out=Fiber({
             "0": 1, # the weights/heatmap
@@ -806,6 +817,7 @@ class SE3VisionNet(ExtendedModule):
             nonlinear=nonlinear,
             bias=bias,
             gate=gate,
+            amp=amp,
         )
 
         
@@ -857,7 +869,8 @@ class SE3VisionNet_Hierarchical(ExtendedModule):
             nonlinear=False,
             bias=False,
             gate=False,
-            input_type_1_feat_is_actually_type_0=False):
+            input_type_1_feat_is_actually_type_0=False,
+            amp=False):
         super().__init__()
         num_degrees= config['num_degrees']
         num_channels= config['num_channels']
@@ -869,7 +882,7 @@ class SE3VisionNet_Hierarchical(ExtendedModule):
 
         weights_nets =[]
         #self.input_type_1_feat=input_type_1_feat
-        for hierarchy in range(hierarchy_layers):
+        for i,hierarchy in enumerate(range(hierarchy_layers)):
             weights_nets.append(SE3VisionNet(
                 input_type_1_feat=input_type_1_feat, 
                 extra_input_type_1_feat=output_type_1_feat if hierarchy != 0 else 0,
@@ -885,6 +898,8 @@ class SE3VisionNet_Hierarchical(ExtendedModule):
                 bias=bias,
                 gate=gate,
                 input_type_1_feat_is_actually_type_0=input_type_1_feat_is_actually_type_0,
+                k_neighbours=i+1 if config['adaptive_knn'] else config['k_neighbours'],
+                amp=amp,
             ))
 
         self.weights_nets = torch.nn.Sequential(*weights_nets)
