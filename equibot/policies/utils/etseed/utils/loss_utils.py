@@ -55,7 +55,7 @@ def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None,sign_mismatch=True,snr
     # dist = torch.sqrt(dist_R_square.squeeze(-1) + dist_t_square)    # [bs]
 
     if snr is not None:
-        coeffi = snr.clamp_max(1)
+        coeffi = snr.clamp_max(2)
         _size=snr.shape[0]
         dist_R_square=dist_R_square.view(_size,-1,1)*coeffi.unsqueeze(-1).unsqueeze(-1)
         dist_t_square=dist_t_square.view(_size,-1,1)*coeffi.unsqueeze(-1).unsqueeze(-1)
