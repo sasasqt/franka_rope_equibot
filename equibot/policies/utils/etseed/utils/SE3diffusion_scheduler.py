@@ -30,11 +30,12 @@ class DiffusionScheduler(torch.nn.Module):
         self.S = 0.008 # 0.008
        
         device = device
-        
+        # TODO DO NOT HARDCODE
         if self.mode == 'linear':
-            self.betas = torch.linspace(self.beta_1, self.beta_T, steps=self.num_steps)      
+            self.betas = torch.linspace(self.beta_1, self.beta_T, steps=self.num_steps) 
+            self._train_betas=torch.linspace(self.beta_1, self.beta_T, steps=100)
         elif self.mode == 'cosine':
-            def betas_fn(s):
+            def betas_fn(s,T = self.num_steps):
                 T = self.num_steps
                 def f(t, T, s):
                     return (np.cos((t / T + s) / (1 + s) * np.pi / 2)) ** 2
@@ -46,8 +47,13 @@ class DiffusionScheduler(torch.nn.Module):
                 return [min(beta, 0.999) for beta in betas]
             betas = betas_fn(s=self.S)
             self.betas = torch.FloatTensor(betas)
+            og_betas = betas_fn(s=self.S,T=100)
+            self.og_betas = torch.FloatTensor(og_betas)
+
         elif self.mode == 'squaredcos_cap_v2':
             self.betas = betas_for_alpha_bar(self.num_steps)
+            self.og_betas = betas_for_alpha_bar(100)
+            
         else:
             raise RuntimeError(f"f{self.mode} is not yet implemented")
         
@@ -56,6 +62,11 @@ class DiffusionScheduler(torch.nn.Module):
         self.alphas_cumsum = torch.cumsum(self.log_alphas, dim=0)
         self.one = torch.tensor(1.0)
         self.alpha_bars = self.alphas_cumsum.exp().to(device)
+
+        self.og_alphas = 1.0 - self.og_betas
+        self.og_log_alphas = torch.log(self.og_alphas)
+        self.og_alphas_cumsum = torch.cumsum(self.og_log_alphas, dim=0)
+        self.og_alpha_bars = self.og_alphas_cumsum.exp().to(device)
         
         self.gamma0 = torch.zeros_like(self.betas).to(device)
         self.gamma1 = torch.zeros_like(self.betas).to(device)
@@ -142,8 +153,8 @@ class DiffusionScheduler(torch.nn.Module):
         # BUG SHOULD BE SIGMA_T, SIGMA_R in kornia
         # scale = torch.cat([torch.ones(3) * self.sigma_r, torch.ones(3) * self.sigma_t])[None].to(device)  # [1, 6] 
         scale = torch.cat([torch.ones(3) * self.sigma_t, torch.ones(3) * self.sigma_r])[None].to(device)  # [1, 6] 
-        noise = torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1) * scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
-            
+        _noise =  scale.unsqueeze(0) * torch.randn(B,Ho, 6).to(device)  # [B,Ho, 6]
+        noise=torch.sqrt(1. - alpha_bars).unsqueeze(-1).unsqueeze(-1)*_noise   
         # perturbation part in eq 34
         H_pure_noise = se3.exp(noise) #  [B,Ho,4,4]
         if no_noise:
@@ -153,7 +164,7 @@ class DiffusionScheduler(torch.nn.Module):
         noisy_interpolated_H_t = H_pure_noise @ H_t #  [B,Ho,4,4]
         
         snr=alpha_bars/(1-alpha_bars)
-        return noisy_interpolated_H_t, H_pure_noise,H_t, snr
+        return noisy_interpolated_H_t, se3.exp(_noise),H_t, snr
 
 
     def add_noise2(self,
@@ -420,8 +431,8 @@ class DiffusionScheduler(torch.nn.Module):
         B = sample.shape[0]
         Ho = sample.shape[1]
         # see algorithm 2, but no longer use A^{k->0}A^k
-        if timestep>0: 
-            timestep=timestep-1
+        # if timestep>0: 
+        #     timestep=timestep-1
         alpha_bars = self.alpha_bars[timestep].to(device) # [B]
         
         if abs_to_rel: 
@@ -434,14 +445,18 @@ class DiffusionScheduler(torch.nn.Module):
         # https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_ddim_inverse.py
         alpha_bars = self.alpha_bars[timestep].to(device) # [B]
         eta_t=self.betas[timestep]
-        if timestep>0: 
-            timestep=timestep-1
+        # if timestep>0: 
+        #     timestep=timestep-1
 
         alpha_bars_prev = self.alpha_bars[timestep].to(device) # [B]
         x0=reconstructed_H_0
         xt=sample
         if not predict_h0:
+            og_scale=torch.sqrt(1-self.og_alpha_bars[int(timestep*100/self.num_steps)])
             _noise=x0
+            print(_noise.shape,int(timestep*100/self.num_steps),timestep,"<<<<FDFSFD")
+            _log_noise=torch.sqrt(1-alpha_bars)*se3.log(_noise)/og_scale
+            _noise=se3.exp(_log_noise)
             log_x0=se3.log(torch.inverse(_noise)@xt)/torch.sqrt(alpha_bars)
         else:
             log_x0=se3.log(x0)

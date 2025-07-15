@@ -140,7 +140,8 @@ def main(cfg):
         'robomimic': cfg.robomimic,
         'num_layers': cfg.dev.num_layers,
         'snr': cfg.dev.snr,
-    }
+        'adaptive_knn':cfg.dev.adaptive_knn,
+        'amp': cfg.dev.amp,    }
 
     device = torch.device('cuda')
     if not torch.cuda.is_available():

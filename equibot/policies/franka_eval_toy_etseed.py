@@ -100,6 +100,7 @@ def main(cfg):
         'rot_aggregation':cfg.dev.rot_aggregation,
         'trans_aggregation':cfg.dev.trans_aggregation,
         'ddpm_predict_noise':cfg.dev.ddpm_predict_noise,
+        'predict_h0': cfg.dev.predict_h0,
         'no_noise':cfg.dev.no_noise,
         'low_memory':cfg.dev.low_memory,
         'se3':cfg.dev.se3,
@@ -134,7 +135,12 @@ def main(cfg):
         'rel_gripper_pos': cfg.dev.rel_gripper_pos,
         'nonlinear': cfg.dev.nonlinear,
         'bias': cfg.dev.bias,
-        'gate': cfg.dev.gate
+        'gate': cfg.dev.gate,
+        'robomimic': cfg.robomimic,
+        'num_layers': cfg.dev.num_layers,
+        'snr': cfg.dev.snr,
+        'adaptive_knn':cfg.dev.adaptive_knn,
+        'amp': cfg.dev.amp,
     }
 
     device = torch.device('cuda')

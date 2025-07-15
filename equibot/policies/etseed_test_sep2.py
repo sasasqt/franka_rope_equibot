@@ -68,6 +68,8 @@ def main(cfg):
         'robomimic': cfg.robomimic,
         'num_layers': cfg.dev.num_layers,
         'snr': cfg.dev.snr,
+        'adaptive_knn':cfg.dev.adaptive_knn,
+        'amp': cfg.dev.amp,
     }
 
     assert config["mode"] == "eval"
@@ -353,10 +355,10 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                                 if config['diffusion_steps'] - 1==denoise_idx:
                                     _cond=se3.log(noisy_actions) #[b,hp,rot col1 col2=6]
                                 else:
-                                    _cond=se3.log(noise@noisy_actions) #[b,hp,rot col1 col2=6]
+                                    # _cond=se3.log(noise@noisy_actions) #[b,hp,rot col1 col2=6]
                                     # _cond=se3.log(noise)+se3.log(noisy_actions) #[b,hp,rot col1 col2=6] # for lie  algebra
 
-                                    # _cond=se3.log(noisy_actions) #[b,hp,rot col1 col2=6]
+                                    _cond=se3.log(noisy_actions) #[b,hp,rot col1 col2=6]
                             elif config['k_target']=='actions':
                                 _cond=se3.log(noisy_actions) #[b,hp,trans+rots=6]
                             else:
@@ -445,7 +447,8 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                         reconstructed_H_0=reconstructed_H_0,
                         timestep = k,
                         sample = noisy_actions,
-                        device = device
+                        device = device,
+                        predict_h0=config['predict_h0']
                     )      
                     # noisy_actions=noise@noisy_actions          
                 elif config['diffusion_option']==1:
@@ -455,7 +458,8 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                         reconstructed_H_0=reconstructed_H_0,
                         timestep = k,
                         sample = noisy_actions,
-                        device = device
+                        device = device,
+                        predict_h0=config['predict_h0']
                     )
                 elif config['diffusion_option']==2:
                     # 2: no diffusion, no denoising
@@ -507,6 +511,18 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                 if config['early_return']:
                     break
 
+
+            x0=reconstructed_H_0
+            xt=noisy_actions
+            timestep=k
+            if not config['predict_h0']:
+                alpha_bars = noise_scheduler.alpha_bars[timestep].to(device) # [B]
+                og_scale=torch.sqrt(1-noise_scheduler.og_alpha_bars[int(timestep*100/noise_scheduler.num_steps)])
+                _noise=x0
+                _log_noise=torch.sqrt(1-alpha_bars)*se3.log(_noise)/og_scale
+                _noise=se3.exp(_log_noise)
+                log_x0=se3.log(torch.inverse(_noise)@xt)/torch.sqrt(alpha_bars)
+                reconstructed_H_0=se3.exp(log_x0)
             if isVisualEval:
                 # actions=noisy_actions#reconstructed_H_0#noisy_actions# for lie algebra
 
