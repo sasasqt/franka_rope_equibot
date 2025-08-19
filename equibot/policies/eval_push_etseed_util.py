@@ -1002,7 +1002,10 @@ def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,upda
 
     # delta_pos=np.clip(delta_pos,-0.01,0.01)
     # print("clipped delta pos: ",delta_pos)
- 
+    # if translations[2]>0.0:
+    #     translations[2]*=0.25
+    # else:
+    #     translations[2]*=2.0
     print(translations,'translations')
     print(quaternions,'quaternions')
     idx=len(myjson)

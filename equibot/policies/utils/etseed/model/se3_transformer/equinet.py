@@ -1,4 +1,6 @@
 import torch
+import open3d as o3d
+from datetime import datetime
 import os
 from .se3_backbone import SE3Backbone, ExtendedModule
 from .se3_transformer.model.fiber import Fiber
@@ -849,6 +851,14 @@ class SE3VisionNet(ExtendedModule):
                 'weights':weights,
                 'global_feat':global_feat 
             }
+        # pcd = o3d.geometry.PointCloud()
+        # pcd.points = o3d.utility.Vector3dVector(new_xyz[0].cpu().numpy())
+        # o3d.visualization.draw_geometries([pcd])
+        # now = datetime.now()
+        # filename = now.strftime("pcd_%Y%m%d_%H%M%S.ply")
+        # # Save the point cloud to the generated filename
+        # o3d.io.write_point_cloud(filename, pcd)
+
         return {'xyz':new_xyz,'feature':new_feat}, global_feat # [B,max(N//2,1),3],[B,max(N//2,1),output_type_1_feat*3], [B,output_type_1_feat*3]
 
 

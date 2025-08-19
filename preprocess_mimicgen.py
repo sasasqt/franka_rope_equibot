@@ -1,4 +1,5 @@
 import json
+import open3d as o3d
 import numpy as np
 import os
 from math import sqrt
@@ -43,7 +44,7 @@ def main(cfg):
             random_rotation = R.from_euler('xyz', degrees, degrees=True).as_matrix()
             random_translation = np.array([random.randint(-2, 4),random.randint(-2, 4),0])
             
-            # random_rotation=np.eye(3)
+            random_rotation=np.eye(3)
             random_translation=np.zeros(3)
 
             new_eef_pos=np.einsum('ij,nj->ni', random_rotation, eef_pos)+random_translation
@@ -54,8 +55,27 @@ def main(cfg):
             new_pc=np.einsum('ij,ncj->nci', random_rotation, new_pc)+random_translation
             new_rgb=pc[...,3:]
 
-            new_pc=np.concatenate((new_pc,new_rgb),axis=-1)
+            z_values = new_pc[:, :, 2]  # extract Z axis values
 
+            percentiles = [1, 50, 99]  # 1st, median, 99th percentiles as example
+
+            percentile_results = {}
+            for p in percentiles:
+                percentile_results[f'p{p}'] = np.percentile(z_values, p, axis=1)  # shape (b,)
+                print(percentile_results)
+                print(new_rgb.shape)
+
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(new_pc[55])
+            pcd.colors = o3d.utility.Vector3dVector(new_rgb[55])
+            o3d.visualization.draw_geometries([pcd])
+
+            new_pc=np.concatenate((new_pc,new_rgb),axis=-1)
+            # p1 = np.percentile(z_values, 5, axis=1)
+            # p99 = np.percentile(z_values, 95, axis=1)
+            # counts_below_p1 = np.sum(z_values <= p1[:, None], axis=1)  # count points below or equal 1st percentile per batch
+            # counts_above_p99 = np.sum(z_values >= p99[:, None], axis=1)  # count points above or equal 99th percentile per batch
+            # print(counts_below_p1,counts_above_p99)
             new_delta_pos = actions[...,:3]
             new_delta_ori=R.from_euler('xyz', actions[...,3:6], degrees=False).as_matrix()
             new_gripper_action=actions[...,6]
@@ -87,14 +107,14 @@ def main(cfg):
                 action = np.array(
                     mat4x4
                 )
-                np.savez(
-                    # :02d is expected from the dataset py
-                    os.path.join(output_dir + rf"/01_ep{i:06d}_view0_t{_i:02d}.npz"),
-                    pc=new_pc[_i], # (40, 6) = (num_points, src + tgt)
-                    eef_pos=eef_pos, #  (13,)
-                    action=np.array(action[np.newaxis, :]), #  (1, 4, 4)
+                # np.savez(
+                #     # :02d is expected from the dataset py
+                #     os.path.join(output_dir + rf"/01_ep{i:06d}_view0_t{_i:02d}.npz"),
+                #     pc=new_pc[_i], # (40, 6) = (num_points, src + tgt)
+                #     eef_pos=eef_pos, #  (13,)
+                #     action=np.array(action[np.newaxis, :]), #  (1, 4, 4)
 
-                )
+                # )
             pbar.update(1)
 
 
