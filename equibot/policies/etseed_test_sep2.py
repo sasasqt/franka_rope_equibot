@@ -43,6 +43,7 @@ def main(cfg):
         'predict_h0': cfg.dev.predict_h0,
         'no_noise':cfg.dev.no_noise,
         'early_return':cfg.dev.early_return,
+        'early_return_after':cfg.dev.early_return_after,
         "sigma_r":cfg.sigma_r,
         "sigma_t": cfg.sigma_t,
         "checkpoint_path": cfg.training.ckpt,
@@ -203,7 +204,6 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
             noisy_actions=torch.cat((noisy_ori,noisy_tran),dim=-1)
         else:
             noisy_actions, noise=noise_scheduler.add_noise(H_Identity, k, device=device,no_noise=config['no_noise'])
-        
         gripper_noise = torch.randn((bz,hp,1), device=device)
         noisy_gripper = gripper_noise # gripper_noise_scheduler.add_noise(gt_gripper_action, gripper_noise, k)
 
@@ -508,7 +508,7 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                     #     wandb.log({"test_dist_R_in": dist_invar_r},step=g_step)
                     #     wandb.log({"test_dist_T_in": dist_invar_t},step=g_step)
 
-                if config['early_return']:
+                if config['early_return'] and (config['diffusion_steps'] -denoise_idx >config['early_return_after']):
                     break
 
 

@@ -59,16 +59,16 @@ def main(cfg):
 
             percentiles = [1, 50, 99]  # 1st, median, 99th percentiles as example
 
-            percentile_results = {}
-            for p in percentiles:
-                percentile_results[f'p{p}'] = np.percentile(z_values, p, axis=1)  # shape (b,)
-                print(percentile_results)
-                print(new_rgb.shape)
+            # percentile_results = {}
+            # for p in percentiles:
+            #     percentile_results[f'p{p}'] = np.percentile(z_values, p, axis=1)  # shape (b,)
+            #     print(percentile_results)
+            #     print(new_rgb.shape)
 
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(new_pc[55])
-            pcd.colors = o3d.utility.Vector3dVector(new_rgb[55])
-            o3d.visualization.draw_geometries([pcd])
+            # pcd = o3d.geometry.PointCloud()
+            # pcd.points = o3d.utility.Vector3dVector(new_pc[55])
+            # pcd.colors = o3d.utility.Vector3dVector(new_rgb[55])
+            # o3d.visualization.draw_geometries([pcd])
 
             new_pc=np.concatenate((new_pc,new_rgb),axis=-1)
             # p1 = np.percentile(z_values, 5, axis=1)
@@ -79,7 +79,7 @@ def main(cfg):
             new_delta_pos = actions[...,:3]
             new_delta_ori=R.from_euler('xyz', actions[...,3:6], degrees=False).as_matrix()
             new_gripper_action=actions[...,6]
-            
+            print(new_gripper_action)
             for _i in range(new_pc.shape[0]):
 
                 ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols

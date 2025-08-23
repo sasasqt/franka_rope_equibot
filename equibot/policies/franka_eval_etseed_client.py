@@ -90,6 +90,7 @@ def main(cfg):
         'k_option':cfg.dev.k_option,
         'diffusion_option':cfg.dev.diffusion_option,
         'early_return':cfg.dev.early_return,
+        'early_return_after':cfg.dev.early_return_after,
         "sigma_r":cfg.sigma_r,
         "sigma_t": cfg.sigma_t,
         "checkpoint_path": cfg.training.ckpt,

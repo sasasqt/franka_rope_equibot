@@ -174,7 +174,7 @@ class EvalUtils():
                 # delta_xyzw=torch.from_numpy(delta_xyzw.reshape(B,-1,4)).cuda()
                 delta_euler = R.from_matrix(rotations.reshape(-1,3,3)).as_euler('xyz') #kornia.geometry.conversions.rotation_matrix_to_quaternion(rotations)
                 delta_euler=torch.from_numpy(delta_euler.reshape(B,-1,3)).cuda()
-                rel_action=torch.cat([delta_xyz,delta_euler,gripper_action],dim=-1)
+                rel_action=torch.cat([delta_xyz*1.0,delta_euler,gripper_action],dim=-1)
 
                 print(delta_xyz)
                 print("--")
