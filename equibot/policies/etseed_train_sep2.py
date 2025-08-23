@@ -72,6 +72,8 @@ def main(cfg):
         'sanity_check': cfg.dev.sanity_check,
         'testing': cfg.dev.testing,
         'pc_xyz_feat': cfg.dev.pc_xyz_feat,
+        'pc_xyz_feat_old': cfg.dev.pc_xyz_feat_old,
+        'pc_xyz_feat_as_type_1':cfg.dev.pc_xyz_feat_as_type_1,
         'eef_xyz_feat': cfg.dev.eef_xyz_feat,
         'latent_pc_as_feat': cfg.dev.latent_pc_as_feat,
         'test_lr_scheduler':cfg.dev.test_lr_scheduler,
@@ -99,8 +101,10 @@ def main(cfg):
         'snr': cfg.dev.snr,
         'adaptive_knn':cfg.dev.adaptive_knn,
         'amp': cfg.dev.amp,
+        'clip':cfg.dev.clip,
     }
 
+    # torch.autograd.set_detect_anomaly(True)
 
     assert config["mode"] == "train"
 
@@ -296,14 +300,16 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
     print(torch.version.cuda)
     loadFromCkpt=config['loadFromCkpt']
     # TODO do not hardcode
-    SE3VisionNet_Hierarchical_input_type_1_feat=2 if config['pc_xyz_feat'] else 1
+    SE3VisionNet_Hierarchical_input_type_1_feat=2 if (config['pc_xyz_feat']) else 1
+    if config['robomimic'] and config['pc_xyz_feat_as_type_1']:
+        SE3VisionNet_Hierarchical_input_type_1_feat=1
     if not config['robomimic']:
         hierarchy_layers=config['pred_horizon*obs_horizon']
     else:
         hierarchy_layers=config['num_layers']
         # hierarchy_layers=config['pred_horizon*obs_horizon']
 
-    pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=hierarchy_layers,input_type_1_feat=SE3VisionNet_Hierarchical_input_type_1_feat,output_type_1_feat=3,config=config,nonlinear=config['nonlinear'],input_type_1_feat_is_actually_type_0=config['robomimic'],amp=config['amp'])
+    pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=hierarchy_layers,input_type_1_feat=SE3VisionNet_Hierarchical_input_type_1_feat,output_type_1_feat=3,config=config,nonlinear=config['nonlinear'],input_type_1_feat_is_actually_type_0=config['robomimic'],pc_xyz_feat_as_type_1=config['pc_xyz_feat'] and config['pc_xyz_feat_as_type_1'],amp=config['amp'])
     if config['se3']==0:
         # action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
         action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,latent_pc_as_feat=config['latent_pc_as_feat'],nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'],gravity=not config['robomimic'],num_layers=config['num_layers'],amp=config['amp'])
@@ -359,7 +365,6 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
         'unet': unet,
     }).to(device)
 
-    # torch.nn.utils.clip_grad_norm_(nets.parameters(), 1.0)
     num_parameters = sum(dict((p.data_ptr(), p.numel()) 
                     for p in nets.parameters()).values())
     logging.info(">>> !!number of unique trainable parameters!! <<<"+num_parameters.__str__())
@@ -410,7 +415,7 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
 
 
 # Prepare the input for the model
-def prepare_model_input1(nxyz, tgt_nxyz,diff=False,pc_xyz_feat=False,rgb=False):
+def prepare_model_input1(nxyz, tgt_nxyz,diff=False,pc_xyz_feat=False,pc_xyz_feat_old=False,rgb=False):
     B = nxyz.shape[0]
     Ho_num_point=nxyz.shape[1]
     # nxyz[B,Ho*num_pts,3]
@@ -420,13 +425,19 @@ def prepare_model_input1(nxyz, tgt_nxyz,diff=False,pc_xyz_feat=False,rgb=False):
             feature=tgt_nxyz-nxyz
         if pc_xyz_feat:
             # [B,Ho*num_pts,6]
-            feature=torch.cat((feature, nxyz), dim=-1)  
+            if pc_xyz_feat_old:
+                feature=torch.cat((nxyz, feature), dim=-1)
+            else:
+                feature=torch.cat((feature, nxyz), dim=-1)
     if rgb:
         if diff:
             pass
         if pc_xyz_feat:
             # [B,Ho*num_pts,6]
-            feature=torch.cat((feature, nxyz), dim=-1)  
+            if pc_xyz_feat_old:
+                feature=torch.cat((nxyz, feature), dim=-1)
+            else:
+                feature=torch.cat((feature, nxyz), dim=-1)
     model_input = {
         'xyz': nxyz.to(device='cuda',dtype=torch.float32),
         'feature': feature.to(device='cuda',dtype=torch.float32)
@@ -544,22 +555,22 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config,mean=None):
             # num_fib_in = [7,4] # 19 in total, 7 type0: k1,k2; binary gripper_action 4 type1: eef_abs_position, eef_abs_rotation (2cols); gravity
             if not config['k1_type_1'] and not config['k2_type_1']:
                 if latent_pc_as_feat:
-                    feature = torch.cat((k1,k2,gripper_pose,nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+                    feature = torch.cat((k1,k2,gripper_pose,nxyz/1.0,right_eef_world_pos,col1,col2,gravity), dim=-1)
                 else:
                     feature = torch.cat((k1,k2,gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
             elif config['k1_type_1'] and not config['k2_type_1']:
                 if latent_pc_as_feat:
-                    feature = torch.cat((k2,gripper_pose,k1,nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+                    feature = torch.cat((k2,gripper_pose,k1,nxyz/1.0,right_eef_world_pos,col1,col2,gravity), dim=-1)
                 else:
                     feature = torch.cat((k2,gripper_pose,k1,right_eef_world_pos,col1,col2,gravity), dim=-1)
             elif not config['k1_type_1'] and config['k2_type_1']:
                 if latent_pc_as_feat:
-                    feature = torch.cat((k1,gripper_pose,k2,nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+                    feature = torch.cat((k1,gripper_pose,k2,nxyz/1.0,right_eef_world_pos,col1,col2,gravity), dim=-1)
                 else:
                     feature = torch.cat((k1,gripper_pose,k2,right_eef_world_pos,col1,col2,gravity), dim=-1)
             elif config['k1_type_1'] and config['k2_type_1']:
                 if latent_pc_as_feat:
-                    feature = torch.cat((gripper_pose,k1,k2,nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+                    feature = torch.cat((gripper_pose,k1,k2,nxyz/1.0,right_eef_world_pos,col1,col2,gravity), dim=-1)
                 else:
                     feature = torch.cat((gripper_pose,k1,k2,right_eef_world_pos,col1,col2,gravity), dim=-1)
             else:
@@ -568,7 +579,7 @@ def prepare_model_input2(nxyz, neefpose, k, num_point,config,mean=None):
     elif config['k_option']==3:
         # no k
         if latent_pc_as_feat:
-            feature = torch.cat((gripper_pose,nxyz,right_eef_world_pos,col1,col2,gravity), dim=-1)
+            feature = torch.cat((gripper_pose,nxyz/1.0,right_eef_world_pos,col1,col2,gravity), dim=-1)
         else:
             feature = torch.cat((gripper_pose,right_eef_world_pos,col1,col2,gravity), dim=-1)
     else:
@@ -769,9 +780,9 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         else:
             raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
     
-    pc= prepare_model_input1(nxyz, tgt_nxyz,diff=config['diff'],pc_xyz_feat=config['pc_xyz_feat'],rgb=config['robomimic'])
+    pc= prepare_model_input1(nxyz, tgt_nxyz,diff=config['diff'],pc_xyz_feat=config['pc_xyz_feat'],pc_xyz_feat_old=config['pc_xyz_feat_old'],rgb=config['robomimic'])
     latent_pc=nets["pointcloud_encoder"](pc) # b,l,f (l:x*Hp; f:3x)
-
+    print(torch.max(latent_pc),torch.min(latent_pc),"latentpc")
     num_point = config['pred_horizon']    
     if not config['use_ddpm'] and  (config['diffusion_option']==0 or config['diffusion_option']==1 or config['diffusion_option']==2):
         noisy_actions, actions_noise,actions,snr = noise_scheduler.add_noise9(naction, k, device=device,no_noise=config['no_noise'])
@@ -964,6 +975,54 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
         print(penalty_loss.item(),">>> penalty loss <<<")
 
     loss.backward()
+
+    bad = []
+    min_name="none"
+    max_name="none"
+    _min=9999
+    _max=-9999
+    for name, p in nets.named_parameters():
+        if p.grad is None:
+            continue
+        mingrad=torch.min(p.grad)
+        maxgrad=torch.max(p.grad)
+        if _min>mingrad:
+            _min=mingrad
+            min_name=name
+        if _max<maxgrad:
+            _max=maxgrad
+            max_name=name
+
+        if not torch.isfinite(p.grad).all():
+            bad.append(name)
+            print("BAD GRAD:", name, 
+                  "has_nan:", torch.isnan(p.grad).any().item(), 
+                  "has_inf:", torch.isinf(p.grad).any().item(),
+                  "grad_norm:", torch.norm(p.grad.detach(), p=2).item())
+    print("num bad params:", len(bad))
+    print(f"min:{_min} {min_name};;; max:{_max} {max_name}")
+
+    if config['clip']:
+        torch.nn.utils.clip_grad_value_(nets.parameters(), clip_value=10)  
+        # torch.nn.utils.clip_grad_norm_(nets.parameters(), max_norm=2)
+    print("after clip")
+    min_name="none"
+    max_name="none"
+    _min=9999
+    _max=-9999
+    for name, p in nets.named_parameters():
+        if p.grad is None:
+            continue
+        mingrad=torch.min(p.grad)
+        maxgrad=torch.max(p.grad)
+        if _min>mingrad:
+            _min=mingrad
+            min_name=name
+        if _max<maxgrad:
+            _max=maxgrad
+            max_name=name
+    print(f"min:{_min} {min_name};;; max:{_max} {max_name}")
+
     optimizer.step()
     optimizer.zero_grad()
     lr_scheduler.step()
@@ -1017,3 +1076,5 @@ def set_seed(seed, torch_deterministic=False):
 
 if __name__ == "__main__":
     main()
+
+# micromamba/envs/train/lib/python3.10/site-packages/kornia/geometry/liegroup/se3.py

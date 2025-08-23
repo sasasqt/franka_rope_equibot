@@ -769,6 +769,7 @@ class SE3VisionNet(ExtendedModule):
             bias=False,
             gate=False,
             input_type_1_feat_is_actually_type_0=False,
+            pc_xyz_feat_as_type_1=False,
             k_neighbours=8,
             amp=False,
             ):
@@ -789,22 +790,40 @@ class SE3VisionNet(ExtendedModule):
                 "0": 1+output_type_1_feat*3, # the weights/heatmap# the global feature
                 #"1": , 
             })
+        
         if input_type_1_feat_is_actually_type_0:
-            if extra_input_type_1_feat>0:
-                fiber_in=Fiber({
-                    "0": 3*input_type_1_feat, # rgb
-                    "1": extra_input_type_1_feat, # tgt_xyz + extras
-                })
+            if pc_xyz_feat_as_type_1:
+                if extra_input_type_1_feat>0:
+                    fiber_in=Fiber({
+                        "0": 3*input_type_1_feat, # rgb
+                        "1": extra_input_type_1_feat+1, # tgt_xyz + extras
+                    })
+
+                else:
+                    fiber_in=Fiber({
+                        "0": 3*input_type_1_feat, # rgb
+                        "1": 1, # tgt_xyz + extras
+                    })
+
             else:
-                fiber_in=Fiber({
-                    "0": 3*input_type_1_feat, # rgb
-                    #"1": extra_input_type_1_feat, # tgt_xyz + extras
-                })
+                if extra_input_type_1_feat>0:
+                    fiber_in=Fiber({
+                        "0": 3*input_type_1_feat, # rgb
+                        "1": extra_input_type_1_feat, # tgt_xyz + extras
+                    })
+
+                else:
+                    fiber_in=Fiber({
+                        "0": 3*input_type_1_feat, # rgb
+                        #"1": extra_input_type_1_feat, # tgt_xyz + extras
+                    })
+
         else:
             fiber_in=Fiber({
                 # "0": 0, # rgb
                 "1": input_type_1_feat+extra_input_type_1_feat, # tgt_xyz + extras
             })
+
         self.weights_net = SE3Backbone(
             fiber_in=fiber_in,
             fiber_out=fiber_out,
@@ -880,6 +899,7 @@ class SE3VisionNet_Hierarchical(ExtendedModule):
             bias=False,
             gate=False,
             input_type_1_feat_is_actually_type_0=False,
+            pc_xyz_feat_as_type_1=False,
             amp=False):
         super().__init__()
         num_degrees= config['num_degrees']
@@ -908,6 +928,7 @@ class SE3VisionNet_Hierarchical(ExtendedModule):
                 bias=bias,
                 gate=gate,
                 input_type_1_feat_is_actually_type_0=input_type_1_feat_is_actually_type_0,
+                pc_xyz_feat_as_type_1=pc_xyz_feat_as_type_1,
                 k_neighbours=i+1 if config['adaptive_knn'] else config['k_neighbours'],
                 amp=amp,
             ))

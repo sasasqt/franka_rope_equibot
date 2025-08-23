@@ -214,7 +214,7 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
 
         pc= prepare_model_input1(nxyz, tgt_nxyz,diff=config['diff'],pc_xyz_feat=config['pc_xyz_feat'])
         latent_pc=nets["pointcloud_encoder"](pc) # b,l,f (l:x*Hp; f:3x)
-
+        print(torch.max(latent_pc).detach().cpu().numpy(),torch.min(latent_pc).detach().cpu().numpy(),"???WTFSFS")
                 
         if config['use_ddpm']:
             # # ddpm, the huggingface diffuser way

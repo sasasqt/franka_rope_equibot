@@ -37,6 +37,7 @@ lr_cycle_scale_factor: 1.0
 robomimic: False
 
 dev:
+  clip: False
   use_ddpm: False
   k_option: 3 # 0 diffusion steps as type 0 scalar; # 1 diffusion steps as type 0 rotation; 2 diffusion steps as type 1 rotation; 3 no k in se3
   diffusion_option: 0 # 0: the default, predict the gt H0;  1: predict relative transformation from Ht to H0; 2: no diffusion, no denoising; 3: no diffusion during inference,early_return will be set to True
@@ -61,6 +62,8 @@ dev:
   testing: 0 #1: prepare_model_input3 instead of prepare_model_input2
   sanity_check: 0 # 1: se3 pc enc + unet;
   pc_xyz_feat: True # use xyz position of pc explicitly as features
+  pc_xyz_feat_as_type_1: False
+  pc_xyz_feat_old: False
   eef_xyz_feat: False # use xyz position of end effector explicitly as features # only works w/ testing
   latent_pc_as_feat: False
   pc_inv: False
