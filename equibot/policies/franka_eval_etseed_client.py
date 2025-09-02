@@ -111,6 +111,7 @@ def main(cfg):
         'sanity_check': cfg.dev.sanity_check,
         'testing': cfg.dev.testing,
         'pc_xyz_feat': cfg.dev.pc_xyz_feat,
+        'pc_xyz_feat_as_type_1':cfg.dev.pc_xyz_feat_as_type_1,
         'eef_xyz_feat': cfg.dev.eef_xyz_feat,
         'latent_pc_as_feat': cfg.dev.latent_pc_as_feat,
         'num_degrees':cfg.dev.num_degrees,
@@ -139,6 +140,7 @@ def main(cfg):
         'snr': cfg.dev.snr,
         'adaptive_knn':cfg.dev.adaptive_knn,
         'amp': cfg.dev.amp,
+        'lrOverwrite': cfg.lrOverwrite,
     }
 
     device = torch.device('cuda')

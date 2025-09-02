@@ -102,6 +102,7 @@ def main(cfg):
         'adaptive_knn':cfg.dev.adaptive_knn,
         'amp': cfg.dev.amp,
         'clip':cfg.dev.clip,
+        'lrOverwrite':cfg.lrOverwrite,
     }
 
     # torch.autograd.set_detect_anomaly(True)
@@ -299,6 +300,7 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
     print(torch.cuda.device_count())
     print(torch.version.cuda)
     loadFromCkpt=config['loadFromCkpt']
+    lrOverwrite=config['lrOverwrite']
     # TODO do not hardcode
     SE3VisionNet_Hierarchical_input_type_1_feat=2 if (config['pc_xyz_feat']) else 1
     if config['robomimic'] and config['pc_xyz_feat_as_type_1']:
@@ -409,7 +411,9 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])  
         lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict']) 
         lr_scheduler.last_epoch = checkpoint['g_step']
-
+        if lrOverwrite:
+            for g in optimizer.param_groups:
+                g['lr'] = float(config["learning_rate"]),
     return nets, optimizer, lr_scheduler
 
 
