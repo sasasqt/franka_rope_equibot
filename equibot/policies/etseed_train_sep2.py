@@ -402,7 +402,7 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
         num_training_steps=config["num_training_steps"],
     )
 
-    if loadFromCkpt:
+    if loadFromCkpt and not lrOverwrite:
         checkpoint = torch.load(config["checkpoint_path"])
         # for key in keys_to_remove:
         #     if key in checkpoint['model_state_dict']:
@@ -411,9 +411,6 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])  
         lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict']) 
         lr_scheduler.last_epoch = checkpoint['g_step']
-        if lrOverwrite:
-            for g in optimizer.param_groups:
-                g['lr'] = float(config["learning_rate"]),
     return nets, optimizer, lr_scheduler
 
 
