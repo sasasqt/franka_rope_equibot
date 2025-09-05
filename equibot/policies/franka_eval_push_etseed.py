@@ -141,7 +141,10 @@ def main(cfg):
         'num_layers': cfg.dev.num_layers,
         'snr': cfg.dev.snr,
         'adaptive_knn':cfg.dev.adaptive_knn,
-        'amp': cfg.dev.amp,    }
+        'amp': cfg.dev.amp,    
+        'lrOverwrite': False,
+        'pc_xyz_feat_old': cfg.dev.pc_xyz_feat_old,
+    }
 
     device = torch.device('cuda')
     if not torch.cuda.is_available():

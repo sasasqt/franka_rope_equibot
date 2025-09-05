@@ -271,7 +271,7 @@ def main(cfg):
             for line in f:
                 data.append(json.loads(line))
                 
-        tgt_pc=data[0]["Isaac Sim Data"][0]["data"]["Target_T"]["Target_pc"]
+        tgt_pc=data[0]["Isaac Sim Data"][0]["data"]["TCube"]["pc"]
 
         degree = random.randint(0, 360)
         random_rotation = R.from_euler('z', degree, degrees=True).as_matrix()
@@ -283,13 +283,13 @@ def main(cfg):
 
         # to mimic saved npz with keys pc, rgb?, action, eef_pos
         for i, _fut in enumerate(data[0]["Isaac Sim Data"]):
-            if not i % 3 == 0:
+            if not i % 2 == 0:
                 continue
             fut = _fut["data"]
             if i == 0:
                 curr = fut
                 if (
-                    curr["Right"]["applied_joint_positions"][-1] < 0.025
+                    curr["Left"]["applied_joint_positions"][-1] < 0.025
                 ):  # 0/-0.3 is closed, ~0.05 is opened
                     gripper_action = 0
                     gripper_pose = 0
@@ -302,18 +302,18 @@ def main(cfg):
             # franka_joints = np.array(
             #     curr["Right"]["Right_joint_positions"]
             # )  # not exposed to the algorithm
-            right_target_world_pos = random_rotation@np.array(
-                curr["Right"]["Right_target_world_position"]
+            left_target_world_pos = random_rotation@np.array(
+                curr["Left"]["Left_target_world_position"]
             )+random_translation  # as-is
-            right_target_world_rot = np.array(
-                curr["Right"]["Right_target_world_orientation"]
+            left_target_world_rot = np.array(
+                curr["Left"]["Left_target_world_orientation"]
             )
-            right_target_world_rot=random_rotation@R.from_quat(right_target_world_rot,scalar_first=True).as_matrix()
+            left_target_world_rot=random_rotation@R.from_quat(left_target_world_rot,scalar_first=True).as_matrix()
 
-            t_pc = np.array(curr["T"]["pc"])  # as pc
+            t_pc = np.array(curr["Cube"]["pc"])  # as pc
             rotated_t_pc=[random_rotation@vector+random_translation for vector in t_pc]
             if (
-                curr["Right"]["applied_joint_positions"][-1] < 0.025
+                curr["Left"]["applied_joint_positions"][-1] < 0.025
             ):  # 0/-0.3 is closed, ~0.05 is opened
                 gripper_action = 0
             else:
@@ -329,8 +329,8 @@ def main(cfg):
             # pc = np.concatenate((pc, np.full((pc.shape[0], 1), gripper_pose)), axis=1)
 
             delta_pos = (
-                random_rotation@np.array(fut["Right"]["Right_target_world_position"])+random_translation
-                - right_target_world_pos
+                random_rotation@np.array(fut["Left"]["Left_target_world_position"])+random_translation
+                - left_target_world_pos
             )
 
             # delta_rot = np.array(
@@ -344,12 +344,12 @@ def main(cfg):
             # ori = q2rmat(delta_rot)
 
             _q= np.array(
-                fut["Right"]["Right_target_world_orientation"]
+                fut["Left"]["Left_target_world_orientation"]
             )
             q1=random_rotation@R.from_quat(_q,scalar_first=True).as_matrix()
             q1=R.from_matrix(q1)
             _q= np.array(
-                curr["Right"]["Right_target_world_orientation"]
+                curr["Left"]["Left_target_world_orientation"]
             )
             q2=random_rotation@R.from_quat(_q,scalar_first=True).as_matrix()
             q2=R.from_matrix(q2)
@@ -385,13 +385,13 @@ def main(cfg):
             # gt=np.array(fut["Right"]["Right_target_world_position"])
             # np.testing.assert_allclose(recalculated-gt, 0, atol=1e-7)
             #ori=R.from_quat(right_target_world_rot,scalar_first=True).as_matrix()
-            ori=right_target_world_rot
+            ori=left_target_world_rot
             ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
             cols = [ori[i, j] for i, j in ori_indices]
             eef_pos = np.array((
-                    right_target_world_pos[0],
-                    right_target_world_pos[1],
-                    right_target_world_pos[2],
+                    left_target_world_pos[0],
+                    left_target_world_pos[1],
+                    left_target_world_pos[2],
                     cols[0],
                     cols[1],
                     cols[2],

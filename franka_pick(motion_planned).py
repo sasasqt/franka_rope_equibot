@@ -383,85 +383,6 @@ class FrankaRope(BaseSample):
     #         scale=[0.05,0.05,0.05]
     #     )
 
-    def _add_tcube(self):
-        stage=self._world.stage
-        _tshape_xform =stage.DefinePrim(f'/World/Extras/TCube', 'Xform')
-
-
-        self._cube_str=cube_str=find_unique_string_name(
-                    initial_name=f"/World/Extras/TCube/TCube", is_unique_fn=lambda x: not is_prim_path_valid(x)
-                )
-
-        prim = stage.DefinePrim(cube_str)
-        prim.GetReferences().AddReference("/home/workstation/project/franka_rope_equibot/cube.usd")
-        prim = stage.DefinePrim(f'{cube_str}/cube')  # BUG inconsistency in isaacsim 4.2.0
-
-        _scale=0.4
-        from omni.isaac.core.prims import XFormPrimView
-        self.pusht_ori=[]
-        # prims = XFormPrimView(prim_paths_expr=f'{cube_str}/cube',name=f'{cube_str}/cube',scales=[[_scale,_scale,_scale]],translations=[[0.15,0.15,0]]) # BUG inconsistency in isaacsim 4.2.0
-        prims = XFormPrimView(prim_paths_expr=f'{cube_str}/cube',name=f'{cube_str}/cube',scales=[[_scale,_scale,_scale]],translations=[[random.uniform(0.05, 0.15),random.uniform(-0.15, 0.15),0]]) # BUG inconsistency in isaacsim 4.2.0
-        # prims = XFormPrimView(prim_paths_expr=f'{cube_str}/cube',name=f'{cube_str}/cube',scales=[[_scale,_scale,_scale]],translations=[[0.1,-0.15,0]]) # ood # BUG inconsistency in isaacsim 4.2.0
-        self._world.scene.add(prims)
-        self._tcube=self._world.scene.get_object(f'{cube_str}/cube')
-
-        from pxr import UsdPhysics
-        massAPI = UsdPhysics.MassAPI.Apply(stage.GetPrimAtPath(f'{cube_str}/cube'))
-        massAPI.CreateMassAttr().Set(0.1) # will mass be auto derivated from createdensityattr? not sure ...
-        
-        from pxr import Sdf
-        import omni.kit.commands
-
-        omni.kit.commands.execute('SetRigidBody',
-            path=Sdf.Path('/World/Extras/TCube/TCube/cube'),
-            kinematic=True)
-
-        # import trimesh
-
-        # mesh = trimesh.load('.obj')
-        # num_points = 40
-        # points, _ = trimesh.sample.sample_surface(mesh, num_points)
-
-        # self._square_mesh=mesh
-
-        mesh=[
-                [0.075*_scale,0.075*_scale,0.075*_scale],
-                [0.075*_scale,0.075*_scale,-0.075*_scale],
-                [0.075*_scale,-0.075*_scale,0.075*_scale],
-                [-0.075*_scale,0.075*_scale,0.075*_scale],
-                [0.075*_scale,-0.075*_scale,-0.075*_scale],
-                [-0.075*_scale,0.075*_scale,-0.075*_scale],
-                [-0.075*_scale,-0.075*_scale,0.075*_scale],
-                [-0.075*_scale,-0.075*_scale,-0.075*_scale],
-                
-            ]
-        pc=[]
-        for i,point in enumerate(mesh):
-            p=np.array(point)
-            pc.append(p.tolist())
-            self._add_tsphere(p,xform="/TSphere",name=f"sphere{i}")
-
-    # def _add_cube(self):
-    #     from omni.isaac.core.objects import DynamicCuboid
-    #     from pxr import UsdPhysics
-
-    #     stage=self._world.stage
-    #     self._tshape_xform=_tshape_xform =stage.DefinePrim(f'/World/Extras/Cube', 'Xform')
-    #     usd_tshape_xform = UsdGeom.Xform(_tshape_xform)
-    #     usd_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0,0,0]))
-    #     usd_tshape_xform.AddRotateXYZOp().Set(Gf.Vec3f([0,0,0]))
-    #     usd_tshape_xform.AddScaleOp().Set(Gf.Vec3f([1,1,1]))
-
-    #     self._cube_str=cube_str=find_unique_string_name(
-    #                 initial_name=f"/World/Extras/Cube/Cube", is_unique_fn=lambda x: not is_prim_path_valid(x)
-    #             )
-        
-    #     self._cube = DynamicCuboid(
-    #         prim_path=cube_str,
-    #         position=[0.0,0.0,0.01],
-    #         color=np.array([1.0, 0.0, 0.0]),
-    #         scale=[0.05,0.05,0.05]
-    #     )
         
 
     def _add_sphere(self,pos,xform="/Xform",name="sphere"):
@@ -484,28 +405,6 @@ class FrankaRope(BaseSample):
 
         self._spheres.append(sphere)
         scene.add(sphere)
-
-    def _add_tsphere(self,pos,xform="/Xform",name="sphere"):
-        scene=self._world.scene
-        if not scene.object_exists(xform):
-            stage=self._world.stage
-            self._sphere_xform=_sphere_xform=stage.DefinePrim(xform, 'Xform')
-            from omni.isaac.core.prims import XFormPrimView
-            prims = XFormPrimView(prim_paths_expr=xform,name=xform)
-            scene.add(prims)
-        
-        from omni.isaac.core.objects import VisualSphere
-        sphere=VisualSphere(
-            prim_path=f'{xform}/{name}',
-            position=pos,
-            color=np.array([1.0, 0.0, 0.0]),
-            radius=0.01,
-            name=f'{xform}/{name}'
-        )
-
-        self._tspheres.append(sphere)
-        scene.add(sphere)
-        
 
     extras={
         'fixed_cylinder': _add_fixed_cylinder,
@@ -547,8 +446,6 @@ class FrankaRope(BaseSample):
         self.pusht_pos=None
         self.pusht_ori=None
         self._spheres=[]
-        self._tspheres=[]
-        
         set_seed(cfg.seed)
 
         if cfg is not None:
@@ -592,10 +489,8 @@ class FrankaRope(BaseSample):
         if self._randomize_on_reset:
             self.pusht_pos=[random.uniform(0.05, 0.15),random.uniform(-0.15, 0.15),0]
             self.pusht_ori=[0,0,random.uniform(-70, 70)]
-            print(f"pusht_pos<<<<>>D>F>DS>FSD>FD>SF")
             quat=np.array([euler_angles_to_quat(self.pusht_ori).tolist()]) # bruh
-            # self._cube.set_world_poses(positions=np.array([self.pusht_pos]),orientations=quat)
-            self._tcube.set_world_poses(positions=np.array([self.pusht_pos]))
+            self._cube.set_world_poses(positions=np.array([self.pusht_pos]),orientations=quat)
             # self._tshape_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(self.pusht_pos)) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
             # self._tshape_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(self.pusht_ori)) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
 
@@ -610,13 +505,7 @@ class FrankaRope(BaseSample):
             position=default.position
             orientation=default.orientation
             sphere.set_world_pose(position=position,orientation=orientation)
-        for sphere in self._tspheres:
-            default=sphere.get_default_state()
-            position=default.position
-            orientation=default.orientation
-            sphere.set_world_pose(position=position,orientation=orientation)
-
-        # self._motion_planning()
+        self._motion_planning()
 
     def world_cleanup(self):
         try:
@@ -737,8 +626,7 @@ class FrankaRope(BaseSample):
         #         self.extras[extra](self)
 
         self._add_cube()
-        self._add_tcube()
-        # self._motion_planning()
+        self._motion_planning()
     # manually reset _task_scene_built to call initialize() in reset(), if task not setted up in seteup_scene
     # world._task_scene_built=False
     # await world.reset_async()
@@ -1270,10 +1158,6 @@ class FrankaRope(BaseSample):
             for i,point in enumerate(data_frame.data["Cube"]["pc"]):
                 p=np.array(point)
                 self._spheres[i].set_world_pose(p)
-            for i,point in enumerate(data_frame.data["TCube"]["pc"]):
-                p=np.array(point)
-                self._tspheres[i].set_world_pose(p)
-                
         else:
             pass
             # TODO find a better to to handle world xform transformation
@@ -1444,11 +1328,6 @@ class FrankaRope(BaseSample):
                     "cube_world_orientation": self._cube.get_world_poses()[1][0].tolist(),
                     "cube_world_scale": self._cube.get_world_poses()[0].tolist(),
                 }
-                dict=_dict["TCube"]={
-                    "cube_world_position": self._tcube.get_world_poses()[0][0].tolist(),
-                    "cube_world_orientation": self._tcube.get_world_poses()[1][0].tolist(),
-                    "cube_world_scale": self._tcube.get_world_poses()[0].tolist(),
-                }
 
                 xform=self._world.scene.get_object("/Sphere")
                 xform.set_world_poses(positions=self._cube.get_world_poses()[0],orientations=self._cube.get_world_poses()[1])
@@ -1460,18 +1339,6 @@ class FrankaRope(BaseSample):
                     pc.append(sphere.get_world_pose()[0].tolist())
                     i+=1
                 _dict["Cube"]["pc"]=pc
-
-
-                xform=self._world.scene.get_object("/TSphere")
-                xform.set_world_poses(positions=self._tcube.get_world_poses()[0],orientations=self._tcube.get_world_poses()[1])
-
-                tpc=[]
-                i=0
-                while scene.object_exists(f'/TSphere/sphere{i}'):
-                    sphere=scene.get_object(f'/TSphere/sphere{i}')
-                    tpc.append(sphere.get_world_pose()[0].tolist())
-                    i+=1
-                _dict["TCube"]["pc"]=tpc
 
                 if extras_fn is not None:
                     _dict["extras"]=extras_fn()
@@ -1818,7 +1685,7 @@ class IsaacUIUtils(ControlFlow):
             await omni.kit.app.get_app().next_update_async()
             await omni.kit.app.get_app().next_update_async()
             
-            # cls._this()
+            cls._this()
 
 
         asyncio.ensure_future(_setUp_async(cls))
@@ -2006,7 +1873,7 @@ class VRUIUtils(ControlFlow):
             world=cls._sample._world
             if (cls.publisher is None):
                 print(">>> INIT SIMPUBLISHER <<< ")
-                cls.publisher = IsaacSimPublisher(host="10.66.229.126", stage=world.stage) # for InteractiveScene
+                cls.publisher = IsaacSimPublisher(host="192.168.96.126", stage=world.stage) # for InteractiveScene
             # THE MetaQuest3 NAME MUST BE THE SAME AS IN THE CSHARP CODE
             if (cls.vr_controller is None):
                 print(">>> INIT META QUEST 3 <<< ")
