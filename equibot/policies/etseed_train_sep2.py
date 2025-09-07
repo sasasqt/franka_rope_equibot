@@ -105,6 +105,7 @@ def main(cfg):
         'lrOverwrite':cfg.lrOverwrite,
         'gripperReg':cfg.dev.gripperReg,
         'gripperMul':cfg.dev.gripperMul,
+        'right_eef_world_pos_as_type_0':cfg.dev.right_eef_world_pos_as_type_0,
         
     }
 
@@ -319,7 +320,7 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
         # action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
         action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,latent_pc_as_feat=config['latent_pc_as_feat'],nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'],gravity=not config['robomimic'],num_layers=config['num_layers'],amp=config['amp'])
     elif config['se3']==1:
-        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'],fused=False,nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'],gravity=not config['robomimic'],num_layers=config['num_layers'],amp=config['amp'])
+        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'],fused=False,nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'],gravity=not config['robomimic'],num_layers=config['num_layers'],amp=config['amp'],right_eef_world_pos_as_type_0=config['right_eef_world_pos_as_type_0'])
         # from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
         # action_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
     else:

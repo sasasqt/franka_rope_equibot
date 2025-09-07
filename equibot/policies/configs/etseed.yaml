@@ -93,7 +93,8 @@ dev:
   amp: False
   gripperReg: False
   gripperMul: 1
-    
+  right_eef_world_pos_as_type_0: False
+  
 training:
   ckpt: null
 
@@ -168,8 +169,8 @@ wandb:
   project: equibot
 
 franka_rope:
-  physics_dt: 1.0/30.0 # 1.0/10.0 for non cube # 1/60
-  rendering_dt: 1.0/30.0 # 1.0/10.0 for non cube # 1/60
+  physics_dt: 1.0/10.0 # 1.0/10.0 for non cube # 1/60
+  rendering_dt: 1.0/10.0 # 1.0/10.0 for non cube # 1/60
   _randomize: False
   _randomize_on_reset: False
   pusht_pos: [0.1,0.1,0] # [0,0,0] or [0.1,0.1,0]
@@ -186,7 +187,7 @@ franka_rope:
   from_demo: null
   start_time: 150
   manually_close: False
-  max_end: 100 #360 # 600
+  max_end: 300 #360 # 600
   seed: 42
   rel: True
   rpy: False

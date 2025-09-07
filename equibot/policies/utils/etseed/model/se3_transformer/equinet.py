@@ -258,6 +258,7 @@ class SE3ManiNet_Fused(ExtendedModule):
             gravity=True,
             num_layers=8,
             amp=False,
+            right_eef_world_pos_as_type_0=False,
             ):
         assert not config==None
         super().__init__()
@@ -275,6 +276,9 @@ class SE3ManiNet_Fused(ExtendedModule):
         type0_cnt=0
         type1_cnt=0
 
+        if right_eef_world_pos_as_type_0:
+            type0_cnt-=3
+            type1_cnt+=1    
         if k1_type_1 and config['k_option']==1:
             type0_cnt+=3
             type1_cnt-=1
