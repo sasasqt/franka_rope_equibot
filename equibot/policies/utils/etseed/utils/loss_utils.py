@@ -40,7 +40,7 @@ def double_geodesic_distance_between_poses(T1, T2, return_both=False):
     else:
         return dist.mean()
         
-def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None,sign_mismatch=True,snr=None,gt_gripper_zero_one=True):
+def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None,sign_mismatch=True,snr=None,gt_gripper_zero_one=True,gripper_reg=False,gripper_mul=1):
     assert ((pred_gripper is None and gt_gripper is None) or (pred_gripper is not None and gt_gripper is not None))
     R_1, t_1 = T1[..., :3, :3], T1[..., :3, 3]
     R_2, t_2 = T2[..., :3, :3], T2[..., :3, 3]
@@ -77,13 +77,17 @@ def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None,sign_mismatch=True,snr
     if pred_gripper is not None:
         if not gt_gripper_zero_one:
             gt_gripper = (gt_gripper + 1) / 2 # [-1,1]->[0,1]
-        criterion = torch.nn.BCEWithLogitsLoss(reduction='none')
-        loss_per_element = criterion(pred_gripper, gt_gripper)  # shape same as input
-
+        
+        if not gripper_reg:
+            criterion = torch.nn.BCEWithLogitsLoss(reduction='none')
+            loss_per_element = criterion(pred_gripper, gt_gripper)  # shape same as input
+        else:
+            dist_g_square = torch.sum((pred_gripper-gt_gripper) ** 2, dim=1)
+            dist_G = torch.sqrt(dist_g_square).mean()
         loss_per_sample = torch.sum(loss_per_element, dim=1) 
         dist_G = loss_per_sample.mean()
         print(f"dist {dist} dist_G {dist_G}")
-        dist=dist+dist_G
+        dist=dist+gripper_mul*dist_G
 
     # if pred_gripper is not None:
     #     dist_g_square = torch.sum((pred_gripper-gt_gripper) ** 2, dim=1)

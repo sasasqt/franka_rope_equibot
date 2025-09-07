@@ -369,7 +369,7 @@ def main(cfg):
                 mat4x4
             )
 
-            _i = i // 3
+            _i = i // 2
             assert not (np.isnan(np.array(pc)).any())
             assert not (np.isnan(np.array(action)).any())
             # recalculated=delta_rot@(R.from_quat(curr["Right"]["Right_target_world_orientation"],scalar_first=True).as_matrix())

@@ -42,7 +42,7 @@ import omegaconf
 import wandb
 
 async def eval_async(config):
-    from .eval_push_etseed_util import EvalUtils
+    from .eval_cube_etseed_util import EvalUtils
     log_dir = os.getcwd()
     await EvalUtils.eval_async(
             config=config,
