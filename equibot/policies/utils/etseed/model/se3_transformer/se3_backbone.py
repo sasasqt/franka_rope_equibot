@@ -249,7 +249,7 @@ class EquivariantNet(ExtendedModule):
 
 
         autocast_ctx = torch.autocast if self.amp else self.dummy_ctx
-        with autocast_ctx(device_type='cuda', dtype=torch.float16):
+        with autocast_ctx(device_type='cuda', dtype=torch.float32):
             xyz = inputs["xyz"]
             feature = inputs["feature"]
             if isinstance(xyz, torch.Tensor):

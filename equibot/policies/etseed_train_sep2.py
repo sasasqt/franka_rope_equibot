@@ -107,7 +107,11 @@ def main(cfg):
         'gripperMul':cfg.dev.gripperMul,
         'right_eef_world_pos_as_type_0':cfg.dev.right_eef_world_pos_as_type_0,
         'gripper':cfg.dev.gripper,
-        'ghead':cfg.dev.ghead,
+        'head':cfg.dev.head,
+        'pose_condition':cfg.dev.pose_condition,
+        'pose_condition_on_gt':cfg.dev.pose_condition_on_gt,
+        'pose_condition_detached':cfg.dev.pose_condition_detached,
+        'denoise_gripper':cfg.dev.denoise_gripper,
     }
 
     # torch.autograd.set_detect_anomaly(True)
@@ -365,17 +369,32 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
             cond_predict_scale=config['unet_film'],
             equivariance=config['unet_equivariance'],
         )
+        extra_g=0
+        if config['head']:
+  
+            if config['pose_condition']:
+                extra_g+=9
+                if config['pose_condition_on_gt']:
+                    pass
+                else:
+                    pass
+            else:
+                pass
 
         ghead=nn.Sequential(# [B, Hp, 1]
-            nn.Linear(20, 64), nn.SiLU(),
+            nn.Linear(10+extra_g, 64), nn.SiLU(),
             nn.Linear(64, 1)
-        )                                                  
+        )
+        ahead=nn.Linear(10, 9)
 
+    nn.init.xavier_uniform_(ahead.weight, gain=0.5) # all zero init cause the se3 to blowup: nan grad
+    nn.init.zeros_(ahead.bias)
     nets = nn.ModuleDict({
         'pointcloud_encoder': pointcloud_encoder,
         'equivariant_pred_net': action_pred_net,
         'unet': unet,
         'ghead': ghead,
+        'ahead': ahead,
     }).to(device)
 
     num_parameters = sum(dict((p.data_ptr(), p.numel()) 
@@ -716,7 +735,7 @@ def prepare_model_input3(nxyz,neefpose, k,num_point,config):
     if config['Ho_in_B']:
         neefpose=neefpose.reshape(B*Ho_num_point,-1).unsqueeze(1)
         # tensor_k=tensor_k.reshape(B*Ho_num_point,-1).unsqueeze(1)
-        # k1=k1.reshape(B*Ho_num_point,-1).unsqueeze(1)
+        # k1=k1.reshape(B*Ho_num_poimodel_inputnt,-1).unsqueeze(1)
         # k2=k2.reshape(B*Ho_num_point,-1).unsqueeze(1)
     nxyz=neefpose[...,0:3]
     col1=neefpose[...,3:6]
@@ -957,8 +976,10 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
                 # [B,Ho,4,4]
 
                 gripper_noise = torch.randn(gt_gripper_action.shape, device=device)
-                noisy_gripper = gripper_noise_scheduler.add_noise(gt_gripper_action, gripper_noise, k)
-
+                if config['denoise_gripper']:
+                    noisy_gripper = gripper_noise_scheduler.add_noise(gt_gripper_action, gripper_noise, k)
+                else:
+                    noisy_gripper=torch.zeros((noisy_actions.shape[0],noisy_actions.shape[1] , 1), dtype=torch.float32, device="cuda")
                 ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
                 selected_ori_actions = [noisy_actions[:, :, i, j] for i, j in ori_indices]
                 trans_indices = [(0, 3), (1, 3), (2, 3)]
@@ -993,8 +1014,30 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             raise NotImplementedError
 
         unet_output= nets['unet'](unet_input, k, global_cond=global_cond,local_cond=local_cond)
-        if config['ghead']:
-            g_out=nets['ghead'](unet_output)
+        if config['head']:
+            m_feat=nets['ahead'](unet_output)
+
+            a_feat = None
+            if config['pose_condition']:
+                if config['pose_condition_on_gt']:
+                    ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
+                    selected_ori_actions = [naction[:, :, i, j] for i, j in ori_indices]
+                    trans_indices = [(0, 3), (1, 3), (2, 3)]
+                    selected_trans_actions = [naction[:, :, i, j] for i, j in trans_indices]
+                    ori_actions = torch.stack(selected_ori_actions, dim=-1)
+                    trans_actions = torch.stack(selected_trans_actions, dim=-1)
+                    a_feat=torch.cat((ori_actions,trans_actions),dim=-1) # [B,Hp,9]
+                    a_feat=a_feat.detach()
+                else:
+                    a_feat = m_feat
+
+                if config['pose_condition_detached']:
+                    a_feat = a_feat.detach()
+                g_in=torch.cat((unet_output, a_feat),dim=-1)
+            else:
+                g_in=unet_output
+            g_out=nets['ghead'](g_in)
+            unet_output=m_feat
 
         if config['use_ddpm']:
             # raise NotImplementedError
@@ -1020,7 +1063,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             reconstructed_pos=unet_output[...,6:9].reshape(-1,3)
             reconstructed_unet_output=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
             reconstructed_gripper_action=unet_output[...,9:10]
-            if config['ghead']:
+            if config['head']:
                 reconstructed_gripper_action=g_out
             reconstructed_ori=target[...,0:6].reshape(-1,6)
             reconstructed_pos=target[...,6:9].reshape(-1,3)
@@ -1038,7 +1081,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
                 output_pos=unet_output[...,6:9].reshape(-1,3)
                 final_action=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
                 output_gripper_action=unet_output[...,9:10]
-                if config['ghead']:
+                if config['head']:
                     output_gripper_action=g_out
             # Options
             if config['predict_h0']:

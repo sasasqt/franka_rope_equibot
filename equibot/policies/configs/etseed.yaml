@@ -96,7 +96,12 @@ dev:
   gripperMul: 1
   right_eef_world_pos_as_type_0: False
   gripper: True
-  ghead: False
+  head: False
+  pose_condition: False
+  pose_condition_on_gt: True
+  pose_condition_detached: True
+  denoise_gripper: True
+  normalize: False
 training:
   ckpt: null
 
