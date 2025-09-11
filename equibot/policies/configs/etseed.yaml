@@ -96,7 +96,7 @@ dev:
   gripperMul: 1
   right_eef_world_pos_as_type_0: False
   gripper: True
-  
+  ghead: False
 training:
   ckpt: null
 

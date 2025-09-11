@@ -1,4 +1,4 @@
-import os
+import os, re
 import numpy as np
 import torch
 import time
@@ -107,6 +107,7 @@ def main(cfg):
         'gripperMul':cfg.dev.gripperMul,
         'right_eef_world_pos_as_type_0':cfg.dev.right_eef_world_pos_as_type_0,
         'gripper':cfg.dev.gripper,
+        'ghead':cfg.dev.ghead,
     }
 
     # torch.autograd.set_detect_anomaly(True)
@@ -356,7 +357,7 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
         else: 
             raise NotImplementedError
         
-        unet = ConditionalUnet1D(
+        unet = ConditionalUnet1D(# [B, Hp, 10]
             input_dim=10, #cat: ori, pos, gripper o/c
             diffusion_step_embed_dim=diffusion_step_embed_dim,
             global_cond_dim=global_cond_dim,
@@ -365,10 +366,16 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
             equivariance=config['unet_equivariance'],
         )
 
+        ghead=nn.Sequential(# [B, Hp, 1]
+            nn.Linear(20, 64), nn.SiLU(),
+            nn.Linear(64, 1)
+        )                                                  
+
     nets = nn.ModuleDict({
         'pointcloud_encoder': pointcloud_encoder,
         'equivariant_pred_net': action_pred_net,
         'unet': unet,
+        'ghead': ghead,
     }).to(device)
 
     num_parameters = sum(dict((p.data_ptr(), p.numel()) 
@@ -406,9 +413,73 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
         num_training_steps=config["num_training_steps"],
     )
 
+    def load_state_best_effort(
+        model,
+        checkpoint_dict,
+        key="model_state_dict",
+        strip_prefixes=("module.", "model."),
+        allow_partial_slices=False,
+        device="cuda",
+    ):
+        sd = checkpoint_dict.get(key, checkpoint_dict)
+
+        def strip(k):
+            for p in strip_prefixes:
+                if k.startswith(p):
+                    return k[len(p):]
+            return k
+        sd = {strip(k): v.to(device) if isinstance(v, torch.Tensor) else v for k, v in sd.items()}
+
+        # 3) keep only keys present in the current model; handle shape mismatches
+        model_sd = model.state_dict()
+        loadable = {}
+        matched, mismatched, unexpected = [], [], []
+
+        for k, v in sd.items():
+            if k not in model_sd:
+                unexpected.append(k)
+                continue
+            tgt = model_sd[k]
+            if isinstance(v, torch.Tensor) and v.shape == tgt.shape:
+                loadable[k] = v
+                matched.append(k)
+            elif allow_partial_slices and isinstance(v, torch.Tensor) and v.dim() == tgt.dim():
+                # copy overlapping slice (use only if you *want* this behavior)
+                sl = tuple(slice(0, min(a, b)) for a, b in zip(v.shape, tgt.shape))
+                tmp = tgt.clone()
+                tmp[sl] = v[sl]
+                loadable[k] = tmp
+                mismatched.append((k, tuple(v.shape), tuple(tgt.shape)))
+            else:
+                mismatched.append((k, tuple(v.shape), tuple(tgt.shape)))
+
+        res = model.load_state_dict(loadable, strict=False)
+
+        print(f"[best-effort] matched={len(matched)} | mismatched={len(mismatched)} "
+            f"| missing_in_ckpt={len([k for k in model_sd if k not in sd])} "
+            f"| unexpected_in_ckpt={len(unexpected)}")
+        if mismatched[:5]:
+            for k, s1, s2 in mismatched[:5]:
+                print(f"  - shape mismatch: {k}: ckpt{s1} vs model{s2}")
+        if res.missing_keys[:5]:
+            print("  - missing_keys:", res.missing_keys[:5])
+        if res.unexpected_keys[:5]:
+            print("  - unexpected_keys:", res.unexpected_keys[:5])
+
+        return res
+
+
     if loadFromCkpt:
         checkpoint = torch.load(config["checkpoint_path"])
-        nets.load_state_dict(checkpoint['model_state_dict'])
+        # nets.load_state_dict(checkpoint['model_state_dict'])
+        _ = load_state_best_effort(
+                nets,
+                checkpoint,
+                key="model_state_dict",     # change if your ckpt uses a different key (e.g., "state_dict")
+                strip_prefixes=("module.", "model."),
+                allow_partial_slices=False, # set True only if you intend overlapping copies
+                device="cuda",
+            )
         # for key in keys_to_remove:
         #     if key in checkpoint['model_state_dict']:
         #         del checkpoint['model_state_dict'][key]
@@ -922,6 +993,8 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             raise NotImplementedError
 
         unet_output= nets['unet'](unet_input, k, global_cond=global_cond,local_cond=local_cond)
+        if config['ghead']:
+            g_out=nets['ghead'](unet_output)
 
         if config['use_ddpm']:
             # raise NotImplementedError
@@ -947,6 +1020,8 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             reconstructed_pos=unet_output[...,6:9].reshape(-1,3)
             reconstructed_unet_output=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
             reconstructed_gripper_action=unet_output[...,9:10]
+            if config['ghead']:
+                reconstructed_gripper_action=g_out
             reconstructed_ori=target[...,0:6].reshape(-1,6)
             reconstructed_pos=target[...,6:9].reshape(-1,3)
             reconstructed_target=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
@@ -963,6 +1038,8 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
                 output_pos=unet_output[...,6:9].reshape(-1,3)
                 final_action=process_action(output_ori, output_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
                 output_gripper_action=unet_output[...,9:10]
+                if config['ghead']:
+                    output_gripper_action=g_out
             # Options
             if config['predict_h0']:
                 target=naction
