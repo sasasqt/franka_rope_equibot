@@ -106,7 +106,7 @@ def main(cfg):
         'gripperReg':cfg.dev.gripperReg,
         'gripperMul':cfg.dev.gripperMul,
         'right_eef_world_pos_as_type_0':cfg.dev.right_eef_world_pos_as_type_0,
-        
+        'gripper':cfg.dev.gripper,
     }
 
     # torch.autograd.set_detect_anomaly(True)
@@ -950,7 +950,11 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             reconstructed_ori=target[...,0:6].reshape(-1,6)
             reconstructed_pos=target[...,6:9].reshape(-1,3)
             reconstructed_target=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
-            _, dist_r, dist_t,dist_g = compute_loss(reconstructed_unet_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4),reconstructed_gripper_action,gt_gripper_action,snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],gripper_mul=config['gripperMul'])  
+            if config['gripper']:
+                _, dist_r, dist_t,dist_g = compute_loss(reconstructed_unet_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4),reconstructed_gripper_action,gt_gripper_action,snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],gripper_mul=config['gripperMul'])  
+            else:
+                _, dist_r, dist_t,dist_g = compute_loss(reconstructed_unet_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4),None,None,snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],gripper_mul=config['gripperMul'])  
+            
             # if dist_g is not None:
             #     loss=loss+dist_g
         else:

@@ -146,6 +146,7 @@ def main(cfg):
         'lrOverwrite': False,
         'pc_xyz_feat_old': cfg.dev.pc_xyz_feat_old,
         'right_eef_world_pos_as_type_0':cfg.dev.right_eef_world_pos_as_type_0,
+        'ddpmDenoise':cfg.ddpmDenoise,
 
     }
 

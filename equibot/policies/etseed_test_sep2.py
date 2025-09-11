@@ -329,6 +329,11 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
         else:    
             gripper_noise_scheduler.set_timesteps(num_inference_steps=config['diffusion_steps'],device=device)
 
+            if config['ddpmDenoise']:
+                denoise_fn=noise_scheduler.ddpm_denoise
+            else:
+                denoise_fn=noise_scheduler.ddim_denoise
+                
             # predict action instead of noise might due to https://github.com/lucidrains/denoising-diffusion-pytorch/issues/58#issuecomment-2676085515
             # but why does the predicted action at denoise_idx=num_steps already good, if not the best action?
             for denoise_idx in range(config['diffusion_steps'] - 1, 0, -1):
@@ -443,7 +448,7 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                 if config['diffusion_option']==0:
                     # 0: the default, predict the gt H0
                     reconstructed_H_0 = action
-                    noisy_actions,noise = noise_scheduler.ddpm_denoise(
+                    noisy_actions,noise = denoise_fn(
                         reconstructed_H_0=reconstructed_H_0,
                         timestep = k,
                         sample = noisy_actions,
@@ -454,7 +459,7 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                 elif config['diffusion_option']==1:
                     # 1: predict relative transformation from Ht to H0
                     reconstructed_H_0 = torch.einsum('bhij,bhjk->bhjk',action,noisy_actions)
-                    noisy_actions = noise_scheduler.ddpm_denoise(
+                    noisy_actions = denoise_fn(
                         reconstructed_H_0=reconstructed_H_0,
                         timestep = k,
                         sample = noisy_actions,

@@ -36,6 +36,7 @@ diffusion_mode: squaredcos_cap_v2
 loadFromCkpt: True
 lr_cycle_scale_factor: 1.0
 robomimic: False
+ddpmDenoise: True
 
 dev:
   clip: False
@@ -94,6 +95,7 @@ dev:
   gripperReg: False
   gripperMul: 1
   right_eef_world_pos_as_type_0: False
+  gripper: True
   
 training:
   ckpt: null
@@ -169,8 +171,8 @@ wandb:
   project: equibot
 
 franka_rope:
-  physics_dt: 1.0/10.0 # 1.0/10.0 for non cube # 1/60
-  rendering_dt: 1.0/10.0 # 1.0/10.0 for non cube # 1/60
+  physics_dt: 1.0/30.0 # 1.0/10.0 for non cube # 1/60
+  rendering_dt: 1.0/30.0 # 1.0/10.0 for non cube # 1/60
   _randomize: False
   _randomize_on_reset: False
   pusht_pos: [0.1,0.1,0] # [0,0,0] or [0.1,0.1,0]
