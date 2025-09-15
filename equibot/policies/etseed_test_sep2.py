@@ -71,6 +71,11 @@ def main(cfg):
         'snr': cfg.dev.snr,
         'adaptive_knn':cfg.dev.adaptive_knn,
         'amp': cfg.dev.amp,
+        'head':cfg.dev.head,
+        'pose_condition':cfg.dev.pose_condition,
+        'pose_condition_on_gt':cfg.dev.pose_condition_on_gt,
+        'pose_condition_detached':cfg.dev.pose_condition_detached,
+        'denoise_gripper':cfg.dev.denoise_gripper,
     }
 
     assert config["mode"] == "eval"
@@ -206,7 +211,8 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
             noisy_actions, noise=noise_scheduler.add_noise(H_Identity, k, device=device,no_noise=config['no_noise'])
         gripper_noise = torch.randn((bz,hp,1), device=device)
         noisy_gripper = gripper_noise # gripper_noise_scheduler.add_noise(gt_gripper_action, gripper_noise, k)
-
+        if not config['denoise_gripper']:
+            noisy_gripper= torch.zeros((noisy_actions.shape[0],noisy_actions.shape[1] , 1), dtype=torch.float32, device="cuda")
         if os.name == 'nt': # mock actions on windows 
             #actions=prepare_model_output(noisy_actions)
             return noisy_actions
@@ -281,12 +287,14 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                     #noisy_actions = noise_scheduler.step(model_output.view(model_output.shape[0],model_output.shape[1],4,4), denoise_idx, noisy_actions).prev_sample      
                     noisy_actions = noise_scheduler.step(output_ori_pos, denoise_idx, noisy_actions).prev_sample      
                     noisy_gripper = gripper_noise_scheduler.step(output_gripper_action, denoise_idx, output_gripper_action).prev_sample      
-
+                    if not config['denoise_gripper']:
+                        pass
                 else:
                     #noisy_actions = noise_scheduler.step(model_output.view(model_output.shape[0],model_output.shape[1],4,4), denoise_idx, noisy_actions).pred_original_sample
                     noisy_actions = noise_scheduler.step(output_ori_pos, denoise_idx, noisy_actions).pred_original_sample
                     noisy_gripper = gripper_noise_scheduler.step(output_gripper_action, denoise_idx, output_gripper_action).pred_original_sample      
-
+                    if not config['denoise_gripper']:
+                        pass
 
                 # rot=noisy_actions.reshape(-1,4,4)[...,:3,:3]
                 # print(torch.det(rot),'AAAAAAAAAAA')
@@ -433,7 +441,30 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                     raise NotImplementedError
          
                 unet_output= nets['unet'](unet_input, k, global_cond=global_cond,local_cond=local_cond)
+                if config['head']:
+                    m_feat=nets['ahead'](unet_output)
 
+                    a_feat = None
+                    if config['pose_condition']:
+                        if config['pose_condition_on_gt']:
+                            ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
+                            selected_ori_actions = [noisy_actions[:, :, i, j] for i, j in ori_indices]
+                            trans_indices = [(0, 3), (1, 3), (2, 3)]
+                            selected_trans_actions = [noisy_actions[:, :, i, j] for i, j in trans_indices]
+                            ori_actions = torch.stack(selected_ori_actions, dim=-1)
+                            trans_actions = torch.stack(selected_trans_actions, dim=-1)
+                            a_feat=torch.cat((ori_actions,trans_actions),dim=-1) # [B,Hp,9]
+                            # a_feat=a_feat.detach()
+                        else:
+                            a_feat = m_feat
+
+                        if config['pose_condition_detached']:
+                            a_feat = a_feat.detach()
+                        g_in=torch.cat((unet_output, a_feat),dim=-1)
+                    else:
+                        g_in=unet_output
+                    g_out=nets['ghead'](g_in)
+                    unet_output=m_feat
 
 
                 output_ori=unet_output[...,0:6].reshape(-1,6)
@@ -442,8 +473,13 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                 
                     
                 output_gripper_action=unet_output[...,9:10]
-                noisy_gripper = gripper_noise_scheduler.step(output_gripper_action, denoise_idx, output_gripper_action).prev_sample      
-
+                if config['head']:
+                    output_gripper_action=g_out
+                
+                if config['denoise_gripper']:
+                    noisy_gripper = gripper_noise_scheduler.step(output_gripper_action, denoise_idx, output_gripper_action).prev_sample      
+                else:
+                    noisy_gripper=output_gripper_action
                 # Options
                 if config['diffusion_option']==0:
                     # 0: the default, predict the gt H0
@@ -512,7 +548,7 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
                     # else:
                     #     wandb.log({"test_dist_R_in": dist_invar_r},step=g_step)
                     #     wandb.log({"test_dist_T_in": dist_invar_t},step=g_step)
-
+            
                 if config['early_return'] and (config['diffusion_steps'] -denoise_idx >config['early_return_after']):
                     break
 

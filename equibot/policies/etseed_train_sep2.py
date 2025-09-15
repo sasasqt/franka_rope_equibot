@@ -112,6 +112,7 @@ def main(cfg):
         'pose_condition_on_gt':cfg.dev.pose_condition_on_gt,
         'pose_condition_detached':cfg.dev.pose_condition_detached,
         'denoise_gripper':cfg.dev.denoise_gripper,
+        'old_net': cfg.dev.old_net,
     }
 
     # torch.autograd.set_detect_anomaly(True)
@@ -387,15 +388,22 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
         )
         ahead=nn.Linear(10, 9)
 
-    nn.init.xavier_uniform_(ahead.weight, gain=0.5) # all zero init cause the se3 to blowup: nan grad
-    nn.init.zeros_(ahead.bias)
-    nets = nn.ModuleDict({
-        'pointcloud_encoder': pointcloud_encoder,
-        'equivariant_pred_net': action_pred_net,
-        'unet': unet,
-        'ghead': ghead,
-        'ahead': ahead,
-    }).to(device)
+        nn.init.xavier_uniform_(ahead.weight, gain=0.5) # all zero init cause the se3 to blowup: nan grad
+        nn.init.zeros_(ahead.bias)
+        if not config['old_net']:
+            nets = nn.ModuleDict({
+                'pointcloud_encoder': pointcloud_encoder,
+                'equivariant_pred_net': action_pred_net,
+                'unet': unet,
+                'ghead': ghead,
+                'ahead': ahead,
+            }).to(device)
+        else:
+            nets = nn.ModuleDict({
+                'pointcloud_encoder': pointcloud_encoder,
+                'equivariant_pred_net': action_pred_net,
+                'unet': unet,
+            }).to(device)            
 
     num_parameters = sum(dict((p.data_ptr(), p.numel()) 
                     for p in nets.parameters()).values())
@@ -979,7 +987,8 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
                 if config['denoise_gripper']:
                     noisy_gripper = gripper_noise_scheduler.add_noise(gt_gripper_action, gripper_noise, k)
                 else:
-                    noisy_gripper=torch.zeros((noisy_actions.shape[0],noisy_actions.shape[1] , 1), dtype=torch.float32, device="cuda")
+                    # TODO should we use gt insetead?
+                    noisy_gripper= torch.zeros((noisy_actions.shape[0],noisy_actions.shape[1] , 1), dtype=torch.float32, device="cuda")
                 ori_indices = [(0, 0), (1,0), (2,0), (0, 1), (1,1), (2,1)] # first two cols
                 selected_ori_actions = [noisy_actions[:, :, i, j] for i, j in ori_indices]
                 trans_indices = [(0, 3), (1, 3), (2, 3)]
@@ -1027,7 +1036,7 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
                     ori_actions = torch.stack(selected_ori_actions, dim=-1)
                     trans_actions = torch.stack(selected_trans_actions, dim=-1)
                     a_feat=torch.cat((ori_actions,trans_actions),dim=-1) # [B,Hp,9]
-                    a_feat=a_feat.detach()
+                    # a_feat=a_feat.detach()
                 else:
                     a_feat = m_feat
 
@@ -1091,10 +1100,10 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             if config['diffusion_option']==0 or config['diffusion_option']==2:
                 # 0: the default, predict the gt H0
                 # see algorithm 1, but no more naction @torch.inverse(noisy_actions)
-                loss, dist_r, dist_t, dist_g = compute_loss(final_action.reshape(-1,4,4),(target ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'],snr=snr,gt_gripper_zero_one=not config['robomimic'])  
+                loss, dist_r, dist_t, dist_g = compute_loss(final_action.reshape(-1,4,4),(target ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'],snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],gripper_mul=config['gripperMul'])  
             elif config['diffusion_option']==1:
                 # 1: predict relative transformation from Ht to H0
-                loss, dist_r, dist_t, dist_g = compute_loss(torch.einsum('bhij,bhjk->bhjk',final_action,noisy_actions).reshape(-1,4,4),(target ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'],snr=snr,gt_gripper_zero_one=not config['robomimic'])  
+                loss, dist_r, dist_t, dist_g = compute_loss(torch.einsum('bhij,bhjk->bhjk',final_action,noisy_actions).reshape(-1,4,4),(target ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'],snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],gripper_mul=config['gripperMul'])  
             else:
                 raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 

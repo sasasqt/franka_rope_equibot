@@ -81,11 +81,11 @@ def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None,sign_mismatch=True,snr
         if not gripper_reg:
             criterion = torch.nn.BCEWithLogitsLoss(reduction='none')
             loss_per_element = criterion(pred_gripper, gt_gripper)  # shape same as input
+            loss_per_sample = torch.sum(loss_per_element, dim=1) 
+            dist_G = loss_per_sample.mean()
         else:
             dist_g_square = torch.sum((pred_gripper-gt_gripper) ** 2, dim=1)
             dist_G = torch.sqrt(dist_g_square).mean()
-        loss_per_sample = torch.sum(loss_per_element, dim=1) 
-        dist_G = loss_per_sample.mean()
         print(f"dist {dist} dist_G {dist_G}")
         dist=dist+gripper_mul*dist_G
 

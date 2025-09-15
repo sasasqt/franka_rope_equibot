@@ -102,6 +102,7 @@ dev:
   pose_condition_detached: True
   denoise_gripper: True
   normalize: False
+  old_net: False
 training:
   ckpt: null
 
@@ -202,6 +203,7 @@ franka_rope:
   cap: null # delta pos per seconds, depends on fps, # 0.1
   cup: null # min speed
   update_ori: True
+  gripperReg: ${dev.gripperReg}
   preprocess:
     input_dir: r"C:\Users\Shadow\project\franka_rope\demos\02_train"
     output_dir: r"C:\Users\Shadow\project\franka_data\tmp"

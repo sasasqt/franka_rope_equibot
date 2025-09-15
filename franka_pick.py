@@ -820,26 +820,26 @@ class FrankaRope(BaseSample):
             # (0,  True,  0.        ,  0.04      , 1, 3.40282347e+38, 7.19999981e+00, 1.00000000e+04, 1.000000e+03)
             # (0,  True,  0.        ,  0.04      , 1, 3.40282347e+38, 3.40282347e+38, 0.00000000e+00, 0.000000e+00)]
 
-            maxEffort = robot._articulation_view.get_max_efforts() # [[1.0000000e+05 1.0000000e+05 1.0000000e+05 1.0000000e+05 1.0000000e+05  1.0000000e+05 1.0000000e+05 7.1999998e+00 3.4028235e+38]]
-            maxEffort[0,-1]=maxEffort[0,-2]
-            robot._articulation_view.set_max_efforts(maxEffort)
-            stiffnesses, dampings = robot._articulation_view.get_gains()
-            stiffnesses[0,-1]=stiffnesses[0,-2]
-            dampings[0,-1]=dampings[0,-2]
-            robot._articulation_view.set_gains(kps=stiffnesses, kds=dampings)
+            # maxEffort = robot._articulation_view.get_max_efforts() # [[1.0000000e+05 1.0000000e+05 1.0000000e+05 1.0000000e+05 1.0000000e+05  1.0000000e+05 1.0000000e+05 7.1999998e+00 3.4028235e+38]]
+            # maxEffort[0,-1]=maxEffort[0,-2]
+            # robot._articulation_view.set_max_efforts(maxEffort)
+            # stiffnesses, dampings = robot._articulation_view.get_gains()
+            # stiffnesses[0,-1]=stiffnesses[0,-2]
+            # dampings[0,-1]=dampings[0,-2]
+            # robot._articulation_view.set_gains(kps=stiffnesses, kds=dampings)
 
-            # print(robot.dof_properties)
-            # print(robot.dof_properties.dtype.names)
-            # print(robot.dof_properties)
-            # print(robot.dof_names)
+            # # print(robot.dof_properties)
+            # # print(robot.dof_properties.dtype.names)
+            # # print(robot.dof_properties)
+            # # print(robot.dof_names)
 
-            # for rmpflow forward() or ik
-            _robot_dof=robot.num_dof
-            # In radians/s, or stage_units/s
-            max_vel = np.zeros(_robot_dof) + 1.0
-            max_vel[_robot_dof-1]=None # dont limit gripper
-            max_vel[_robot_dof-2]=None # dont limit gripper
-            robot._articulation_view.set_max_joint_velocities(max_vel)
+            # # for rmpflow forward() or ik
+            # _robot_dof=robot.num_dof
+            # # In radians/s, or stage_units/s
+            # max_vel = np.zeros(_robot_dof) + 1.0
+            # max_vel[_robot_dof-1]=None # dont limit gripper
+            # max_vel[_robot_dof-2]=None # dont limit gripper
+            # robot._articulation_view.set_max_joint_velocities(max_vel)
 
             # import omni
             # import omni.usd
