@@ -838,13 +838,20 @@ def prepare_model_output(actions):
 # Train a single batch of data
 def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx, device,gripper_noise_scheduler=None,config=None):
     global g_step
+
+    # # 1) Freeze backbone
+    # for m in [nets['pointcloud_encoder'],nets['equivariant_pred_net'],nets['unet'], nets['ahead']]:
+    #     for p in m.parameters(): p.requires_grad_(False)
+    # nets['ghead'].train();  # ensure train mode
+
     g_step+=1
     nets.train()
     nxyz = nbatch['pc'][:, :, :, :3].to(device) # [B,Ho,num_pts,3]
     tgt_nxyz = nbatch['pc'][:, :, :, 3:6].to(device)
     naction = nbatch['action'].to(device) # [B,Hp,4by4]
-    gt_gripper_action=naction[...,-1].unsqueeze(-1) # [B,Hp,1] # 0=close 1=open
+    gt_gripper_action=naction[...,-1].unsqueeze(-1).clone()  # [B,Hp,1] # 0=close 1=open
     naction[...,-1]=1
+
     neefpose = nbatch['eef_pos'].to(device) # ([B, Ho, num_eef, pose gripper action etc])
     
     bz = nxyz.shape[0]
@@ -1081,7 +1088,6 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
                 _, dist_r, dist_t,dist_g = compute_loss(reconstructed_unet_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4),reconstructed_gripper_action,gt_gripper_action,snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],gripper_mul=config['gripperMul'])  
             else:
                 _, dist_r, dist_t,dist_g = compute_loss(reconstructed_unet_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4),None,None,snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],gripper_mul=config['gripperMul'])  
-            
             # if dist_g is not None:
             #     loss=loss+dist_g
         else:
@@ -1107,6 +1113,14 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             else:
                 raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 
+
+            if not config['gripperReg']:
+                p = torch.sigmoid(output_gripper_action).detach()
+            else:
+                p = (output_gripper_action).detach()
+
+            print("post-train p.mean=", p.mean().item())
+            print("train BCE=", float(dist_g))
     if config['gate']:
         _losses=[m.matched_loss() for key in nets.keys() for m in nets[key].modules() if hasattr(m, "matched_loss") and m.matched_loss() is not None]
         penalty_loss=sum(_losses)/len(_losses)

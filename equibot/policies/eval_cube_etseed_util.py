@@ -1055,11 +1055,12 @@ def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,upda
         _gripper=agent_ac[3][3]
     if _gripper < 0.5:
         gripper.close()
-        print(f"{torch.sigmoid(agent_ac[3][3])} gripper is closing")
+        print(f"{_gripper} gripper is closing")
     else:
         gripper.open()
-        print(f"{torch.sigmoid(agent_ac[3][3])} gripper is opening")
+        print(f"{_gripper} gripper is opening")
 
+    # gripper.close()
     print(f"{_gripper} gripper is ?????")
 
 
