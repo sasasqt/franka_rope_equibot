@@ -259,13 +259,14 @@ class SE3ManiNet_Fused(ExtendedModule):
             num_layers=8,
             amp=False,
             right_eef_world_pos_as_type_0=False,
+            sep_gripper=False,
             ):
         assert not config==None
         super().__init__()
         self.pred_horizon=pred_horizon
         self.config=config
         self.fused=fused
-
+        self.sep_gripper=sep_gripper
         num_degrees= config['num_degrees']
         num_channels= config['num_channels']
         num_heads= config['num_heads']
@@ -372,6 +373,30 @@ class SE3ManiNet_Fused(ExtendedModule):
                 amp=amp,
             )
         else:
+            if sep_gripper:
+                self.gripper_net=SE3Backbone(
+                fiber_in=Fiber({
+                    "0": num_fib_in[0], 
+                    "1": num_fib_in[1], 
+                }),
+                fiber_out=Fiber({
+                    "0": (1)*pred_horizon, # gripper open(1)/close(0)
+                }),
+                num_layers=num_layers,
+                num_degrees= num_degrees,
+                num_channels= num_channels,
+                num_heads= num_heads,
+                channels_div= channels_div,
+                voxelize = voxelize,
+                k_neighbours=k_neighbours,
+                compute_gradients=config['sh_basis_compute_gradients'],
+                low_memory=config['low_memory'],
+                nonlinear=nonlinear,
+                bias=bias,
+                gate=gate,
+                amp=amp,
+            )
+
             self.ori_net=SE3Backbone(
                 fiber_in=Fiber({
                     "0": num_fib_in[0], 
@@ -499,12 +524,15 @@ class SE3ManiNet_Fused(ExtendedModule):
         else:
             ori_net_features = self.ori_net(inputs)["feature"]
             pos_net_features = self.pos_net(inputs)["feature"]
-
+            if self.sep_gripper:
+                gripper_net_features=self.gripper_net(inputs)["feature"]
             if Ho_in_B:
                 bs=bs//num_point
                 assert bs*num_point==inputs["xyz"].shape[0]
                 ori_net_features=torch.stack(ori_net_features, dim=0).view(bs,num_point,-1)
                 pos_net_features=torch.stack(pos_net_features, dim=0).view(bs,num_point,-1)
+                if self.sep_gripper:
+                    gripper_net_features=torch.stack(gripper_net_features, dim=0).view(bs,num_point,-1)
 
             # ori "0": (6+1)*pred_horizon, # 2 cols of rotation + magnitude of offset + weights of each rot cand.
 
@@ -544,6 +572,11 @@ class SE3ManiNet_Fused(ExtendedModule):
                 batchi_type0_feature=batchi_type0_feature.view(batchi_type0_feature.shape[0],self.pred_horizon,-1)
                 trans_mag_feature=batchi_type0_feature[:, :, 0:1]
                 gripper_feature=batchi_type0_feature[:, :, 1:2]
+                if self.sep_gripper:
+                    gripper_feature=gripper_net_features[i].view(batchi_type0_feature.shape[0],self.pred_horizon,-1)
+                    gripper_feature=gripper_feature[:, :, 0:1]
+                else:
+                    gripper_feature=batchi_type0_feature[:, :, 1:2]
                 gripper_feature=torch.mean(gripper_feature, dim=0) # [Hp, 1]
 
                 batchi_type1_feature = pos_net_features[i][:,(1+1)*self.pred_horizon:(1+1)*self.pred_horizon+3*(1)*self.pred_horizon] # [Ho*num_point, Hp*3]

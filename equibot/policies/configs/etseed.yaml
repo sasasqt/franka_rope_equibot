@@ -103,6 +103,7 @@ dev:
   denoise_gripper: True
   normalize: False
   old_net: False
+  sep_gripper: False
 training:
   ckpt: null
 

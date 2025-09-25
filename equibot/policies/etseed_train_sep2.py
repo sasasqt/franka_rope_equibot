@@ -113,6 +113,7 @@ def main(cfg):
         'pose_condition_detached':cfg.dev.pose_condition_detached,
         'denoise_gripper':cfg.dev.denoise_gripper,
         'old_net': cfg.dev.old_net,
+        'sep_gripper': cfg.dev.sep_gripper,
     }
 
     # torch.autograd.set_detect_anomaly(True)
@@ -324,9 +325,9 @@ def init_model_and_optimizer(device,config,isNotTrain=False):
     pointcloud_encoder = SE3VisionNet_Hierarchical(hierarchy_layers=hierarchy_layers,input_type_1_feat=SE3VisionNet_Hierarchical_input_type_1_feat,output_type_1_feat=3,config=config,nonlinear=config['nonlinear'],input_type_1_feat_is_actually_type_0=config['robomimic'],pc_xyz_feat_as_type_1=config['pc_xyz_feat'] and config['pc_xyz_feat_as_type_1'],amp=config['amp'])
     if config['se3']==0:
         # action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
-        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,latent_pc_as_feat=config['latent_pc_as_feat'],nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'],gravity=not config['robomimic'],num_layers=config['num_layers'],amp=config['amp'])
+        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,latent_pc_as_feat=config['latent_pc_as_feat'],nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'],gravity=not config['robomimic'],num_layers=config['num_layers'],amp=config['amp'],sep_gripper=config['sep_gripper'])
     elif config['se3']==1:
-        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'],fused=False,nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'],gravity=not config['robomimic'],num_layers=config['num_layers'],amp=config['amp'],right_eef_world_pos_as_type_0=config['right_eef_world_pos_as_type_0'])
+        action_pred_net=SE3ManiNet_Fused(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'],fused=False,nonlinear=config['nonlinear'],bias=config['bias'],gate=config['gate'],gravity=not config['robomimic'],num_layers=config['num_layers'],amp=config['amp'],right_eef_world_pos_as_type_0=config['right_eef_world_pos_as_type_0'],sep_gripper=config['sep_gripper'])
         # from equibot.policies.utils.etseed.model.se3_transformer.equinet import SE3ManiNet_ori_pos_sep
         # action_pred_net=SE3ManiNet_ori_pos_sep(k_neighbours=8,pred_horizon=config['pred_horizon'],config=config,no_tgt_nxyz=True,eef_abs_position_as_node=config['testing']==1,eef_xyz_feat=config['eef_xyz_feat'] and config['testing'])
     else:
