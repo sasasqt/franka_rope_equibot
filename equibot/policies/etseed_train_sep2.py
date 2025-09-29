@@ -105,6 +105,7 @@ def main(cfg):
         'lrOverwrite':cfg.lrOverwrite,
         'gripperReg':cfg.dev.gripperReg,
         'gripperMul':cfg.dev.gripperMul,
+        'rotationMul': cfg.dev.rotationMul,
         'right_eef_world_pos_as_type_0':cfg.dev.right_eef_world_pos_as_type_0,
         'gripper':cfg.dev.gripper,
         'head':cfg.dev.head,
@@ -1086,9 +1087,9 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             reconstructed_pos=target[...,6:9].reshape(-1,3)
             reconstructed_target=process_action(reconstructed_ori, reconstructed_pos,follow_rot_trans_convention=True).view(unet_output.shape[0],-1,4,4)
             if config['gripper']:
-                _, dist_r, dist_t,dist_g = compute_loss(reconstructed_unet_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4),reconstructed_gripper_action,gt_gripper_action,snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],gripper_mul=config['gripperMul'])  
+                _, dist_r, dist_t,dist_g = compute_loss(reconstructed_unet_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4),reconstructed_gripper_action,gt_gripper_action,snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],rotation_mul=config['rotationMul'],gripper_mul=config['gripperMul'])  
             else:
-                _, dist_r, dist_t,dist_g = compute_loss(reconstructed_unet_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4),None,None,snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],gripper_mul=config['gripperMul'])  
+                _, dist_r, dist_t,dist_g = compute_loss(reconstructed_unet_output.reshape(-1,4,4),reconstructed_target.reshape(-1,4,4),None,None,snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],rotation_mul=config['rotationMul'],gripper_mul=config['gripperMul'])  
             # if dist_g is not None:
             #     loss=loss+dist_g
         else:
@@ -1107,10 +1108,10 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
             if config['diffusion_option']==0 or config['diffusion_option']==2:
                 # 0: the default, predict the gt H0
                 # see algorithm 1, but no more naction @torch.inverse(noisy_actions)
-                loss, dist_r, dist_t, dist_g = compute_loss(final_action.reshape(-1,4,4),(target ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'],snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],gripper_mul=config['gripperMul'])  
+                loss, dist_r, dist_t, dist_g = compute_loss(final_action.reshape(-1,4,4),(target ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'],snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],rotation_mul=config['rotationMul'],gripper_mul=config['gripperMul'])  
             elif config['diffusion_option']==1:
                 # 1: predict relative transformation from Ht to H0
-                loss, dist_r, dist_t, dist_g = compute_loss(torch.einsum('bhij,bhjk->bhjk',final_action,noisy_actions).reshape(-1,4,4),(target ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'],snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],gripper_mul=config['gripperMul'])  
+                loss, dist_r, dist_t, dist_g = compute_loss(torch.einsum('bhij,bhjk->bhjk',final_action,noisy_actions).reshape(-1,4,4),(target ).reshape(-1,4,4),output_gripper_action,gt_gripper_action,sign_mismatch=config['sign_mismatch'],snr=snr,gt_gripper_zero_one=not config['robomimic'],gripper_reg=config['gripperReg'],rotation_mul=config['rotationMul'],gripper_mul=config['gripperMul'])  
             else:
                 raise NotImplementedError(f"diffusion_option {config['diffusion_option']} not implemented")
 

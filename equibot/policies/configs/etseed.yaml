@@ -94,6 +94,7 @@ dev:
   amp: False
   gripperReg: False
   gripperMul: 1
+  rotationMul: 1
   right_eef_world_pos_as_type_0: False
   gripper: True
   head: False

@@ -154,6 +154,7 @@ def main(cfg):
         'denoise_gripper':cfg.dev.denoise_gripper,
         'old_net':cfg.dev.old_net,
         'gripperReg':cfg.dev.gripperReg,
+        'sep_gripper': cfg.dev.sep_gripper,
     }
 
     device = torch.device('cuda')

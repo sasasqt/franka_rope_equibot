@@ -1002,7 +1002,7 @@ class EvalUtils(ControlFlow):
         # take actions
         if len(obs["pc"]) == 0 or len(obs["pc"][0]) == 0:
             return
-        agent_ac = ac[0][cls.count% ac_horizon] # if len(ac.shape) > 1 else ac    
+        agent_ac = ac[0][cls.count% ac_horizon] # if len(ac.shape) > 1 else ac  
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
         update_action(agent_ac[None,None,...],scene.get_object(target_name),scene.get_object(robot_name).end_effector,robot._gripper,eval(str(cls.cfg.rel).title()),eval(str(cls.cfg.rpy).title()),cls._sample._eps,cap=cls.cfg.cap,cup=cls.cfg.cup,update_ori=cls.cfg.update_ori,cfg=cls.cfg)
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
