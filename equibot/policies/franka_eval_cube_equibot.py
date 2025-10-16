@@ -1,0 +1,124 @@
+# Copyright (c) 2018-2023, NVIDIA CORPORATION. All rights reserved.
+#
+# NVIDIA CORPORATION and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto. Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA CORPORATION is strictly prohibited.
+#
+
+# NOTE: Import here your extension examples to be propagated to ISAAC SIM Extensions startup
+from equibot.policies.utils.misc import get_agent
+# from equibot.policies.utils.diffusion.conditional_unet1d import ConditionalUnet1D <- this (in get_agent) caused BUG Windows fatal exception: access violation, if imported after simulationApp
+
+# [Warning] [omni.isaac.kit.simulation_app] Modules: ['omni.kit_app'] were loaded before SimulationApp was started and might not be loaded correctly.
+# [Warning] [omni.isaac.kit.simulation_app] Please check to make sure no extra omniverse or pxr modules are imported before the call to SimulationApp(...)
+# not my fault?!
+from isaacsim import SimulationApp
+simulation_app = SimulationApp({"headless": False})
+import asyncio
+
+import nest_asyncio
+nest_asyncio.apply()
+
+from omni.isaac.core.utils.extensions import enable_extension
+enable_extension("omni.isaac.examples")
+enable_extension("omni.videoencoding") # need to have g_video_encoding_api in this before importing capture
+enable_extension("omni.kit.viewport.utility")
+# enable_extension("omni.kit.renderer.capture") # this capture the entire omniverse kit.exe window
+# enable_extension("omni.kit.capture.viewport") # this caused the timeline to pause after the last frame captured
+# from franka_rope import IsaacUIUtils, VRUIUtils
+from omni.isaac.core.utils.rotations import euler_angles_to_quat, quat_to_euler_angles
+
+
+
+# IsaacUIUtils.setUp()
+# VRUIUtils.setUp()
+
+import hydra
+import os
+from glob import glob
+import omegaconf
+import wandb
+
+async def eval_async(ckpt_paths,agent,cfg):
+    if not "etseed" in str(cfg.name).lower():
+        from .eval_cube_equibot_util import EvalUtils
+    else:
+        raise NotImplementedError
+    for ckpt_path in ckpt_paths:
+        ckpt_name = ckpt_path.split("/")[-1].split(".")[0]
+        agent.load_snapshot(ckpt_path)
+        
+        log_dir = os.getcwd()
+        await EvalUtils.eval_async(
+                agent,
+                num_episodes=cfg.training.num_eval_episodes,
+                log_dir=log_dir,
+                reduce_horizon_dim=cfg.data.dataset.reduce_horizon_dim,
+                ckpt_name=ckpt_name,
+                cfg=cfg.franka_rope,
+                simulation_app=simulation_app
+            )
+        
+
+import torch
+torch.set_grad_enabled(False)
+from equibot.policies.utils.etseed.model.se3_transformer.equinet import  SE3ManiNet_Fused
+from equibot.policies.utils.etseed.utils.SE3diffusion_scheduler import DiffusionScheduler
+import torch.nn as nn
+
+
+# # Initialize the model and optimizer
+# def init_model(device,config):
+#     noise_pred_net_in = SE3ManiNet_Fused(k_neighbours=config['k_neighbours*obs_horizon'],pred_horizon=config['pred_horizon'],config=config)
+#     noise_pred_net_eq = SE3ManiNet_Fused(k_neighbours=config['k_neighbours*obs_horizon'],pred_horizon=config['pred_horizon'],config=config)
+    
+#     nets = nn.ModuleDict({
+#         'invariant_pred_net': noise_pred_net_in,
+#         'equivariant_pred_net': noise_pred_net_eq
+#     }).to(device)
+#     checkpoint = torch.load(config["checkpoint_path"])
+#     nets.load_state_dict(checkpoint['model_state_dict'])
+#     nets.eval()
+#     return nets
+
+@hydra.main(config_path="configs", config_name="etseed")
+def main(cfg):
+
+    if cfg.use_wandb:
+        wandb_config = omegaconf.OmegaConf.to_container(
+            cfg, resolve=True, throw_on_missing=False
+        )
+        wandb.init(
+            entity=cfg.wandb.entity,
+            project=cfg.wandb.project,
+            tags=["eval"],
+            name=cfg.prefix,
+            settings=wandb.Settings(code_dir="."),
+            config=wandb_config,
+        )
+    
+    agent = get_agent(cfg.agent.agent_name)(cfg)
+    agent.train(False)
+    if os.path.isdir(cfg.training.ckpt):
+        ckpt_dir = os.path.join(os.getcwd(),cfg.training.ckpt)
+        ckpt_paths = list(glob(os.path.join(ckpt_dir, "ckpt*.pth")))
+        assert len(ckpt_paths) >= cfg.eval.num_ckpts_to_eval
+        ckpt_paths = list(sorted(ckpt_paths))[-cfg.eval.num_ckpts_to_eval :]
+        assert f"{cfg.eval.last_ckpt}" in ckpt_paths[-1]
+    else:
+        ckpt_paths = [cfg.training.ckpt]
+    
+    asyncio.ensure_future(eval_async(ckpt_paths,agent,cfg))
+
+    while simulation_app.is_running():
+        simulation_app.update()
+    simulation_app.close()
+
+if __name__ == "__main__":
+    main()
+
+
+
+

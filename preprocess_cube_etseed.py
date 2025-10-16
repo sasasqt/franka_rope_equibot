@@ -404,14 +404,14 @@ def main(cfg):
                     gripper_pose,
                 ))
             print(gripper_pose,gripper_action)
-            # np.savez(
-            #     # :02d is expected from the dataset py
-            #     os.path.join(output_dir + rf"/01_ep{ep:06d}_view0_t{_i:02d}.npz"),
-            #     pc=np.array(pc), # (40, 6) = (num_points, src + tgt)
-            #     eef_pos=np.array(eef_pos), #  (13,)
-            #     action=np.array(action[np.newaxis, :]), #  (1, 4, 4)
+            np.savez(
+                # :02d is expected from the dataset py
+                os.path.join(output_dir + rf"/01_ep{ep:06d}_view0_t{_i:02d}.npz"),
+                pc=np.array(pc), # (40, 6) = (num_points, src + tgt)
+                eef_pos=np.array(eef_pos), #  (13,)
+                action=np.array(action[np.newaxis, :]), #  (1, 4, 4)
 
-            # )
+            )
 
             gripper_pose = gripper_action
             curr = fut

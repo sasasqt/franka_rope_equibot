@@ -17,6 +17,7 @@ hydra:
 pred_horizon: 8
 obs_horizon: 2
 action_horizon: 4
+hidden_dim: 128
 T_a: ${pred_horizon}  # what is this???
 k_neighbours: 8
 batch_size: 900
@@ -107,17 +108,41 @@ dev:
   sep_gripper: False
 training:
   ckpt: null
+  num_eval_episodes: ${franka_rope.max_end}
 
 env:
   env_class: ???
   num_eef: 1
   dof: 7
   eef_dim: 13
+  per_point: False
 
 model:
   obs_horizon: ${obs_horizon}
   ac_horizon: ${action_horizon}
   pred_horizon: ${pred_horizon}
+  hidden_dim: ${hidden_dim}
+  noise_scheduler:
+    _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler # diffusers.schedulers.scheduling_ddpm.DDPMScheduler # diffusers.schedulers.scheduling_ddim.DDIMScheduler
+    num_train_timesteps: 100
+    beta_schedule: squaredcos_cap_v2
+    clip_sample: true
+    prediction_type: epsilon
+  encoder:
+    c_dim: ${model.hidden_dim}
+    backbone_type: vn_pointnet
+    backbone_args:
+      h_dim: ${model.hidden_dim}
+      c_dim: ${model.encoder.c_dim}
+      num_layers: 4
+      num_points: ${data.dataset.num_points}
+      knn: 8
+      per_point: ${env.per_point}
+      flow: ${franka_rope.flow}
+  obs_mode: "pc"
+  ac_mode: "rel"
+  use_torch_compile: False # was false
+
 
 data:
   dataset_class: base_dataset
@@ -187,6 +212,7 @@ franka_rope:
   pusht_ori: [0,0,-30] # [0,0,0] or [0,0,-30]
   test_pc_permutation: False
   translation: null # [-0.5,-0.5,0] or null
+  tgt_offset: null
   rotation: null # [0,0,30] or null
   scale: null # [1.1,1.15,1.2]  or null # [Warning] [omni.physicsschema.plugin] Non-uniform scale may result in a non matching collision representation
   _rope_y_pos: null # null or 0.7

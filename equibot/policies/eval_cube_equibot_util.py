@@ -67,7 +67,6 @@ class EvalUtils(ControlFlow):
 
     @classmethod
     async def _reset_async(cls,callback_fn=None):
-
         try:
             pass # TODO save data cls._sample._on_save_data_event()
         except:
@@ -95,19 +94,19 @@ class EvalUtils(ControlFlow):
         if cls.cfg.rotation is not None:
             sample._world_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(list(cls.cfg.rotation)))
             cls._rotation=_rotation = R.from_euler('xyz', cls.cfg.rotation, degrees=True).as_matrix()
-            # cls._tgt_pc=np.array([_rotation@vector for vector in cls._tgt_pc])
             # cls.gravity_dir=(cls._rotation@np.array(cls.gravity_dir)).tolist()
+
+            # cls._tgt_pc=np.array([_rotation@vector for vector in cls._tgt_pc])
 
         if cls.cfg.translation is not None:
             sample._world_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(list(cls.cfg.translation))) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
             cls._translation=_translation = np.array(cls.cfg.translation)
             # cls._tgt_pc=np.array([vector+_translation for vector in cls._tgt_pc])
-
         if cls.cfg.tgt_offset is not None:
             cls._tgt_offset=np.array(cls.cfg.tgt_offset)
         else:
             cls._tgt_offset=np.array([0,0,0])
-            
+
         if cls.cfg.scale is not None:
             sample._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(cls.cfg.scale)))
             _scale=cls.cfg.scale
@@ -173,7 +172,6 @@ class EvalUtils(ControlFlow):
         # await cls._sample._on_follow_target_event_async(True)
         # await asyncio.sleep(5)
         # await cls._sample._world.pause_async()
-
         for i in range(cls.obs_horizon-extra_repeat):
             # obs hon = 4: 
             #   start =4 data_frame_index=1+i extra_repeat=0 i=0-3
@@ -414,7 +412,7 @@ class EvalUtils(ControlFlow):
                 # assert isinstance(agent_obs["pc"][0][0], np.ndarray)
                 pc=pc,
                 # pc=np.array(rope.get_world_pose()[0]), # [np.array(pc) for pc in rope.get_world_pose()[0]],
-                eef_pos=eef_pos,
+                state=eef_pos,
                 # state= eef_pos in saved npz
                 # state=np.array([[right_target_world_pos[0],right_target_world_pos[1],right_target_world_pos[2],col1[0],col1[1],col1[2],col3[0],col3[1],col3[2],gravity_dir[0],gravity_dir[1],gravity_dir[2],gripper_pose]])
             ) #pc and eef_pose
@@ -446,6 +444,7 @@ class EvalUtils(ControlFlow):
                     position=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])+cls._translation),
                     orientation=np.array(ori),
                 )
+                
             ori=cls._rotation@R.from_quat(np.array(data_frame.data["Cube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
             ori=R.from_matrix(ori).as_quat(scalar_first=True)
             world.scene.get_object('/World/Extras/Cube/Cube/cube').set_world_poses(
@@ -473,9 +472,9 @@ class EvalUtils(ControlFlow):
         # nets, optimizer, lr_scheduler = init_model_and_optimizer(cls.device,cls.config)
         # noise_scheduler = DiffusionScheduler(num_steps=cls.config["diffusion_steps"],mode=cls.config["diffusion_mode"],device=cls.device)
 
-        nets=cls.config['nets']
-        noise_scheduler=cls.config['noise_scheduler']
-        gripper_noise_scheduler=cls.config['gripper_noise_scheduler']
+        # nets=cls.config['nets']
+        # noise_scheduler=cls.config['noise_scheduler']
+        # gripper_noise_scheduler=cls.config['gripper_noise_scheduler']
 
 
         cls._sample._on_logging_event(True)
@@ -511,7 +510,8 @@ class EvalUtils(ControlFlow):
         cls.sample._pre_physics_callback=None
 
 
-        cls.sample._pre_physics_callback=partial(cls._reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
+        # cls.sample._pre_physics_callback=partial(cls._reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
+        cls.sample._pre_physics_callback=partial(cls._reset,_onDone_async=cls._reset_async)
         
         await omni.kit.app.get_app().next_update_async()
         # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
@@ -521,7 +521,8 @@ class EvalUtils(ControlFlow):
             await asyncio.sleep(0.01)
 
 
-        cls.sample._pre_physics_callback=partial(cls._post_reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
+        # cls.sample._pre_physics_callback=partial(cls._post_reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
+        cls.sample._pre_physics_callback=partial(cls._post_reset,_onDone_async=cls._reset_async)
 
         # # see extscache\omni.kit.capture.viewport-1.5.1\omni\kit\capture\viewport\tests\test_capture_png.py
         # cls._capture_instance = CaptureExtension().get_instance()
@@ -586,19 +587,19 @@ class EvalUtils(ControlFlow):
 
 
     @classmethod
-    def _reset(cls,nets, noise_scheduler,gripper_noise_scheduler,step_size=None,_onDone_async=None):
-        if cls.config['arch']==0:
-            from equibot.policies.etseed_test import test_batch
-        # elif config['arch']==1:
-        #     pass
-        elif cls.config['arch']==2:
-            from equibot.policies.etseed_test_sep2 import test_batch
-        elif cls.config['arch']==3:
-            from equibot.policies.etseed_test_sep_no_diffusion_no_gripper import test_batch
-        elif cls.config['arch']==4:
-            from equibot.policies.etseed_test_sep2_nounetdiffusion import test_batch
-        else:
-            raise NotImplementedError
+    def _reset(cls,step_size=None,_onDone_async=None):
+        # if cls.config['arch']==0:
+        #     from equibot.policies.etseed_test import test_batch
+        # # elif config['arch']==1:
+        # #     pass
+        # elif cls.config['arch']==2:
+        #     from equibot.policies.etseed_test_sep2 import test_batch
+        # elif cls.config['arch']==3:
+        #     from equibot.policies.etseed_test_sep_no_diffusion_no_gripper import test_batch
+        # elif cls.config['arch']==4:
+        #     from equibot.policies.etseed_test_sep2_nounetdiffusion import test_batch
+        # else:
+        #     raise NotImplementedError
         
         print("---")
         if step_size is None:
@@ -628,7 +629,6 @@ class EvalUtils(ControlFlow):
         robot_name=cls.robot_name
         target_name=cls.target_name
         obs_history = cls.obs_history
-
 
         obs_horizon=cls.obs_horizon
         ac_horizon=cls.ac_horizon
@@ -666,6 +666,7 @@ class EvalUtils(ControlFlow):
                     positions=np.array([np.array(data_frame.data["TCube"]["cube_world_position"])+cls._translation+cls._tgt_offset]),
                     orientations=np.array([ori]),
                 )
+
                 # rope.set_world_pose(
                 #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
                 #     orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
@@ -673,19 +674,19 @@ class EvalUtils(ControlFlow):
             return
 
     @classmethod
-    def _post_reset(cls,nets, noise_scheduler,gripper_noise_scheduler,step_size=None,_onDone_async=None):
-        if cls.config['arch']==0:
-            from equibot.policies.etseed_test import test_batch
-        # elif config['arch']==1:
-        #     pass
-        elif cls.config['arch']==2:
-            from equibot.policies.etseed_test_sep2 import test_batch
-        elif cls.config['arch']==3:
-            from equibot.policies.etseed_test_sep_no_diffusion_no_gripper import test_batch
-        elif cls.config['arch']==4:
-            from equibot.policies.etseed_test_sep2_nounetdiffusion import test_batch
-        else:
-            raise NotImplementedError
+    def _post_reset(cls,step_size=None,_onDone_async=None):
+        # if cls.config['arch']==0:
+        #     from equibot.policies.etseed_test import test_batch
+        # # elif config['arch']==1:
+        # #     pass
+        # elif cls.config['arch']==2:
+        #     from equibot.policies.etseed_test_sep2 import test_batch
+        # elif cls.config['arch']==3:
+        #     from equibot.policies.etseed_test_sep_no_diffusion_no_gripper import test_batch
+        # elif cls.config['arch']==4:
+        #     from equibot.policies.etseed_test_sep2_nounetdiffusion import test_batch
+        # else:
+        #     raise NotImplementedError
         
         print("---")
         if step_size is None:
@@ -708,6 +709,8 @@ class EvalUtils(ControlFlow):
         # hbar=sample._hbar
         # vbar=sample._vbar
         # rope=cls.rope
+
+        agent=cls.agent
         robot=cls.robot
         robot_name=cls.robot_name
         target_name=cls.target_name
@@ -969,7 +972,7 @@ class EvalUtils(ControlFlow):
             # assert isinstance(agent_obs["pc"][0][0], np.ndarray)
             pc=pc,
             # pc=np.array(rope.get_world_pose()[0]), # [np.array(pc) for pc in rope.get_world_pose()[0]],
-            eef_pos=eef_pos,
+            state=eef_pos,
             # state= eef_pos in saved npz
             # state=np.array([[right_target_world_pos[0],right_target_world_pos[1],right_target_world_pos[2],col1[0],col1[1],col1[2],col3[0],col3[1],col3[2],gravity_dir[0],gravity_dir[1],gravity_dir[2],gripper_pose]])
         ) #pc and eef_pose
@@ -985,17 +988,21 @@ class EvalUtils(ControlFlow):
         else:
             agent_obs = dict()
             for k in obs.keys():
-                if k == "pc":
-                    # point clouds can have different number of points
-                    # so do not stack them
-                    agent_obs[k] = [o[k] for o in obs_history[-obs_horizon:]]
-                else:
+                # if k == "pc":
+                #     # point clouds can have different number of points
+                #     # so do not stack them
+                #     agent_obs[k] = [o[k] for o in obs_history[-obs_horizon:]]
+                # else:
                     agent_obs[k] = np.stack(
                         [o[k] for o in obs_history[-obs_horizon:]],axis=0
                     )
         for key in agent_obs.keys():
-            agent_obs[key]=torch.from_numpy(np.array(agent_obs[key]))
-            agent_obs[key]=agent_obs[key][None,...]
+            # agent_obs[key]=torch.from_numpy(np.array(agent_obs[key]))
+            # agent_obs[key]=agent_obs[key][None,...]
+            agent_obs[key]=agent_obs[key][:,np.newaxis]
+            if key == 'state':
+                agent_obs[key]=agent_obs[key][...,np.newaxis, :]
+
         # predict actions
         st = time.time()
         if cls.count % ac_horizon == 0:
@@ -1011,12 +1018,26 @@ class EvalUtils(ControlFlow):
             # id[:3, 3] = -1.0*torch.tensor([0.00001,0.00001,0.00001],dtype=torch.float32, device='cuda')*cls.count
             # ac = id[None, None, :, :].expand(1,pred_horizion,4,4)
 
-            ac = test_batch(nets=nets, noise_scheduler=noise_scheduler,gripper_noise_scheduler=gripper_noise_scheduler, nbatch=agent_obs, device=cls.device,config=cls.config,isVisualEval=True)
+            ac = agent.act(agent_obs, return_dict=False)
+            _shape=ac.reshape((-1, pred_horizion, 7)).shape
+            eye = np.eye(4)[None, None, :, :] 
+            eye = np.tile(eye, (_shape[0], _shape[1], 1, 1))
+            _gripper_action=ac[...,0]
+            _translation=ac[...,1:4]
+            _rotation=ac[...,4:7].squeeze()
+
+            _rotation = R.from_rotvec(_rotation).as_matrix()
+            eye[...,:3, :3] = _rotation
+            eye[...,:3, 3] = _translation
+            eye[...,3, 3]=_gripper_action
+            # print(cls.ac.shape,'predicted ac') # b Ha 4 4
+            cls.ac=eye
+                        # ac = test_batch(nets=nets, noise_scheduler=noise_scheduler,gripper_noise_scheduler=gripper_noise_scheduler, nbatch=agent_obs, device=cls.device,config=cls.config,isVisualEval=True)
             # print(ac.shape, "ac?") # b Ha 4 4
             # if eval(str(cls.cfg.manually_close).title()) is True:
             #     for i in range(len(ac)):
             #         ac[i][0]=-0.3
-            cls.ac=ac.view(-1,pred_horizion,4,4).cpu()
+            # cls.ac=ac.view(-1,pred_horizion,4,4).cpu()
             # print(cls.ac.shape,'predicted ac') # b Ha 4 4
 
         logging.info(f"Inference time: {time.time() - st:.3f}s")
@@ -1031,19 +1052,28 @@ class EvalUtils(ControlFlow):
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
     
     @classmethod
-    async def eval_async(cls,log_dir,reduce_horizon_dim,cfg,config,simulation_app):
+    # async def eval_async(cls,log_dir,reduce_horizon_dim,cfg,config,simulation_app):
+    async def eval_async(cls,agent,num_episodes,log_dir,reduce_horizon_dim,ckpt_name,cfg,simulation_app):
+        cls.agent=agent
+        cls.num_episodes=num_episodes
         cls.log_dir=log_dir
         cls.reduce_horizon_dim=reduce_horizon_dim
-        cls.config=config
+        cls.ckpt_name=ckpt_name
         cls.cfg=cfg
+
 
         global myjson
         myjson=defaultdict(dict)
         cls.simulation_app=simulation_app
-        cls.obs_horizon = config['obs_horizon']
-        cls.ac_horizon = config['action_horizon']
-        cls.pred_horizon = config['pred_horizon']
-        cls.T_a=config['T_a']
+        if hasattr(agent, "obs_horizon") and hasattr(agent, "ac_horizon"):
+            cls.obs_horizon = agent.obs_horizon
+            cls.ac_horizon = agent.ac_horizon
+            cls.pred_horizon = agent.pred_horizon
+        else:
+            cls.obs_horizon = 1
+            cls.ac_horizon = 1
+            cls.pred_horizon = 1
+
         
         cls.device = torch.device('cuda')
         if not torch.cuda.is_available():
@@ -1072,18 +1102,19 @@ def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,upda
     agent_ac=agent_ac[0][0]
     # # TODO CLIP in TRAIN + INFERENCE
 
-    if not cfg['gripperReg']:
-        _gripper=torch.sigmoid(agent_ac[3][3])
-    else:
-        _gripper=agent_ac[3][3]
-    if _gripper < 0.5:
-        gripper.close()
-        print(f"{_gripper} gripper is closing")
-    else:
-        gripper.open()
-        print(f"{_gripper} gripper is opening")
+    # if not cfg['gripperReg']:
+    #     _gripper=torch.sigmoid(agent_ac[3][3])
+    # else:
+    #     _gripper=agent_ac[3][3]
+    _gripper=agent_ac[3][3]
+    # if _gripper < 0.5:
+    #     gripper.close()
+    #     print(f"{_gripper} gripper is closing")
+    # else:
+    #     gripper.open()
+    #     print(f"{_gripper} gripper is opening")
 
-    # gripper.close()
+    gripper.close()
     print(f"{_gripper} gripper is ?????")
 
 
