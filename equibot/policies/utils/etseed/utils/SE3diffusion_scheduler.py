@@ -187,9 +187,9 @@ class DiffusionScheduler(torch.nn.Module):
         alpha_rot = getattr(self, "alpha_bars_rot", self.alpha_bars)[timesteps].to(device)   # [B]
         alpha_trn = getattr(self, "alpha_bars_trans", self.alpha_bars)[timesteps].to(device) # [B]
 
-        sqrt_alpha_rot = torch.sqrt(alpha_rot).view(B, 1, 1, 1)
+        sqrt_alpha_rot = torch.sqrt(alpha_rot).view(B, 1, 1)
         sqrt_alpha_trn = torch.sqrt(alpha_trn).view(B, 1, 1)
-        sqrt_one_m_rot = torch.sqrt(1.0 - alpha_rot).view(B, 1, 1, 1)
+        sqrt_one_m_rot = torch.sqrt(1.0 - alpha_rot).view(B, 1, 1)
         sqrt_one_m_trn = torch.sqrt(1.0 - alpha_trn).view(B, 1, 1)
 
         # decompose
@@ -206,7 +206,9 @@ class DiffusionScheduler(torch.nn.Module):
         H_t = torch.eye(4, dtype=torch.float32, device=device).view(1,1,4,4).expand(B, Ho, -1, -1).clone()
         H_t[..., :3, :3] = R_t
         H_t[..., :3,  3] = t_t
-
+        assert R_t.shape == (B, Ho, 3, 3)
+        assert t_t.shape == (B, Ho, 3)
+        assert H_t.shape == (B, Ho, 4, 4)
         if no_noise:
             H_rot_noise = torch.eye(4, dtype=torch.float32, device=device).view(1,1,4,4).expand(B, Ho, -1, -1)
             out = H_rot_noise @ H_t
