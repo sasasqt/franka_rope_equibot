@@ -1,6 +1,6 @@
 import torch, numpy as np
 torch.manual_seed(3407)
-from .se_math import se3
+from .se_math import se3,so3
 from .data_utils import bezier_curve
 from diffusers import DDPMScheduler
 from pdb import set_trace as bp
@@ -167,6 +167,77 @@ class DiffusionScheduler(torch.nn.Module):
         snr=alpha_bars/(1-alpha_bars)
         return noisy_interpolated_H_t, se3.exp(_noise),H_t, snr
 
+    def add_noise9_decoupled(
+        self,
+        original_samples: torch.FloatTensor,  # [B, Ho, 4, 4]
+        timesteps: torch.IntTensor,           # [B]
+        device,
+        no_noise: bool = False,
+    ):
+        """
+        - Interpolate rotation on SO(3): R_t = exp( sqrt(alpha_rot) * log(R) )
+        - Interpolate translation in R^3: t_t = sqrt(alpha_trn) * t
+        - Rotation noise: left-compose (so(3) Gaussian via exp)
+        - Translation noise: add in WORLD frame (simple + in R^3), NOT via SE(3) multiplication
+        """
+        B = original_samples.shape[0]
+        Ho = original_samples.size(1)
+
+        # schedules (allow separate rot/trans; fall back if not present)
+        alpha_rot = getattr(self, "alpha_bars_rot", self.alpha_bars)[timesteps].to(device)   # [B]
+        alpha_trn = getattr(self, "alpha_bars_trans", self.alpha_bars)[timesteps].to(device) # [B]
+
+        sqrt_alpha_rot = torch.sqrt(alpha_rot).view(B, 1, 1, 1)
+        sqrt_alpha_trn = torch.sqrt(alpha_trn).view(B, 1, 1)
+        sqrt_one_m_rot = torch.sqrt(1.0 - alpha_rot).view(B, 1, 1, 1)
+        sqrt_one_m_trn = torch.sqrt(1.0 - alpha_trn).view(B, 1, 1)
+
+        # decompose
+        H = original_samples.to(torch.float32)
+        R = H[..., :3, :3]           # [B,Ho,3,3]
+        t = H[..., :3,  3]           # [B,Ho,3]
+
+        # interpolation
+        rot_log = so3.log(R)                               # [B,Ho,3]
+        R_t = so3.exp(sqrt_alpha_rot * rot_log)            # [B,Ho,3,3]
+        t_t = sqrt_alpha_trn * t                           # [B,Ho,3]
+
+        # assemble H_t
+        H_t = torch.eye(4, dtype=torch.float32, device=device).view(1,1,4,4).expand(B, Ho, -1, -1).clone()
+        H_t[..., :3, :3] = R_t
+        H_t[..., :3,  3] = t_t
+
+        if no_noise:
+            H_rot_noise = torch.eye(4, dtype=torch.float32, device=device).view(1,1,4,4).expand(B, Ho, -1, -1)
+            out = H_rot_noise @ H_t
+            snr = {
+                "rot": alpha_rot / (1.0 - alpha_rot + 1e-12),
+                "trans": alpha_trn / (1.0 - alpha_trn + 1e-12),
+            }
+            t_noise_world = torch.zeros(B, Ho, 3, dtype=torch.float32, device=device)
+            return out, H_rot_noise, H_t, snr, t_noise_world
+
+        # ---------- NOISE ----------
+        # (1) rotation noise via left composition
+        eps_r = torch.randn(B, Ho, 3, device=device, dtype=torch.float32)
+        R_noise = so3.exp(sqrt_one_m_rot * (self.sigma_r * eps_r))         # [B,Ho,3,3]
+
+        H_rot_noise = torch.eye(4, dtype=torch.float32, device=device).view(1,1,4,4).expand(B, Ho, -1, -1).clone()
+        H_rot_noise[..., :3, :3] = R_noise
+
+        # compose rotation noise into interpolation
+        out = H_rot_noise @ H_t                                            # [B,Ho,4,4]
+
+        # (2) translation noise added in WORLD frame (independent of orientation)
+        eps_t = torch.randn(B, Ho, 3, device=device, dtype=torch.float32)
+        t_noise_world = sqrt_one_m_trn * (self.sigma_t * eps_t)            # [B,Ho,3]
+        out[..., :3, 3] = out[..., :3, 3] + t_noise_world                  # add directly
+
+        snr = {
+            "rot": alpha_rot / (1.0 - alpha_rot + 1e-12),
+            "trans": alpha_trn / (1.0 - alpha_trn + 1e-12),
+        }
+        return out, H_rot_noise, H_t, snr
 
     def add_noise2(self,
         original_samples: torch.FloatTensor, # [B, Ho, 4, 4]

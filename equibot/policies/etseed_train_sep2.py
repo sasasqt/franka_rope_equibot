@@ -898,7 +898,8 @@ def train_batch(nets, optimizer, lr_scheduler, noise_scheduler, nbatch,epoch_idx
     print(torch.max(latent_pc),torch.min(latent_pc),"latentpc")
     num_point = config['pred_horizon']    
     if not config['use_ddpm'] and  (config['diffusion_option']==0 or config['diffusion_option']==1 or config['diffusion_option']==2):
-        noisy_actions, actions_noise,actions,snr = noise_scheduler.add_noise9(naction, k, device=device,no_noise=config['no_noise'])
+        # noisy_actions, actions_noise,actions,snr = noise_scheduler.add_noise9(naction, k, device=device,no_noise=config['no_noise'])
+        noisy_actions, actions_noise,actions,snr = noise_scheduler.add_noise9_decoupled(naction, k, device=device,no_noise=config['no_noise'])
         if not config['snr']:
             snr=None
         else:
