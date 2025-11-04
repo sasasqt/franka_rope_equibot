@@ -43,7 +43,7 @@ import wandb
 
 async def eval_async(ckpt_paths,agent,cfg):
     if not "etseed" in str(cfg.name).lower():
-        from .eval_toy_equibot_util import EvalUtils
+        from .eval_push_equibot_util import EvalUtils
     else:
         raise NotImplementedError
     for ckpt_path in ckpt_paths:

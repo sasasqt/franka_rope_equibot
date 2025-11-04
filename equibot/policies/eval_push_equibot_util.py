@@ -1,5 +1,5 @@
 import omni.kit.app
-from franka_pick import ControlFlow
+from franka_pusht import ControlFlow
 
 from omni.isaac.core.utils.types import ArticulationAction
 
@@ -55,12 +55,12 @@ class EvalUtils(ControlFlow):
         cls._end=int(cls.cfg.max_end) or cls._end
         cls.sample=sample=cls._sample
         cls.world=world=sample._world
-        cls.task=sample._task["Left"]
+        cls.task=sample._task["Right"]
         cls.scene=world.scene
         # cls.rope=sample._rope
-        cls.robot=sample._robot["Left"]
-        cls.robot_name = sample._robot_name["Left"]
-        cls.target_name = sample._target_name["Left"]
+        cls.robot=sample._robot["Right"]
+        cls.robot_name = sample._robot_name["Right"]
+        cls.target_name = sample._target_name["Right"]
         cls.obs_history=[]
         cls.done=False
         cls.count=-1
@@ -80,8 +80,8 @@ class EvalUtils(ControlFlow):
         task=cls.task
         scene=cls.scene
         # rope=cls.rope
-        # hbar=scene.get_object('hbar')
-        # vbar=scene.get_object('vbar')
+        hbar=scene.get_object('hbar')
+        vbar=scene.get_object('vbar')
         robot=cls.robot
         robot_name=cls.robot_name
         target_name=cls.target_name
@@ -95,19 +95,19 @@ class EvalUtils(ControlFlow):
         if cls.cfg.rotation is not None:
             sample._world_xform.GetAttribute('xformOp:rotateXYZ').Set(Gf.Vec3f(list(cls.cfg.rotation)))
             cls._rotation=_rotation = R.from_euler('xyz', cls.cfg.rotation, degrees=True).as_matrix()
-            # cls._tgt_pc=np.array([_rotation@vector for vector in cls._tgt_pc])
             # cls.gravity_dir=(cls._rotation@np.array(cls.gravity_dir)).tolist()
+
+            # cls._tgt_pc=np.array([_rotation@vector for vector in cls._tgt_pc])
 
         if cls.cfg.translation is not None:
             sample._world_xform.GetAttribute('xformOp:translate').Set(Gf.Vec3f(list(cls.cfg.translation))) # GetAttribute is only callable for usd objects defined via stage.DefinePrim, not for UsdGeom.Xform
             cls._translation=_translation = np.array(cls.cfg.translation)
             # cls._tgt_pc=np.array([vector+_translation for vector in cls._tgt_pc])
-
         if cls.cfg.tgt_offset is not None:
             cls._tgt_offset=np.array(cls.cfg.tgt_offset)
         else:
             cls._tgt_offset=np.array([0,0,0])
-            
+
         if cls.cfg.scale is not None:
             sample._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(cls.cfg.scale)))
             _scale=cls.cfg.scale
@@ -173,7 +173,6 @@ class EvalUtils(ControlFlow):
         # await cls._sample._on_follow_target_event_async(True)
         # await asyncio.sleep(5)
         # await cls._sample._world.pause_async()
-
         for i in range(cls.obs_horizon-extra_repeat):
             # obs hon = 4: 
             #   start =4 data_frame_index=1+i extra_repeat=0 i=0-3
@@ -183,7 +182,7 @@ class EvalUtils(ControlFlow):
             #   start=0 data_frame_index=0+i extra_repeat=3 i=0-0
             if cls.cfg.from_demo is not None:
                 data_frame = data_logger.get_data_frame(data_frame_index=start_time-cls.obs_horizon+1+extra_repeat+i)
-                for idx,_str in enumerate(["Left"]):  
+                for idx,_str in enumerate(["Right"]):  
                     # world.scene.get_object(robot_name).set_joint_positions(
                     #     np.array(data_frame.data[_str][f"{_str}_joint_positions"])
                     # )
@@ -193,45 +192,43 @@ class EvalUtils(ControlFlow):
                     #     translation=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                     #     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                     # )
-                    # ori=cls._rotation@R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
-                    ori=R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
+                    ori=cls._rotation@R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
                     ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                    # world.scene.get_object(target_name).set_world_pose(#TODO
-                    #     position=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])+cls._translation),
-                    #     orientation=np.array(ori),
-                    # )
-                    world.scene.get_object(target_name).set_local_pose(#TODO
-                        translation=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])),
+                    world.scene.get_object(target_name).set_world_pose(#TODO
+                        position=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])+cls._translation),
                         orientation=np.array(ori),
                     )
-                    
-                # ori=cls._rotation@R.from_quat(np.array(data_frame.data["Cube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
-                ori=R.from_quat(np.array(data_frame.data["Cube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
+
+                ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-
-                
-                # world.scene.get_object('/World/Extras/Cube/Cube/cube').set_world_poses(
-                #     positions=np.array([np.array(data_frame.data["Cube"]["cube_world_position"])+cls._translation]),
-                #     orientations=np.array([ori]),
-                # )
-
-                world.scene.get_object('/World/Extras/Cube/Cube/cube').set_local_poses(
-                    translations=np.array([np.array(data_frame.data["Cube"]["cube_world_position"])]),
-                    orientations=np.array([ori]),
+                world.scene.get_object('vbar').set_world_pose(
+                    position=np.array(data_frame.data["T"]["vbar_world_position"])+cls._translation,
+                    orientation=ori,
                 )
 
-                # ori=cls._rotation@R.from_quat(np.array(data_frame.data["TCube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
-                ori=R.from_quat(np.array(data_frame.data["TCube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
+                ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                # world.scene.get_object('/World/Extras/TCube/TCube/cube').set_world_poses(
-                #     positions=np.array([np.array(data_frame.data["TCube"]["cube_world_position"])+cls._translation+cls._tgt_offset]),
-                #     orientations=np.array([ori]),
-                # )
-                world.scene.get_object('/World/Extras/TCube/TCube/cube').set_local_poses(
-                    translations=np.array([np.array(data_frame.data["TCube"]["cube_world_position"])+cls._tgt_offset]),
-                    orientations=np.array([ori]),
+                world.scene.get_object('hbar').set_world_pose(
+                    position=np.array(data_frame.data["T"]["hbar_world_position"])+cls._translation,
+                    orientation=ori,
                 )
-            
+                try:
+                    ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
+                    ori=R.from_matrix(ori).as_quat(scalar_first=True)
+                    world.scene.get_object('tgt_vbar').set_world_pose(
+                        position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+cls._translation,
+                        orientation=ori,
+                    )
+
+                    ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
+                    ori=R.from_matrix(ori).as_quat(scalar_first=True)
+                    world.scene.get_object('tgt_hbar').set_world_pose(
+                        position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+cls._translation,
+                        orientation=ori,
+                    )
+                except:
+                    pass
+
                 # rope.set_world_pose(
                 #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
                 #     orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
@@ -252,37 +249,37 @@ class EvalUtils(ControlFlow):
             else:
                 gripper_pose=1
 
-            # _dict={
-            #     "vbar_world_position": vbar.get_world_pose()[0].tolist(),
-            #     "vbar_world_orientation": vbar.get_world_pose()[1].tolist(),
-            #     "vbar_world_scale": vbar.get_world_scale().tolist(),
-            #     "hbar_world_position": hbar.get_world_pose()[0].tolist(),
-            #     "hbar_world_orientation": hbar.get_world_pose()[1].tolist(),
-            #     "hbar_world_scale": hbar.get_world_scale().tolist(), 
-            # }
+            _dict={
+                "vbar_world_position": vbar.get_world_pose()[0].tolist(),
+                "vbar_world_orientation": vbar.get_world_pose()[1].tolist(),
+                "vbar_world_scale": vbar.get_world_scale().tolist(),
+                "hbar_world_position": hbar.get_world_pose()[0].tolist(),
+                "hbar_world_orientation": hbar.get_world_pose()[1].tolist(),
+                "hbar_world_scale": hbar.get_world_scale().tolist(), 
+            }
 
-            # _pc=[]
-            # values = [1, -1]
-            # dominant_values=np.linspace(-1, 1, num=5).tolist()
-            # combinations = list(product(values, repeat=2))
-            # combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
-            # for component in ["v","h"]:
-            #     xyz=np.array(_dict[f"{component}bar_world_scale"])/2
-            #     dominant_direction=np.argmax(xyz)
-            #     for i,comb in enumerate(combinations):
-            #         tmp=comb[dominant_direction]
-            #         comb[dominant_direction]=comb[0]
-            #         comb[0]=tmp
-            #         center=np.array(_dict[f"{component}bar_world_position"])
-            #         p=np.array(comb)*xyz
-            #         quat_p=np.concatenate(([0.0],p))
-            #         ori=np.array(_dict[f"{component}bar_world_orientation"])
-            #         quat_p=mu.mul(mu.inverse(ori),quat_p)
-            #         quat_p=mu.mul(quat_p,(ori))
-            #         p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
-            #         _pc.append((center+p).tolist())
+            _pc=[]
+            values = [1, -1]
+            dominant_values=np.linspace(-1, 1, num=5).tolist()
+            combinations = list(product(values, repeat=2))
+            combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
+            for component in ["v","h"]:
+                xyz=np.array(_dict[f"{component}bar_world_scale"])/2
+                dominant_direction=np.argmax(xyz)
+                for i,comb in enumerate(combinations):
+                    tmp=comb[dominant_direction]
+                    comb[dominant_direction]=comb[0]
+                    comb[0]=tmp
+                    center=np.array(_dict[f"{component}bar_world_position"])
+                    p=np.array(comb)*xyz
+                    quat_p=np.concatenate(([0.0],p))
+                    ori=np.array(_dict[f"{component}bar_world_orientation"])
+                    quat_p=mu.mul(mu.inverse(ori),quat_p)
+                    quat_p=mu.mul(quat_p,(ori))
+                    p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
+                    _pc.append((center+p).tolist())
 
-            # pc=np.array(_pc)
+            pc=np.array(_pc)
             # # NEW
             # tgt_pc=np.array([[0.15260505303740501, 0.03901616483926773, -6.50063157081604e-07],
             #     [0.17697889357805252, 0.08267295360565186, -6.50063157081604e-07], 
@@ -349,63 +346,38 @@ class EvalUtils(ControlFlow):
             #             [0.16999119520187378, -0.02803434431552887, 0.0001268293708562851],
             #         ]
             #     )
-            # _dict={
-            #     "vbar_world_position": scene.get_object('tgt_vbar').get_world_pose()[0].tolist(),
-            #     "vbar_world_orientation": scene.get_object('tgt_vbar').get_world_pose()[1].tolist(),
-            #     "vbar_world_scale": scene.get_object('tgt_vbar').get_world_scale().tolist(),
-            #     "hbar_world_position": scene.get_object('tgt_hbar').get_world_pose()[0].tolist(),
-            #     "hbar_world_orientation": scene.get_object('tgt_hbar').get_world_pose()[1].tolist(),
-            #     "hbar_world_scale": scene.get_object('tgt_hbar').get_world_scale().tolist(), 
-            # }
-            # tgt_pc=[]
+            _dict={
+                "vbar_world_position": scene.get_object('tgt_vbar').get_world_pose()[0].tolist(),
+                "vbar_world_orientation": scene.get_object('tgt_vbar').get_world_pose()[1].tolist(),
+                "vbar_world_scale": scene.get_object('tgt_vbar').get_world_scale().tolist(),
+                "hbar_world_position": scene.get_object('tgt_hbar').get_world_pose()[0].tolist(),
+                "hbar_world_orientation": scene.get_object('tgt_hbar').get_world_pose()[1].tolist(),
+                "hbar_world_scale": scene.get_object('tgt_hbar').get_world_scale().tolist(), 
+            }
+            tgt_pc=[]
 
-            # values = [1, -1]
-            # dominant_values=np.linspace(-1, 1, num=5).tolist()
-            # combinations = list(product(values, repeat=2))
-            # combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
-            # for component in ["v","h"]:
-            #     xyz=np.array(_dict[f"{component}bar_world_scale"])/2
-            #     dominant_direction=np.argmax(xyz)
-            #     for i,comb in enumerate(combinations):
-            #         tmp=comb[dominant_direction]
-            #         comb[dominant_direction]=comb[0]
-            #         comb[0]=tmp
-            #         center=np.array(_dict[f"{component}bar_world_position"])
-            #         p=np.array(comb)*xyz
-            #         quat_p=np.concatenate(([0.0],p))
-            #         ori=np.array(_dict[f"{component}bar_world_orientation"])
-            #         quat_p=mu.mul(mu.inverse(ori),quat_p)
-            #         quat_p=mu.mul(quat_p,(ori))
-            #         p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
-            #         tgt_pc.append((center+p).tolist())
+            values = [1, -1]
+            dominant_values=np.linspace(-1, 1, num=5).tolist()
+            combinations = list(product(values, repeat=2))
+            combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
+            for component in ["v","h"]:
+                xyz=np.array(_dict[f"{component}bar_world_scale"])/2
+                dominant_direction=np.argmax(xyz)
+                for i,comb in enumerate(combinations):
+                    tmp=comb[dominant_direction]
+                    comb[dominant_direction]=comb[0]
+                    comb[0]=tmp
+                    center=np.array(_dict[f"{component}bar_world_position"])
+                    p=np.array(comb)*xyz
+                    quat_p=np.concatenate(([0.0],p))
+                    ori=np.array(_dict[f"{component}bar_world_orientation"])
+                    quat_p=mu.mul(mu.inverse(ori),quat_p)
+                    quat_p=mu.mul(quat_p,(ori))
+                    p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
+                    tgt_pc.append((center+p).tolist())
 
-            # tgt_pc=np.array(tgt_pc)
-            # pc=np.concatenate((pc,tgt_pc),axis=1)
-
-            # TODO PC AND TGT PC!
-
-            xform=world.scene.get_object("/Sphere")
-            cube=world.scene.get_object('/World/Extras/Cube/Cube/cube')
-            xform.set_world_poses(positions=cube.get_world_poses()[0],orientations=cube.get_world_poses()[1])
-            pc=[]
-            i=0
-            while scene.object_exists(f'/Sphere/sphere{i}'):
-                sphere=scene.get_object(f'/Sphere/sphere{i}')
-                pc.append(sphere.get_world_pose()[0].tolist())
-                i+=1
-
-            xform=world.scene.get_object("/TSphere")
-            tcube=world.scene.get_object('/World/Extras/TCube/TCube/cube')
-            xform.set_world_poses(positions=tcube.get_world_poses()[0],orientations=tcube.get_world_poses()[1])
-            tpc=[]
-            i=0
-            while scene.object_exists(f'/TSphere/sphere{i}'):
-                sphere=scene.get_object(f'/TSphere/sphere{i}')
-                tpc.append(sphere.get_world_pose()[0].tolist())
-                i+=1
-            pc=np.concatenate((pc,tpc),axis=1)
-
-
+            tgt_pc=np.array(tgt_pc)
+            pc=np.concatenate((pc,tgt_pc),axis=1)
             # if eval(str(cls.cfg.flow).title()):
             #     pc=np.concatenate((pc,tgt_pc-pc),axis=1) # [ 1.57756746e-01  9.57879238e-03  5.00003956e-02 -7.45579600e-04 -6.01215288e-04 -4.09781933e-07]
             # else:
@@ -431,7 +403,7 @@ class EvalUtils(ControlFlow):
                 # assert isinstance(agent_obs["pc"][0][0], np.ndarray)
                 pc=pc,
                 # pc=np.array(rope.get_world_pose()[0]), # [np.array(pc) for pc in rope.get_world_pose()[0]],
-                eef_pos=eef_pos,
+                state=eef_pos,
                 # state= eef_pos in saved npz
                 # state=np.array([[right_target_world_pos[0],right_target_world_pos[1],right_target_world_pos[2],col1[0],col1[1],col1[2],col3[0],col3[1],col3[2],gravity_dir[0],gravity_dir[1],gravity_dir[2],gripper_pose]])
             ) #pc and eef_pose
@@ -447,52 +419,53 @@ class EvalUtils(ControlFlow):
 
         if cls.cfg.from_demo is not None:
             data_frame = data_logger.get_data_frame(data_frame_index=start_time+1)
-            for idx,_str in enumerate(["Left"]):   
+            for idx,_str in enumerate(["Right"]):   
                 world.scene.get_object(robot_name).set_joint_positions(
                     np.array(data_frame.data[_str][f"{_str}_joint_positions"])
                 )
 
-            for idx,_str in enumerate(["Left"]):   
+            for idx,_str in enumerate(["Right"]):   
                 # world.scene.get_object(target_name).set_local_pose(
                 #     translation=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                 #     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                 # )
-                # ori=cls._rotation@R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
-                ori=R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
+                ori=cls._rotation@R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                # world.scene.get_object(target_name).set_world_pose(#TODO
-                #     position=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])+cls._translation),
-                #     orientation=np.array(ori),
-                # )
-                world.scene.get_object(target_name).set_local_pose(#TODO
-                    translation=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])),
+                world.scene.get_object(target_name).set_world_pose(#TODO
+                    position=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])+cls._translation),
                     orientation=np.array(ori),
                 )
-            # ori=cls._rotation@R.from_quat(np.array(data_frame.data["Cube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
-            ori=cls._rotation@R.from_quat(np.array(data_frame.data["Cube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
+
+            ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
             ori=R.from_matrix(ori).as_quat(scalar_first=True)
-            # world.scene.get_object('/World/Extras/Cube/Cube/cube').set_world_poses(
-            #     positions=np.array([np.array(data_frame.data["Cube"]["cube_world_position"])+cls._translation]),
-            #     orientations=np.array([ori]),
-            # )
-            world.scene.get_object('/World/Extras/Cube/Cube/cube').set_local_poses(
-                translations=np.array([np.array(data_frame.data["Cube"]["cube_world_position"])]),
-                orientations=np.array([ori]),
+            world.scene.get_object('vbar').set_world_pose(
+                position=np.array(data_frame.data["T"]["vbar_world_position"])+cls._translation,
+                orientation=ori,
             )
 
-
-            # ori=cls._rotation@R.from_quat(np.array(data_frame.data["TCube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
-            ori=R.from_quat(np.array(data_frame.data["TCube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
+            ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
             ori=R.from_matrix(ori).as_quat(scalar_first=True)
-            # world.scene.get_object('/World/Extras/TCube/TCube/cube').set_world_poses(
-            #     positions=np.array([np.array(data_frame.data["TCube"]["cube_world_position"])+cls._translation+cls._tgt_offset]),
-            #     orientations=np.array([ori]),
-            # )
-            world.scene.get_object('/World/Extras/TCube/TCube/cube').set_local_poses(
-                translations=np.array([np.array(data_frame.data["TCube"]["cube_world_position"])+cls._tgt_offset]),
-                orientations=np.array([ori]),
+            world.scene.get_object('hbar').set_world_pose(
+                position=np.array(data_frame.data["T"]["hbar_world_position"])+cls._translation,
+                orientation=ori,
             )
-            
+            try:
+                ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
+                ori=R.from_matrix(ori).as_quat(scalar_first=True)
+                world.scene.get_object('tgt_vbar').set_world_pose(
+                    position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+cls._translation,
+                    orientation=ori,
+                )
+
+                ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
+                ori=R.from_matrix(ori).as_quat(scalar_first=True)
+                world.scene.get_object('tgt_hbar').set_world_pose(
+                    position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+cls._translation,
+                    orientation=ori,
+                )
+            except:
+                pass
+
                 # rope.set_world_pose(
                 #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
                 #     orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
@@ -507,9 +480,9 @@ class EvalUtils(ControlFlow):
         # nets, optimizer, lr_scheduler = init_model_and_optimizer(cls.device,cls.config)
         # noise_scheduler = DiffusionScheduler(num_steps=cls.config["diffusion_steps"],mode=cls.config["diffusion_mode"],device=cls.device)
 
-        nets=cls.config['nets']
-        noise_scheduler=cls.config['noise_scheduler']
-        gripper_noise_scheduler=cls.config['gripper_noise_scheduler']
+        # nets=cls.config['nets']
+        # noise_scheduler=cls.config['noise_scheduler']
+        # gripper_noise_scheduler=cls.config['gripper_noise_scheduler']
 
 
         cls._sample._on_logging_event(True)
@@ -545,7 +518,8 @@ class EvalUtils(ControlFlow):
         cls.sample._pre_physics_callback=None
 
 
-        cls.sample._pre_physics_callback=partial(cls._reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
+        # cls.sample._pre_physics_callback=partial(cls._reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
+        cls.sample._pre_physics_callback=partial(cls._reset,_onDone_async=cls._reset_async)
         
         await omni.kit.app.get_app().next_update_async()
         # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
@@ -555,7 +529,8 @@ class EvalUtils(ControlFlow):
             await asyncio.sleep(0.01)
 
 
-        cls.sample._pre_physics_callback=partial(cls._post_reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
+        # cls.sample._pre_physics_callback=partial(cls._post_reset,nets,noise_scheduler,gripper_noise_scheduler,_onDone_async=cls._reset_async)
+        cls.sample._pre_physics_callback=partial(cls._post_reset,_onDone_async=cls._reset_async)
 
         # # see extscache\omni.kit.capture.viewport-1.5.1\omni\kit\capture\viewport\tests\test_capture_png.py
         # cls._capture_instance = CaptureExtension().get_instance()
@@ -620,19 +595,19 @@ class EvalUtils(ControlFlow):
 
 
     @classmethod
-    def _reset(cls,nets, noise_scheduler,gripper_noise_scheduler,step_size=None,_onDone_async=None):
-        if cls.config['arch']==0:
-            from equibot.policies.etseed_test import test_batch
-        # elif config['arch']==1:
-        #     pass
-        elif cls.config['arch']==2:
-            from equibot.policies.etseed_test_sep2 import test_batch
-        elif cls.config['arch']==3:
-            from equibot.policies.etseed_test_sep_no_diffusion_no_gripper import test_batch
-        elif cls.config['arch']==4:
-            from equibot.policies.etseed_test_sep2_nounetdiffusion import test_batch
-        else:
-            raise NotImplementedError
+    def _reset(cls,step_size=None,_onDone_async=None):
+        # if cls.config['arch']==0:
+        #     from equibot.policies.etseed_test import test_batch
+        # # elif config['arch']==1:
+        # #     pass
+        # elif cls.config['arch']==2:
+        #     from equibot.policies.etseed_test_sep2 import test_batch
+        # elif cls.config['arch']==3:
+        #     from equibot.policies.etseed_test_sep_no_diffusion_no_gripper import test_batch
+        # elif cls.config['arch']==4:
+        #     from equibot.policies.etseed_test_sep2_nounetdiffusion import test_batch
+        # else:
+        #     raise NotImplementedError
         
         print("---")
         if step_size is None:
@@ -655,14 +630,13 @@ class EvalUtils(ControlFlow):
         world=cls.world
         task=cls.task
         scene=cls.scene
-        # hbar=sample._hbar
-        # vbar=sample._vbar
+        hbar=sample._hbar
+        vbar=sample._vbar
         # rope=cls.rope
         robot=cls.robot
         robot_name=cls.robot_name
         target_name=cls.target_name
         obs_history = cls.obs_history
-
 
         obs_horizon=cls.obs_horizon
         ac_horizon=cls.ac_horizon
@@ -674,48 +648,48 @@ class EvalUtils(ControlFlow):
         # ISSUE 2: during the initial alignment, the hand/gripper need to rotate to match the orientation of the taget cube
         if cls.cfg.from_demo is not None and cls.count < 0 and cls.count>=-2:
             data_frame = cls.data_logger.get_data_frame(data_frame_index=cls.start_time+1+cls.count)
-            for idx,_str in enumerate(["Left"]):  
+            for idx,_str in enumerate(["Right"]):  
                 # world.scene.get_object(target_name).set_local_pose(
                 #     translation=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                 #     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                 # )
-
-                # ori=cls._rotation@R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
-                ori=R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
+                ori=cls._rotation@R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                # world.scene.get_object(target_name).set_world_pose(#TODO
-                #     position=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])+cls._translation),
-                #     orientation=np.array(ori),
-                # )
-                world.scene.get_object(target_name).set_local_pose(#TODO
-                    translation=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])),
+                world.scene.get_object(target_name).set_world_pose(#TODO
+                    position=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])+cls._translation),
                     orientation=np.array(ori),
                 )
 
-                # ori=cls._rotation@R.from_quat(np.array(data_frame.data["Cube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
-                ori=R.from_quat(np.array(data_frame.data["Cube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
+            ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
+            ori=R.from_matrix(ori).as_quat(scalar_first=True)
+            world.scene.get_object('vbar').set_world_pose(
+                position=np.array(data_frame.data["T"]["vbar_world_position"])+cls._translation,
+                orientation=ori,
+            )
+
+            ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
+            ori=R.from_matrix(ori).as_quat(scalar_first=True)
+            world.scene.get_object('hbar').set_world_pose(
+                position=np.array(data_frame.data["T"]["hbar_world_position"])+cls._translation,
+                orientation=ori,
+            )
+            try:
+                ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                # world.scene.get_object('/World/Extras/Cube/Cube/cube').set_world_poses(#TODO
-                #     positions=np.array([np.array(data_frame.data["Cube"]["cube_world_position"])+cls._translation]),
-                #     orientations=np.array([ori]),
-                # )
-                world.scene.get_object('/World/Extras/Cube/Cube/cube').set_local_poses(#TODO
-                    translations=np.array([np.array(data_frame.data["Cube"]["cube_world_position"])]),
-                    orientations=np.array([ori]),
+                world.scene.get_object('tgt_vbar').set_world_pose(
+                    position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+cls._translation,
+                    orientation=ori,
                 )
 
-                # ori=cls._rotation@R.from_quat(np.array(data_frame.data["TCube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
-                ori=R.from_quat(np.array(data_frame.data["TCube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
+                ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                # world.scene.get_object('/World/Extras/TCube/TCube/cube').set_world_poses(#TODO
-                #     positions=np.array([np.array(data_frame.data["TCube"]["cube_world_position"])+cls._translation+cls._tgt_offset]),
-                #     orientations=np.array([ori]),
-                # )
-                world.scene.get_object('/World/Extras/TCube/TCube/cube').set_local_poses(#TODO
-                    translations=np.array([np.array(data_frame.data["TCube"]["cube_world_position"])+cls._tgt_offset]),
-                    orientations=np.array([ori]),
+                world.scene.get_object('tgt_hbar').set_world_pose(
+                    position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+cls._translation,
+                    orientation=ori,
                 )
-                
+            except:
+                pass
+
                 # rope.set_world_pose(
                 #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
                 #     orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
@@ -723,19 +697,19 @@ class EvalUtils(ControlFlow):
             return
 
     @classmethod
-    def _post_reset(cls,nets, noise_scheduler,gripper_noise_scheduler,step_size=None,_onDone_async=None):
-        if cls.config['arch']==0:
-            from equibot.policies.etseed_test import test_batch
-        # elif config['arch']==1:
-        #     pass
-        elif cls.config['arch']==2:
-            from equibot.policies.etseed_test_sep2 import test_batch
-        elif cls.config['arch']==3:
-            from equibot.policies.etseed_test_sep_no_diffusion_no_gripper import test_batch
-        elif cls.config['arch']==4:
-            from equibot.policies.etseed_test_sep2_nounetdiffusion import test_batch
-        else:
-            raise NotImplementedError
+    def _post_reset(cls,step_size=None,_onDone_async=None):
+        # if cls.config['arch']==0:
+        #     from equibot.policies.etseed_test import test_batch
+        # # elif config['arch']==1:
+        # #     pass
+        # elif cls.config['arch']==2:
+        #     from equibot.policies.etseed_test_sep2 import test_batch
+        # elif cls.config['arch']==3:
+        #     from equibot.policies.etseed_test_sep_no_diffusion_no_gripper import test_batch
+        # elif cls.config['arch']==4:
+        #     from equibot.policies.etseed_test_sep2_nounetdiffusion import test_batch
+        # else:
+        #     raise NotImplementedError
         
         print("---")
         if step_size is None:
@@ -755,9 +729,11 @@ class EvalUtils(ControlFlow):
         world=cls.world
         task=cls.task
         scene=cls.scene
-        # hbar=sample._hbar
-        # vbar=sample._vbar
+        hbar=sample._hbar
+        vbar=sample._vbar
         # rope=cls.rope
+
+        agent=cls.agent
         robot=cls.robot
         robot_name=cls.robot_name
         target_name=cls.target_name
@@ -838,37 +814,37 @@ class EvalUtils(ControlFlow):
         print(f"gripper is {gripper_state}")
 
 
-        # _dict={
-        #     "vbar_world_position": vbar.get_world_pose()[0].tolist(),
-        #     "vbar_world_orientation": vbar.get_world_pose()[1].tolist(),
-        #     "vbar_world_scale": vbar.get_world_scale().tolist(),
-        #     "hbar_world_position": hbar.get_world_pose()[0].tolist(),
-        #     "hbar_world_orientation": hbar.get_world_pose()[1].tolist(),
-        #     "hbar_world_scale": hbar.get_world_scale().tolist(), 
-        # }
+        _dict={
+            "vbar_world_position": vbar.get_world_pose()[0].tolist(),
+            "vbar_world_orientation": vbar.get_world_pose()[1].tolist(),
+            "vbar_world_scale": vbar.get_world_scale().tolist(),
+            "hbar_world_position": hbar.get_world_pose()[0].tolist(),
+            "hbar_world_orientation": hbar.get_world_pose()[1].tolist(),
+            "hbar_world_scale": hbar.get_world_scale().tolist(), 
+        }
     
-        # _pc=[]
-        # values = [1, -1]
-        # dominant_values=np.linspace(-1, 1, num=5).tolist()
-        # combinations = list(product(values, repeat=2))
-        # combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
-        # for component in ["v","h"]:
-        #     xyz=np.array(_dict[f"{component}bar_world_scale"])/2
-        #     dominant_direction=np.argmax(xyz)
-        #     for i,comb in enumerate(combinations):
-        #         tmp=comb[dominant_direction]
-        #         comb[dominant_direction]=comb[0]
-        #         comb[0]=tmp
-        #         center=np.array(_dict[f"{component}bar_world_position"])
-        #         p=np.array(comb)*xyz
-        #         quat_p=np.concatenate(([0.0],p))
-        #         ori=np.array(_dict[f"{component}bar_world_orientation"])
-        #         quat_p=mu.mul(mu.inverse(ori),quat_p)
-        #         quat_p=mu.mul(quat_p,(ori))
-        #         p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
-        #         _pc.append((center+p).tolist())
+        _pc=[]
+        values = [1, -1]
+        dominant_values=np.linspace(-1, 1, num=5).tolist()
+        combinations = list(product(values, repeat=2))
+        combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
+        for component in ["v","h"]:
+            xyz=np.array(_dict[f"{component}bar_world_scale"])/2
+            dominant_direction=np.argmax(xyz)
+            for i,comb in enumerate(combinations):
+                tmp=comb[dominant_direction]
+                comb[dominant_direction]=comb[0]
+                comb[0]=tmp
+                center=np.array(_dict[f"{component}bar_world_position"])
+                p=np.array(comb)*xyz
+                quat_p=np.concatenate(([0.0],p))
+                ori=np.array(_dict[f"{component}bar_world_orientation"])
+                quat_p=mu.mul(mu.inverse(ori),quat_p)
+                quat_p=mu.mul(quat_p,(ori))
+                p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
+                _pc.append((center+p).tolist())
 
-        # pc=np.array(_pc)
+        pc=np.array(_pc)
         # # NEW
         # tgt_pc=np.array([[0.15260505303740501, 0.03901616483926773, -6.50063157081604e-07],
         #     [0.17697889357805252, 0.08267295360565186, -6.50063157081604e-07], 
@@ -935,61 +911,38 @@ class EvalUtils(ControlFlow):
         #         ]
         #     )
         
-        # _dict={
-        #     "vbar_world_position": cls._sample._target_vbar.get_world_pose()[0].tolist(),
-        #     "vbar_world_orientation": cls._sample._target_vbar.get_world_pose()[1].tolist(),
-        #     "vbar_world_scale": cls._sample._target_vbar.get_world_scale().tolist(),
-        #     "hbar_world_position": cls._sample._target_hbar.get_world_pose()[0].tolist(),
-        #     "hbar_world_orientation": cls._sample._target_hbar.get_world_pose()[1].tolist(),
-        #     "hbar_world_scale": cls._sample._target_hbar.get_world_scale().tolist(), 
-        # }
-        # tgt_pc=[]
+        _dict={
+            "vbar_world_position": cls._sample._target_vbar.get_world_pose()[0].tolist(),
+            "vbar_world_orientation": cls._sample._target_vbar.get_world_pose()[1].tolist(),
+            "vbar_world_scale": cls._sample._target_vbar.get_world_scale().tolist(),
+            "hbar_world_position": cls._sample._target_hbar.get_world_pose()[0].tolist(),
+            "hbar_world_orientation": cls._sample._target_hbar.get_world_pose()[1].tolist(),
+            "hbar_world_scale": cls._sample._target_hbar.get_world_scale().tolist(), 
+        }
+        tgt_pc=[]
 
-        # values = [1, -1]
-        # dominant_values=np.linspace(-1, 1, num=5).tolist()
-        # combinations = list(product(values, repeat=2))
-        # combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
-        # for component in ["v","h"]:
-        #     xyz=np.array(_dict[f"{component}bar_world_scale"])/2
-        #     dominant_direction=np.argmax(xyz)
-        #     for i,comb in enumerate(combinations):
-        #         tmp=comb[dominant_direction]
-        #         comb[dominant_direction]=comb[0]
-        #         comb[0]=tmp
-        #         center=np.array(_dict[f"{component}bar_world_position"])
-        #         p=np.array(comb)*xyz
-        #         quat_p=np.concatenate(([0.0],p))
-        #         ori=np.array(_dict[f"{component}bar_world_orientation"])
-        #         quat_p=mu.mul(mu.inverse(ori),quat_p)
-        #         quat_p=mu.mul(quat_p,(ori))
-        #         p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
-        #         tgt_pc.append((center+p).tolist())
-        #         # cls._sample._add_sphere(center+p,prim_path=f"/tgt{component}sphere{i}")
-        # tgt_pc=np.array(tgt_pc)
-        # pc=np.concatenate((pc,tgt_pc),axis=1)
-
-        # TODO PC AND TGT PC!
-
-        xform=world.scene.get_object("/Sphere")
-        cube=world.scene.get_object('/World/Extras/Cube/Cube/cube')
-        xform.set_world_poses(positions=cube.get_world_poses()[0],orientations=cube.get_world_poses()[1])
-        pc=[]
-        i=0
-        while scene.object_exists(f'/Sphere/sphere{i}'):
-            sphere=scene.get_object(f'/Sphere/sphere{i}')
-            pc.append(sphere.get_world_pose()[0].tolist())
-            i+=1
-
-        xform=world.scene.get_object("/TSphere")
-        tcube=world.scene.get_object('/World/Extras/TCube/TCube/cube')
-        xform.set_world_poses(positions=tcube.get_world_poses()[0],orientations=tcube.get_world_poses()[1])
-        tpc=[]
-        i=0
-        while scene.object_exists(f'/TSphere/sphere{i}'):
-            sphere=scene.get_object(f'/TSphere/sphere{i}')
-            tpc.append(sphere.get_world_pose()[0].tolist())
-            i+=1
-        pc=np.concatenate((pc,tpc),axis=1)
+        values = [1, -1]
+        dominant_values=np.linspace(-1, 1, num=5).tolist()
+        combinations = list(product(values, repeat=2))
+        combinations = [[dominant_value] + list(comb) for dominant_value in dominant_values for comb in combinations]
+        for component in ["v","h"]:
+            xyz=np.array(_dict[f"{component}bar_world_scale"])/2
+            dominant_direction=np.argmax(xyz)
+            for i,comb in enumerate(combinations):
+                tmp=comb[dominant_direction]
+                comb[dominant_direction]=comb[0]
+                comb[0]=tmp
+                center=np.array(_dict[f"{component}bar_world_position"])
+                p=np.array(comb)*xyz
+                quat_p=np.concatenate(([0.0],p))
+                ori=np.array(_dict[f"{component}bar_world_orientation"])
+                quat_p=mu.mul(mu.inverse(ori),quat_p)
+                quat_p=mu.mul(quat_p,(ori))
+                p[0],p[1],p[2]=quat_p[1],quat_p[2],quat_p[3]
+                tgt_pc.append((center+p).tolist())
+                # cls._sample._add_sphere(center+p,prim_path=f"/tgt{component}sphere{i}")
+        tgt_pc=np.array(tgt_pc)
+        pc=np.concatenate((pc,tgt_pc),axis=1)
 
         # if eval(str(cls.cfg.flow).title()):
         #     pc=np.concatenate((pc,tgt_pc-pc),axis=1) # [ 1.57756746e-01  9.57879238e-03  5.00003956e-02 -7.45579600e-04 -6.01215288e-04 -4.09781933e-07]
@@ -1019,7 +972,7 @@ class EvalUtils(ControlFlow):
             # assert isinstance(agent_obs["pc"][0][0], np.ndarray)
             pc=pc,
             # pc=np.array(rope.get_world_pose()[0]), # [np.array(pc) for pc in rope.get_world_pose()[0]],
-            eef_pos=eef_pos,
+            state=eef_pos,
             # state= eef_pos in saved npz
             # state=np.array([[right_target_world_pos[0],right_target_world_pos[1],right_target_world_pos[2],col1[0],col1[1],col1[2],col3[0],col3[1],col3[2],gravity_dir[0],gravity_dir[1],gravity_dir[2],gripper_pose]])
         ) #pc and eef_pose
@@ -1035,17 +988,21 @@ class EvalUtils(ControlFlow):
         else:
             agent_obs = dict()
             for k in obs.keys():
-                if k == "pc":
-                    # point clouds can have different number of points
-                    # so do not stack them
-                    agent_obs[k] = [o[k] for o in obs_history[-obs_horizon:]]
-                else:
+                # if k == "pc":
+                #     # point clouds can have different number of points
+                #     # so do not stack them
+                #     agent_obs[k] = [o[k] for o in obs_history[-obs_horizon:]]
+                # else:
                     agent_obs[k] = np.stack(
                         [o[k] for o in obs_history[-obs_horizon:]],axis=0
                     )
         for key in agent_obs.keys():
-            agent_obs[key]=torch.from_numpy(np.array(agent_obs[key]))
-            agent_obs[key]=agent_obs[key][None,...]
+            # agent_obs[key]=torch.from_numpy(np.array(agent_obs[key]))
+            # agent_obs[key]=agent_obs[key][None,...]
+            agent_obs[key]=agent_obs[key][:,np.newaxis]
+            if key == 'state':
+                agent_obs[key]=agent_obs[key][...,np.newaxis, :]
+
         # predict actions
         st = time.time()
         if cls.count % ac_horizon == 0:
@@ -1061,12 +1018,26 @@ class EvalUtils(ControlFlow):
             # id[:3, 3] = -1.0*torch.tensor([0.00001,0.00001,0.00001],dtype=torch.float32, device='cuda')*cls.count
             # ac = id[None, None, :, :].expand(1,pred_horizion,4,4)
 
-            ac = test_batch(nets=nets, noise_scheduler=noise_scheduler,gripper_noise_scheduler=gripper_noise_scheduler, nbatch=agent_obs, device=cls.device,config=cls.config,isVisualEval=True)
+            ac = agent.act(agent_obs, return_dict=False)
+            _shape=ac.reshape((-1, pred_horizion, 7)).shape
+            eye = np.eye(4)[None, None, :, :] 
+            eye = np.tile(eye, (_shape[0], _shape[1], 1, 1))
+            _gripper_action=ac[...,0]
+            _translation=ac[...,1:4]
+            _rotation=ac[...,4:7].squeeze()
+
+            _rotation = R.from_rotvec(_rotation).as_matrix()
+            eye[...,:3, :3] = _rotation
+            eye[...,:3, 3] = _translation
+            eye[...,3, 3]=_gripper_action
+            # print(cls.ac.shape,'predicted ac') # b Ha 4 4
+            cls.ac=eye
+                        # ac = test_batch(nets=nets, noise_scheduler=noise_scheduler,gripper_noise_scheduler=gripper_noise_scheduler, nbatch=agent_obs, device=cls.device,config=cls.config,isVisualEval=True)
             # print(ac.shape, "ac?") # b Ha 4 4
             # if eval(str(cls.cfg.manually_close).title()) is True:
             #     for i in range(len(ac)):
             #         ac[i][0]=-0.3
-            cls.ac=ac.view(-1,pred_horizion,4,4).cpu()
+            # cls.ac=ac.view(-1,pred_horizion,4,4).cpu()
             # print(cls.ac.shape,'predicted ac') # b Ha 4 4
 
         logging.info(f"Inference time: {time.time() - st:.3f}s")
@@ -1081,19 +1052,28 @@ class EvalUtils(ControlFlow):
         print("force",scene.get_object(robot_name).get_applied_action().joint_positions[-1])
     
     @classmethod
-    async def eval_async(cls,log_dir,reduce_horizon_dim,cfg,config,simulation_app):
+    # async def eval_async(cls,log_dir,reduce_horizon_dim,cfg,config,simulation_app):
+    async def eval_async(cls,agent,num_episodes,log_dir,reduce_horizon_dim,ckpt_name,cfg,simulation_app):
+        cls.agent=agent
+        cls.num_episodes=num_episodes
         cls.log_dir=log_dir
         cls.reduce_horizon_dim=reduce_horizon_dim
-        cls.config=config
+        cls.ckpt_name=ckpt_name
         cls.cfg=cfg
+
 
         global myjson
         myjson=defaultdict(dict)
         cls.simulation_app=simulation_app
-        cls.obs_horizon = config['obs_horizon']
-        cls.ac_horizon = config['action_horizon']
-        cls.pred_horizon = config['pred_horizon']
-        cls.T_a=config['T_a']
+        if hasattr(agent, "obs_horizon") and hasattr(agent, "ac_horizon"):
+            cls.obs_horizon = agent.obs_horizon
+            cls.ac_horizon = agent.ac_horizon
+            cls.pred_horizon = agent.pred_horizon
+        else:
+            cls.obs_horizon = 1
+            cls.ac_horizon = 1
+            cls.pred_horizon = 1
+
         
         cls.device = torch.device('cuda')
         if not torch.cuda.is_available():
@@ -1122,18 +1102,19 @@ def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,upda
     agent_ac=agent_ac[0][0]
     # # TODO CLIP in TRAIN + INFERENCE
 
-    if not cfg['gripperReg']:
-        _gripper=torch.sigmoid(agent_ac[3][3])
-    else:
-        _gripper=agent_ac[3][3]
-    if _gripper < 0.5:
-        gripper.close()
-        print(f"{_gripper} gripper is closing")
-    else:
-        gripper.open()
-        print(f"{_gripper} gripper is opening")
+    # if not cfg['gripperReg']:
+    #     _gripper=torch.sigmoid(agent_ac[3][3])
+    # else:
+    #     _gripper=agent_ac[3][3]
+    _gripper=agent_ac[3][3]
+    # if _gripper < 0.5:
+    #     gripper.close()
+    #     print(f"{_gripper} gripper is closing")
+    # else:
+    #     gripper.open()
+    #     print(f"{_gripper} gripper is opening")
 
-    # gripper.close()
+    gripper.close()
     print(f"{_gripper} gripper is ?????")
 
 

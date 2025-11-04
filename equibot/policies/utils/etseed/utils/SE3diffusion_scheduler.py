@@ -493,6 +493,133 @@ class DiffusionScheduler(torch.nn.Module):
         # noise = se3.exp(noise)
         # return H_pure_noise@sample,noise # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
 
+
+    def ddim_denoise_decoupled(
+        self,
+        reconstructed_H_0,   # [B,Ho,4,4] model's estimate of clean H_0
+        timestep,            # [B]
+        sample,              # [B,Ho,4,4] = H_t
+        device,
+        abs_to_rel: bool = False,
+        predict_h0: bool = True,
+        eta: float = 1.0,    # DDIM stochasticity (0 = deterministic)
+    ):
+        """
+        DDIM reverse step consistent with add_noise9_decoupled:
+
+        Forward (decoupled):
+        R_t = exp( sqrt(alpha_rot_t) * log(R) )  left-composed with exp( sqrt(1-a_rot_t) * σ_r * ε_r )
+        t_t = sqrt(alpha_trn_t) * t              +            sqrt(1-a_trn_t) * σ_t * ε_t
+
+        Reverse (DDIM, per-part):
+        eps_r,t are *predicted* from (R_t, t_t) and x0-hat, then
+        R_{t-1} = exp( sqrt(a_rot_prev) * log(R0) + sqrt(1-a_rot_prev) * eps_r )
+        t_{t-1} = sqrt(a_trn_prev) * t0           + sqrt(1-a_trn_prev) * eps_t
+        + optional stochasticity controlled by eta:
+            rot: left-compose exp( σ_r * sigma_rot_step * ξ_r )
+            trn: add σ_t * sigma_trn_step * ξ_t  (world frame)
+        """
+        # ----- indices / sizes -----
+        t_idx = timestep[0].cpu().item()  # assume uniform t across batch
+        prev_idx = max(t_idx - 1, 0)
+        B, Ho = sample.shape[0], sample.shape[1]
+
+        if abs_to_rel:
+            raise NotImplementedError("abs_to_rel not supported in decoupled variant.")
+
+        if not predict_h0:
+            raise NotImplementedError("predict_h0=False not implemented for decoupled DDIM.")
+
+        # ----- schedules (decoupled; fall back to shared if not present) -----
+        alpha_rot_t   = getattr(self, "alpha_bars_rot",   self.alpha_bars)[t_idx].to(device)  # scalar
+        alpha_trn_t   = getattr(self, "alpha_bars_trans", self.alpha_bars)[t_idx].to(device)  # scalar
+        alpha_rot_tm1 = getattr(self, "alpha_bars_rot",   self.alpha_bars)[prev_idx].to(device)
+        alpha_trn_tm1 = getattr(self, "alpha_bars_trans", self.alpha_bars)[prev_idx].to(device)
+
+        # broadcast helpers
+        def bcast3(x):  # -> [1,1,1] for rot log vectors
+            return x.view(1, 1, 1)
+        def bcastv(x):  # -> [1,1,1] for trans vectors
+            return x.view(1, 1, 1)
+
+        sqrt_aR_t   = torch.sqrt(alpha_rot_t)
+        sqrt_aT_t   = torch.sqrt(alpha_trn_t)
+        sqrt_1m_aR_t = torch.sqrt(torch.clamp(1.0 - alpha_rot_t, min=1e-12))
+        sqrt_1m_aT_t = torch.sqrt(torch.clamp(1.0 - alpha_trn_t, min=1e-12))
+
+        sqrt_aR_tm1   = torch.sqrt(alpha_rot_tm1)
+        sqrt_aT_tm1   = torch.sqrt(alpha_trn_tm1)
+        sqrt_1m_aR_tm1 = torch.sqrt(torch.clamp(1.0 - alpha_rot_tm1, min=1e-12))
+        sqrt_1m_aT_tm1 = torch.sqrt(torch.clamp(1.0 - alpha_trn_tm1, min=1e-12))
+
+        # ----- decompose inputs -----
+        H_t   = sample.to(torch.float32)
+        R_t   = H_t[..., :3, :3]      # [B,Ho,3,3]
+        tt    = H_t[..., :3,  3]      # [B,Ho,3]
+
+        H0hat = reconstructed_H_0.to(torch.float32)
+        R0hat = H0hat[..., :3, :3]    # [B,Ho,3,3]
+        t0hat = H0hat[..., :3,  3]    # [B,Ho,3]
+
+        # ----- predict per-part noise eps at step t -----
+        # Rotation: eps_r_t ~ (log(R_t) - sqrt(aR_t)*log(R0)) / sqrt(1 - aR_t)
+        log_Rt  = so3.log(R_t)        # [B,Ho,3]
+        log_R0  = so3.log(R0hat)      # [B,Ho,3]
+        eps_r_t = (log_Rt - bcast3(sqrt_aR_t) * log_R0) / bcast3(sqrt_1m_aR_t)  # [B,Ho,3]
+
+        # Translation: eps_t_t ~ (t_t - sqrt(aT_t)*t0) / sqrt(1 - aT_t)
+        eps_t_t = (tt - bcastv(sqrt_aT_t) * t0hat) / bcastv(sqrt_1m_aT_t)        # [B,Ho,3]
+
+        # ----- deterministic DDIM update to t-1 (eta=0 path) -----
+        # R_{t-1} (in log space):
+        log_R_tm1 = bcast3(sqrt_aR_tm1) * log_R0 + bcast3(sqrt_1m_aR_tm1) * eps_r_t
+        R_tm1     = so3.exp(log_R_tm1)                                              # [B,Ho,3,3]
+
+        # t_{t-1} (linear):
+        t_tm1     = bcastv(sqrt_aT_tm1) * t0hat + bcastv(sqrt_1m_aT_tm1) * eps_t_t  # [B,Ho,3]
+
+        # ----- stochasticity (eta) per DDIM: step-specific sigmas -----
+        # sigma_step = eta * sqrt( (1 - a_t / a_tm1) * (1 - a_tm1) / (1 - a_t) )
+        # handle t==0 by forcing sigma_step=0
+        if t_idx == 0:
+            sigma_rot_step = torch.tensor(0.0, device=device)
+            sigma_trn_step = torch.tensor(0.0, device=device)
+        else:
+            sigma_rot_step = eta * torch.sqrt(
+                torch.clamp((1.0 - alpha_rot_t / alpha_rot_tm1) * (1.0 - alpha_rot_tm1) / (1.0 - alpha_rot_t + 1e-12), min=0.0)
+            )
+            sigma_trn_step = eta * torch.sqrt(
+                torch.clamp((1.0 - alpha_trn_t / alpha_trn_tm1) * (1.0 - alpha_trn_tm1) / (1.0 - alpha_trn_t + 1e-12), min=0.0)
+            )
+
+        # sample fresh noise for this step
+        eps_r = torch.randn(B, Ho, 3, device=device, dtype=torch.float32)
+        eps_t = torch.randn(B, Ho, 3, device=device, dtype=torch.float32)
+
+        # rotation stochastic term: left-compose
+        if sigma_rot_step.item() != 0.0:
+            R_noise = so3.exp(bcast3(sigma_rot_step * self.sigma_r) * eps_r)    # [B,Ho,3,3]
+        else:
+            R_noise = torch.eye(3, dtype=torch.float32, device=device).view(1,1,3,3).expand(B, Ho, -1, -1).clone()
+
+        # translation stochastic term: additive in world frame
+        t_noise_world = bcastv(sigma_trn_step * self.sigma_t) * eps_t           # [B,Ho,3]
+
+        # compose rotation noise on the left; add translation noise
+        R_out = torch.einsum("bhij,bhjk->bhik", R_noise, R_tm1)
+        t_out = t_tm1 + t_noise_world
+
+        H_out = torch.eye(4, dtype=torch.float32, device=device).view(1,1,4,4).expand(B, Ho, -1, -1).clone()
+        H_out[..., :3, :3] = R_out
+        H_out[..., :3,  3] = t_out
+
+        # --- mimic original returns ---
+        H_pure_noise = torch.eye(4, dtype=torch.float32, device=device).view(1,1,4,4).expand(B, Ho, -1, -1).clone()
+        H_pure_noise[..., :3, :3] = R_noise
+        H_pure_noise[..., :3,  3] = t_noise_world
+
+        return H_out, H_pure_noise
+
     def ddim_denoise(self,
                 reconstructed_H_0, # [B,Ho,4,4]
                 timestep, # [B]
@@ -549,6 +676,101 @@ class DiffusionScheduler(torch.nn.Module):
         # perturbation part in eq 34
         return sample,H_pure_noise # sample = A^{k-1}, reconstructed_H_0 = A^{k->0}A^k, see algorithm 2
 
+
+    def ddpm_denoise_decoupled(
+        self,
+        reconstructed_H_0,   # [B,Ho,4,4] model's estimate of clean H_0 (or reconstruction)
+        timestep,            # [B]
+        sample,              # [B,Ho,4,4] = H_t
+        device,
+        abs_to_rel: bool = False,
+        predict_h0: bool = True,
+    ):
+        """
+        Reverse (denoise) step consistent with add_noise9_decoupled:
+
+        - Rotation:    R_{t-1} = exp( g0 * log(R0) + g1 * log(R_t) )  then optional left-compose noise exp(sigma_r * g2 * eps_r)
+        - Translation: t_{t-1} = g0 * t0 + g1 * t_t                 then optional additive world noise (sigma_t * g2 * eps_t)
+
+        The g0,g1,g2 are your gamma schedules at 'timestep'. We keep the same stochasticity
+        pattern as your original ddpm_denoise: an extra gamma2-scaled noise term.
+        """
+        # --- setup / schedules ---
+        t_idx = timestep[0].cpu().item()  # scalar index
+        B, Ho = sample.shape[0], sample.shape[1]
+
+        if abs_to_rel:
+            raise NotImplementedError("abs_to_rel not supported for decoupled variant yet.")
+
+        # gamma schedules (match your original ddpm_denoise usage)
+        gamma0 = self.gamma0[t_idx].to(device)
+        gamma1 = self.gamma1[t_idx].to(device)
+        # make sure gamma2[-1] = 0.0 like your original code path
+        self.gamma2[-1] = 0.0
+        gamma2 = self.gamma2[t_idx].to(device)
+
+        # decoupled alpha-bars (used only if you later add an eps-pred branch)
+        alpha_rot = getattr(self, "alpha_bars_rot", self.alpha_bars)[timestep].to(device)   # [B]
+        alpha_trn = getattr(self, "alpha_bars_trans", self.alpha_bars)[timestep].to(device) # [B]
+
+        # expand scalars to broadcast nicely
+        g0 = gamma0.view(1, 1, 1)  # [1,1,1] -> broadcasts over [B,Ho,3]
+        g1 = gamma1.view(1, 1, 1)
+        g2 = gamma2.item()  # keep as python float for simple mult
+
+        # --- decompose inputs ---
+        H_t = sample.to(torch.float32)                 # [B,Ho,4,4]
+        R_t = H_t[..., :3, :3]                         # [B,Ho,3,3]
+        t_t = H_t[..., :3,  3]                         # [B,Ho,3]
+
+        H0_hat = reconstructed_H_0.to(torch.float32)   # [B,Ho,4,4]
+        R0_hat = H0_hat[..., :3, :3]                   # [B,Ho,3,3]
+        t0_hat = H0_hat[..., :3,  3]                   # [B,Ho,3]
+
+        # For now we only support predict_h0=True clean-pose prediction (common setting).
+        # If you later want eps-prediction, mirror the forward:
+        #   R_t = exp(sqrt(alpha_rot)*log(R)), so log(R) = log(R_t)/sqrt(alpha_rot)
+        #   t_t = sqrt(alpha_trn)*t,          so t   = t_t/sqrt(alpha_trn)
+        if not predict_h0:
+            raise NotImplementedError("predict_h0=False branch not implemented for decoupled variant.")
+
+        # --- deterministic part (rotation: log/exp blend; translation: linear blend) ---
+        log_R0 = so3.log(R0_hat)        # [B,Ho,3]
+        log_Rt = so3.log(R_t)           # [B,Ho,3]
+        log_R_tm1 = g0 * log_R0 + g1 * log_Rt
+        R_tm1 = so3.exp(log_R_tm1)      # [B,Ho,3,3]
+
+        t_tm1 = g0.squeeze(-1) * t0_hat + g1.squeeze(-1) * t_t   # [B,Ho,3]
+
+        # --- optional stochasticity (mirror your ddpm_denoise gamma2 noise term) ---
+        # rotation noise: left-compose in SO(3)
+        if g2 != 0.0:
+            eps_r = torch.randn(B, Ho, 3, device=device, dtype=torch.float32)  # [B,Ho,3]
+            R_noise = so3.exp(self.sigma_r * g2 * eps_r)                       # [B,Ho,3,3]
+        else:
+            R_noise = torch.eye(3, dtype=torch.float32, device=device).view(1,1,3,3).expand(B, Ho, -1, -1).clone()
+
+        # translation noise: additive in world coords
+        if g2 != 0.0:
+            eps_t = torch.randn(B, Ho, 3, device=device, dtype=torch.float32)  # [B,Ho,3]
+            t_noise_world = self.sigma_t * g2 * eps_t                          # [B,Ho,3]
+        else:
+            t_noise_world = torch.zeros(B, Ho, 3, dtype=torch.float32, device=device)
+
+        # compose rotation noise on the left (consistent with forward)
+        R_out = torch.einsum("bhij,bhjk->bhik", R_noise, R_tm1)  # R_out = R_noise @ R_tm1
+        t_out = t_tm1 + t_noise_world
+
+        H_out = torch.eye(4, dtype=torch.float32, device=device).view(1,1,4,4).expand(B, Ho, -1, -1).clone()
+        H_out[..., :3, :3] = R_out
+        H_out[..., :3,  3] = t_out
+
+        # --- mimic original returns ---
+        H_pure_noise = torch.eye(4, dtype=torch.float32, device=device).view(1,1,4,4).expand(B, Ho, -1, -1).clone()
+        H_pure_noise[..., :3, :3] = R_noise
+        H_pure_noise[..., :3,  3] = t_noise_world
+
+        return H_out, H_pure_noise
 
 
     def ddpm_denoise(self,

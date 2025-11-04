@@ -338,10 +338,16 @@ def test_batch(nets, noise_scheduler,gripper_noise_scheduler, nbatch, device,con
             gripper_noise_scheduler.set_timesteps(num_inference_steps=config['diffusion_steps'],device=device)
 
             if config['ddpmDenoise']:
-                denoise_fn=noise_scheduler.ddpm_denoise
+                if config['decoupled']:
+                    denoise_fn=noise_scheduler.ddpm_denoise_decoupled
+                else:
+                    denoise_fn=noise_scheduler.ddpm_denoise
+
             else:
-                denoise_fn=noise_scheduler.ddim_denoise
-                
+                if config['decoupled']:
+                    denoise_fn=noise_scheduler.ddim_denoise_decoupled
+                else:
+                    denoise_fn=noise_scheduler.ddim_denoise
             # predict action instead of noise might due to https://github.com/lucidrains/denoising-diffusion-pytorch/issues/58#issuecomment-2676085515
             # but why does the predicted action at denoise_idx=num_steps already good, if not the best action?
             for denoise_idx in range(config['diffusion_steps'] - 1, 0, -1):

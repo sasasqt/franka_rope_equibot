@@ -147,6 +147,7 @@ def main(cfg):
         'pc_xyz_feat_old': cfg.dev.pc_xyz_feat_old,
         'right_eef_world_pos_as_type_0':cfg.dev.right_eef_world_pos_as_type_0,
         'ddpmDenoise':cfg.ddpmDenoise,
+        'decoupled':cfg.decoupled,
         'head':cfg.dev.head,
         'pose_condition':cfg.dev.pose_condition,
         'pose_condition_on_gt':cfg.dev.pose_condition_on_gt,
