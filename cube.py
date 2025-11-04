@@ -1,25 +1,25 @@
 """
-Max XY-overlap (Z-tolerant), single maximum, Z-rotation aware.
+Max overlap (Z-tolerant), single maximum, Z-rotation aware.
 
 What this does
 --------------
 - Parses Isaac Sim JSON (file/folder/string/dict) with light cleanup.
-- Computes the **XY intersection area** between two yaw-rotated boxes each frame.
-- Counts that area **only if the two boxes are within a Z tolerance**:
+- Computes overlaps between two yaw-rotated boxes per frame.
+- Z-tolerance gate:
     Let the Z-intervals be [cz-hz, cz+hz] and [tz-hz2, tz+hz2]
     Define separation:
         sep = 0 if intervals overlap
             = (cz-hz) - (tz+hz2) if A above B and disjoint
             = (tz-hz2) - (cz+hz) if B above A and disjoint
-    The frame "passes" if sep <= z_eps (default 1e-4). Otherwise area=0.
+    A frame "passes" if sep <= z_eps (default 1e-4). Otherwise intersection=0.
 - Picks **one** maximum frame (strict argmax with deterministic tie-break).
 - Prints **Cube** and **TCube** volumes at that max frame (informational).
 - Supports:
     * custom body keys: --cube-key / --tcube-key
     * Z shift of second body: --tcube-dz
     * metric selection: --metric {area,norm-cube-xy}
-        - area          : raw XY overlap area (m^2)
-        - norm-cube-xy  : XY overlap area / Cube XY footprint area
+        - area          : **Volumetric IoU (3D)** = inter_volume / union_volume, with Z-tolerance gating
+        - norm-cube-xy  : **XY IoU (2D)**         = inter_area   / union_area,   with Z-tolerance gating
     * per-file-only printing for folders
 
 Assumptions
@@ -288,7 +288,7 @@ def _poly_intersection_area(poly1: np.ndarray, poly2: np.ndarray) -> float:
     return float(area)
 
 # ============================
-# XY-overlap with Z tolerance
+# Z helpers & overlaps
 # ============================
 
 def _z_separation(cz: float, hz: float, tz: float, hz2: float) -> float:
@@ -304,39 +304,78 @@ def _z_separation(cz: float, hz: float, tz: float, hz2: float) -> float:
         return a_lo - b_hi
     return 0.0
 
-def _xy_overlap_if_z_ok(frame: Dict[str,Any],
-                        cube_key: str, tcube_key: str,
-                        default_half_extent: float,
-                        tcube_dz: float,
-                        z_eps: float) -> Dict[str, float]:
+def _z_overlap_len(cz: float, hz: float, tz: float, hz2: float) -> float:
+    a_lo, a_hi = cz - hz, cz + hz
+    b_lo, b_hi = tz - hz2, tz + hz2
+    return max(0.0, min(a_hi, b_hi) - max(a_lo, b_lo))
+
+# ============================
+# Overlap stats with Z tolerance
+# ============================
+
+def _overlap_stats_if_z_ok(frame: Dict[str,Any],
+                           cube_key: str, tcube_key: str,
+                           default_half_extent: float,
+                           tcube_dz: float,
+                           z_eps: float) -> Dict[str, float]:
     """
-    Compute XY overlap area if Z separation <= z_eps, else 0.
-    Also returns cube & tcube volumes and cube XY area (for normalization).
+    Compute XY area & volumetric stats.
+    - If Z separation > z_eps or Cube volume < TCube volume: intersections => 0.
+    - XY IoU uses gated 2D intersection.
+    - Volumetric IoU uses actual Z-overlap length (0 if slabs don't overlap in Z).
     """
-    cx, cy, cz, hx, hy, hz, yaw   = _body_dims_and_pose(frame, cube_key,  default_half_extent)
-    tx, ty, tz, hx2, hy2, hz2, yw2= _body_dims_and_pose(frame, tcube_key, default_half_extent)
+    cx, cy, cz, hx, hy, hz, yaw    = _body_dims_and_pose(frame, cube_key,  default_half_extent)
+    tx, ty, tz, hx2, hy2, hz2, yw2 = _body_dims_and_pose(frame, tcube_key, default_half_extent)
     tz += float(tcube_dz)
 
     sep = _z_separation(cz, hz, tz, hz2)
-    # Always compute area (for diagnostics), but gate it with z_eps
+
     poly1 = _rect_xy_corners(cx, cy, hx, hy, yaw)
     poly2 = _rect_xy_corners(tx, ty, hx2, hy2, yw2)
     area_xy = _poly_intersection_area(poly1, poly2)
-    area_xy_pass = area_xy if sep <= z_eps else 0.0
 
     cube_area_xy  = float((2*hx)*(2*hy))
     tcube_area_xy = float((2*hx2)*(2*hy2))
     cube_volume   = float((2*hx)*(2*hy)*(2*hz))
     tcube_volume  = float((2*hx2)*(2*hy2)*(2*hz2))
 
+    qualifies_volume = (cube_volume >= tcube_volume)
+
+    # Gate intersections
+    if sep <= z_eps and qualifies_volume:
+        inter_area_xy = area_xy
+        z_overlap     = _z_overlap_len(cz, hz, tz, hz2)  # true Z overlap (0 if just "near" but disjoint)
+        inter_vol     = inter_area_xy * z_overlap
+    else:
+        inter_area_xy = 0.0
+        z_overlap     = 0.0
+        inter_vol     = 0.0
+
+    # XY IoU
+    union_xy = cube_area_xy + tcube_area_xy - inter_area_xy
+    iou_xy   = (inter_area_xy / union_xy) if union_xy > 0.0 else 0.0
+
+    # Volumetric IoU
+    union_vol = cube_volume + tcube_volume - inter_vol
+    iou_3d    = (inter_vol / union_vol) if union_vol > 0.0 else 0.0
+
     return {
-        "area_xy": float(area_xy),
-        "area_xy_pass": float(area_xy_pass),
         "z_separation": float(sep),
-        "cube_area_xy": cube_area_xy,
-        "tcube_area_xy": tcube_area_xy,
-        "cube_volume": cube_volume,
-        "tcube_volume": tcube_volume,
+        "z_overlap_len": float(z_overlap),
+
+        "cube_area_xy": float(cube_area_xy),
+        "tcube_area_xy": float(tcube_area_xy),
+
+        "cube_volume": float(cube_volume),
+        "tcube_volume": float(tcube_volume),
+
+        "inter_area_xy": float(inter_area_xy),
+        "union_area_xy": float(union_xy),
+        "area_iou_xy": float(iou_xy),
+
+        "inter_volume": float(inter_vol),
+        "union_volume": float(union_vol),
+        "volume_iou_3d": float(iou_3d),
     }
 
 # ============================
@@ -369,7 +408,9 @@ def analyze_frames(isaac_json: Dict[str, Any],
                    default_half_extent: float = 0.03,
                    tcube_dz: float = 0.0) -> Dict[str, Any]:
     """
-    Compute per-frame XY overlap (with Z tolerance) and return ONE maximum.
+    Compute per-frame overlaps (with Z tolerance) and return ONE maximum for:
+      - 'area'           -> volumetric IoU (3D)
+      - 'norm-cube-xy'   -> XY IoU (2D)
     """
     if isinstance(isaac_json, dict) and "Isaac Sim Data" in isaac_json:
         frames_in = isaac_json["Isaac Sim Data"]
@@ -384,32 +425,33 @@ def analyze_frames(isaac_json: Dict[str, Any],
             ts = int(frame.get("current_time_step"))
             t  = float(frame.get("current_time"))
 
-            stats = _xy_overlap_if_z_ok(frame, cube_key, tcube_key, default_half_extent, tcube_dz, z_eps)
-            norm_by_cube_xy = (stats["area_xy_pass"] / stats["cube_area_xy"]) if stats["cube_area_xy"] > 0 else 0.0
+            stats = _overlap_stats_if_z_ok(frame, cube_key, tcube_key, default_half_extent, tcube_dz, z_eps)
 
             results.append({
                 "index": idx,
                 "time_step": ts,
                 "time": t,
-                **stats,
-                "area_norm_by_cube_xy": float(norm_by_cube_xy),
+                **stats,  # includes area_iou_xy and volume_iou_3d
                 "tcube_dz": float(tcube_dz),
                 "z_eps": float(z_eps),
+                # Back-compat keys (naming kept):
+                "area_norm_by_cube_xy": float(stats["area_iou_xy"]),
             })
         except Exception:
             continue
 
     if not results:
         return {
-            "max_area_xy": 0.0,
+            "max_area_xy": 0.0,                  # will represent volumetric IoU now
             "max_frame": None,
-            "max_area_norm_by_cube_xy": 0.0,
+            "max_area_norm_by_cube_xy": 0.0,     # XY IoU
             "max_frame_norm_by_cube_xy": None,
             "per_frame": []
         }
 
-    raw_vals  = [r["area_xy_pass"] for r in results]
-    norm_vals = [r["area_norm_by_cube_xy"] for r in results]
+    # 'area' metric now means volumetric IoU
+    raw_vals  = [r["volume_iou_3d"] for r in results]
+    norm_vals = [r["area_norm_by_cube_xy"] for r in results]  # XY IoU
     times     = [r["time"] for r in results]
     steps     = [r["time_step"] for r in results]
 
@@ -422,7 +464,7 @@ def analyze_frames(isaac_json: Dict[str, Any],
     max_frame_raw = {
         "time_step": results[i_raw]["time_step"],
         "time": results[i_raw]["time"],
-        "value": results[i_raw]["area_xy_pass"],
+        "value": results[i_raw]["volume_iou_3d"],  # volumetric IoU
         "cube_volume": results[i_raw]["cube_volume"],
         "tcube_volume": results[i_raw]["tcube_volume"],
         "z_separation": results[i_raw]["z_separation"],
@@ -430,17 +472,17 @@ def analyze_frames(isaac_json: Dict[str, Any],
     max_frame_norm = {
         "time_step": results[i_norm]["time_step"],
         "time": results[i_norm]["time"],
-        "value": results[i_norm]["area_norm_by_cube_xy"],
+        "value": results[i_norm]["area_norm_by_cube_xy"],  # XY IoU
         "cube_volume": results[i_norm]["cube_volume"],
         "tcube_volume": results[i_norm]["tcube_volume"],
         "z_separation": results[i_norm]["z_separation"],
     }
 
     return {
-        "max_area_xy": max_raw,
-        "max_frame": max_frame_raw,
-        "max_area_norm_by_cube_xy": max_norm,
-        "max_frame_norm_by_cube_xy": max_frame_norm,
+        "max_area_xy": max_raw,                       # volumetric IoU (semantic change)
+        "max_frame": max_frame_raw,                   # volumetric IoU details
+        "max_area_norm_by_cube_xy": max_norm,         # XY IoU
+        "max_frame_norm_by_cube_xy": max_frame_norm,  # XY IoU details
         "per_frame": results
     }
 
@@ -483,8 +525,8 @@ def max_overlap_from_folder(folder: Union[str, Path],
                             metric: str = "area") -> Dict[str, Any]:
     """
     metric:
-      - 'area'           : raw XY area (with Z tolerance)
-      - 'norm-cube-xy'   : area / (Cube XY area)
+      - 'area'           : volumetric IoU (3D) with Z tolerance
+      - 'norm-cube-xy'   : XY IoU (2D) with Z tolerance
     """
     load_res = load_all_jsons_from_folder(folder, pattern, recursive, cube_key=cube_key, tcube_key=tcube_key)
     per_file = []
@@ -547,16 +589,16 @@ def _print_one_max(prefix: str, frame: Dict[str, Any]) -> None:
 def _print_file_summary(path: str, summary: Dict[str, Any], metric: str = "area") -> None:
     print(f"\nFile: {path}")
     if metric == "area":
-        print(f"  Max XY-overlap area (Z≤eps): {summary['max_area_xy']}")
+        print(f"  Max volumetric IoU (Z≤eps): {summary['max_area_xy']}")
         if summary["max_frame"]:
             _print_one_max("    ", summary["max_frame"])
     else:
-        print(f"  Max XY-overlap (normalized by Cube XY area): {summary['max_area_norm_by_cube_xy']}")
+        print(f"  Max XY IoU (Z≤eps): {summary['max_area_norm_by_cube_xy']}")
         if summary["max_frame_norm_by_cube_xy"]:
             _print_one_max("    ", summary["max_frame_norm_by_cube_xy"])
 
 def _print_folder_summary(res: Dict[str, Any]) -> None:
-    label = "XY area (Z≤eps)" if res.get("metric","area")=="area" else "XY area / Cube XY"
+    label = "Volumetric IoU (Z≤eps)" if res.get("metric","area")=="area" else "XY IoU (Z≤eps)"
     print("\n=== Folder Summary ===")
     print(f"Files processed: {res['num_files']}")
     print(f"Overall max ({label}): {res['overall_max']}")
@@ -572,7 +614,7 @@ def _print_per_file_only(res: Dict[str, Any]) -> None:
     metric = res.get("metric", "area")
     key_val   = "max_area_xy" if metric == "area" else "max_area_norm_by_cube_xy"
     key_frame = "max_frame"   if metric == "area" else "max_frame_norm_by_cube_xy"
-    label = "XY area (Z≤eps)" if metric == "area" else "XY area / Cube XY"
+    label = "Volumetric IoU (Z≤eps)" if metric == "area" else "XY IoU (Z≤eps)"
 
     print(f"\n=== Per-file maxima ({label}) ===")
     for item in res["per_file"]:
@@ -590,7 +632,7 @@ def _print_per_file_only(res: Dict[str, Any]) -> None:
 # ============================
 
 def main():
-    parser = argparse.ArgumentParser(description="Max XY-overlap with Z tolerance (single maximum), Z-rotation aware.")
+    parser = argparse.ArgumentParser(description="Max overlap (Z tolerance, single maximum), Z-rotation aware.")
     parser.add_argument("path", help="Path to a JSON file or a folder containing JSON files.")
     parser.add_argument("--pattern", default="*.json", help="Glob pattern for JSON files in folder (default: *.json)")
     parser.add_argument("--no-recursive", action="store_true", help="Do not search subfolders")
@@ -598,13 +640,13 @@ def main():
     parser.add_argument("--tcube-dz", type=float, default=0.0,
                         help="Translate the SECOND body along +Z by this many meters (positive=up, negative=down).")
     parser.add_argument("--z-eps", type=float, default=1e-4,
-                        help="Z-axis tolerance (meters) to accept XY overlap when slabs are separated (default: 1e-4).")
+                        help="Z-axis tolerance (meters) to accept overlap when slabs are separated (default: 1e-4).")
     parser.add_argument("--cube-key", type=str, default="Cube",
                         help="Name of the FIRST body inside frame['data'] (default: 'Cube').")
     parser.add_argument("--tcube-key", type=str, default="TCube",
                         help="Name of the SECOND body inside frame['data'] (default: 'TCube').")
     parser.add_argument("--metric", choices=["area", "norm-cube-xy"], default="area",
-                        help="Max metric: 'area'=raw XY area, 'norm-cube-xy'=XY area / Cube XY area.")
+                        help="Max metric: 'area'=Volumetric IoU (3D), 'norm-cube-xy'=XY IoU (2D).")
     parser.add_argument("--per-file-only", action="store_true",
                         help="Print only each JSON's max (suppress overall summary).")
     args = parser.parse_args()
@@ -643,4 +685,6 @@ def main():
 if __name__ == "__main__":
     main()
 
-# python cube.py /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/a --tcube-dz 0.03 --per-file-only --metric norm-cube-xy --z-eps 0.005
+# Example:
+# python cube.py --tcube-dz 0.03 --per-file-only --metric area --z-eps 0.005  /path/to/folder     # volumetric IoU
+# python cube.py --tcube-dz 0.03 --per-file-only --metric norm-cube-xy --z-eps 0.005 /path/to/folder  # XY IoU

@@ -1,0 +1,86 @@
+
+=== Per-file maxima (Volumetric IoU (Z≤eps)) ===
+File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/old_capt_7_sfm_t1_4_20/b/2025-10-27_15-54-11.json
+  Max: 0.24757433832349962
+    at step=412, time=13.733334, value=0.24757433832349962
+    Cube volume : 0.0005291438502122186
+    TCube volume: 0.0005290897872881854
+    Z separation (m): 0.0
+File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/old_capt_7_sfm_t1_4_20/b/2025-10-27_16-00-05.json
+  Max: 0.2921675029152355
+    at step=583, time=19.433334, value=0.2921675029152355
+    Cube volume : 0.0005619186231298379
+    TCube volume: 0.0005290897462254149
+    Z separation (m): 0.0
+File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/old_capt_7_sfm_t1_4_20/b/2025-10-27_16-06-02.json
+  Max: 0.24757433832349962
+    at step=412, time=13.733334, value=0.24757433832349962
+    Cube volume : 0.0005291438502122186
+    TCube volume: 0.0005290897872881854
+    Z separation (m): 0.0
+File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/old_capt_7_sfm_t1_4_20/b/2025-10-27_16-11-59.json
+  Max: 0.24757433832349962
+    at step=412, time=13.733334, value=0.24757433832349962
+    Cube volume : 0.0005291438502122186
+    TCube volume: 0.0005290897872881854
+    Z separation (m): 0.0
+File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/old_capt_7_sfm_t1_4_20/b/2025-10-27_16-17-58.json
+  Max: 0.2572291244567701
+    at step=365, time=12.166667, value=0.2572291244567701
+    Cube volume : 0.0005343204877174969
+    TCube volume: 0.0005290897695399027
+    Z separation (m): 0.0
+File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/old_capt_7_sfm_t1_4_20/b/2025-10-27_16-24-00.json
+  Max: 0.24757433832349962
+    at step=412, time=13.733334, value=0.24757433832349962
+    Cube volume : 0.0005291438502122186
+    TCube volume: 0.0005290897872881854
+    Z separation (m): 0.0
+File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/old_capt_7_sfm_t1_4_20/b/2025-10-27_16-29-59.json
+  Max: 0.24757433832349962
+    at step=412, time=13.733334, value=0.24757433832349962
+    Cube volume : 0.0005291438502122186
+    TCube volume: 0.0005290897872881854
+    Z separation (m): 0.0
+File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/old_capt_7_sfm_t1_4_20/b/2025-10-27_16-35-59.json
+  Max: 0.24757433832349962
+    at step=412, time=13.733334, value=0.24757433832349962
+    Cube volume : 0.0005291438502122186
+    TCube volume: 0.0005290897872881854
+    Z separation (m): 0.0
+File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/old_capt_7_sfm_t1_4_20/b/2025-10-27_16-41-57.json
+  Max: 0.33766055185588484
+    at step=475, time=15.833334, value=0.33766055185588484
+    Cube volume : 0.0005373017597155519
+    TCube volume: 0.0005290897318879092
+    Z separation (m): 0.0
+File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/old_capt_7_sfm_t1_4_20/b/2025-10-27_16-47-52.json
+  Max: 0.3506611333985221
+    at step=423, time=14.100001, value=0.3506611333985221
+    Cube volume : 0.0005596860146021523
+    TCube volume: 0.0005290897318879092
+    Z separation (m): 0.0
+File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/old_capt_7_sfm_t1_4_20/b/2025-10-27_16-53-50.json
+  Max: 0.24757433832349962
+    at step=412, time=13.733334, value=0.24757433832349962
+    Cube volume : 0.0005291438502122186
+    TCube volume: 0.0005290897872881854
+    Z separation (m): 0.0
+File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/old_capt_7_sfm_t1_4_20/b/2025-10-27_16-59-47.json
+  Max: 0.24757433832349962
+    at step=412, time=13.733334, value=0.24757433832349962
+    Cube volume : 0.0005291438502122186
+    TCube volume: 0.0005290897872881854
+    Z separation (m): 0.0
+File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/old_capt_7_sfm_t1_4_20/b/2025-10-27_17-05-45.json
+  Max: 0.24757433832349962
+    at step=412, time=13.733334, value=0.24757433832349962
+    Cube volume : 0.0005291438502122186
+    TCube volume: 0.0005290897872881854
+    Z separation (m): 0.0
+File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/old_capt_7_sfm_t1_4_20/b/2025-10-27_17-11-46.json
+  Max: 0.24757433832349962
+    at step=412, time=13.733334, value=0.24757433832349962
+    Cube volume : 0.0005291438502122186
+    TCube volume: 0.0005290897872881854
+    Z separation (m): 0.0
