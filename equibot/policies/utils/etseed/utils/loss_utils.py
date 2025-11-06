@@ -55,10 +55,33 @@ def compute_loss(T1, T2,pred_gripper=None,gt_gripper=None,sign_mismatch=True,snr
     # dist = torch.sqrt(dist_R_square.squeeze(-1) + dist_t_square)    # [bs]
 
     if snr is not None:
-        coeffi = snr.clamp_max(2)
-        _size=snr.shape[0]
-        dist_R_square=dist_R_square.view(_size,-1,1)*coeffi.unsqueeze(-1).unsqueeze(-1)
-        dist_t_square=dist_t_square.view(_size,-1,1)*coeffi.unsqueeze(-1).unsqueeze(-1)
+        eps = 1e-12
+
+        def snr_to_weight(s):
+            # s: (B,) raw linear SNR
+            s = s.clamp_min(eps)
+
+            # convert to dB
+            s_db = 10.0 * torch.log10(s)
+
+            # choose range from data stats (tunable)
+            # e.g. low SNR ~ -20 dB, high SNR ~ 35 dB
+            min_db, max_db = -20.0, 35.0
+            s_db = s_db.clamp(min_db, max_db)
+
+            # map [min_db, max_db] -> [1.0, w_min], monotone decreasing
+            w_min = 0.05  # strongest downweight for very clean samples
+            w = w_min + (1.0 - w_min) * (max_db - s_db) / (max_db - min_db)
+            return w
+
+        rot_w = snr_to_weight(snr['rot'])      # (B,)
+        trans_w = snr_to_weight(snr['trans'])  # (B,)
+
+        B = rot_w.shape[0]
+
+        dist_R_square = dist_R_square.view(B, -1, 1) * rot_w.view(B, 1, 1)
+        dist_t_square = dist_t_square.view(B, -1, 1) * trans_w.view(B, 1, 1)
+
         
     _dist_R=torch.sqrt(dist_R_square)
     dist_R = _dist_R.mean()
