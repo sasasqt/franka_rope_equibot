@@ -1,86 +1,14 @@
-
-=== Per-file maxima (Volumetric IoU (Z≤eps)) ===
-File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/b/2025-10-29_14-53-14.json
-  Max: 0.24757433832349962
-    at step=412, time=13.733334, value=0.24757433832349962
-    Cube volume : 0.0005291438502122186
-    TCube volume: 0.0005290897872881854
-    Z separation (m): 0.0
-File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/b/2025-10-29_14-58-06.json
-  Max: 0.2671685746738989
-    at step=466, time=15.533334, value=0.2671685746738989
-    Cube volume : 0.0005302975001618739
-    TCube volume: 0.0005290897462254149
-    Z separation (m): 0.0
-File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/b/2025-10-29_15-03-00.json
-  Max: 0.24757433832349962
-    at step=412, time=13.733334, value=0.24757433832349962
-    Cube volume : 0.0005291438502122186
-    TCube volume: 0.0005290897872881854
-    Z separation (m): 0.0
-File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/b/2025-10-29_15-07-54.json
-  Max: 0.24757433832349962
-    at step=412, time=13.733334, value=0.24757433832349962
-    Cube volume : 0.0005291438502122186
-    TCube volume: 0.0005290897872881854
-    Z separation (m): 0.0
-File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/b/2025-10-29_15-12-48.json
-  Max: 0.24757433832349962
-    at step=412, time=13.733334, value=0.24757433832349962
-    Cube volume : 0.0005291438502122186
-    TCube volume: 0.0005290897872881854
-    Z separation (m): 0.0
-File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/b/2025-10-29_15-17-40.json
-  Max: 0.24757433832349962
-    at step=412, time=13.733334, value=0.24757433832349962
-    Cube volume : 0.0005291438502122186
-    TCube volume: 0.0005290897872881854
-    Z separation (m): 0.0
-File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/b/2025-10-29_15-22-33.json
-  Max: 0.2600640383080848
-    at step=384, time=12.800001, value=0.2600640383080848
-    Cube volume : 0.0005568881548181514
-    TCube volume: 0.0005290897193283603
-    Z separation (m): 0.0
-File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/b/2025-10-29_15-27-26.json
-  Max: 0.26629139380548167
-    at step=416, time=13.866667, value=0.26629139380548167
-    Cube volume : 0.0005462910147884391
-    TCube volume: 0.0005290897193283603
-    Z separation (m): 0.0
-File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/b/2025-10-29_15-32-19.json
-  Max: 0.3298472987578805
-    at step=379, time=12.633334, value=0.3298472987578805
-    Cube volume : 0.0005459647535823125
-    TCube volume: 0.0005290897318879092
-    Z separation (m): 0.0
-File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/b/2025-10-29_15-37-12.json
-  Max: 0.3294010532181999
-    at step=406, time=13.533334, value=0.3294010532181999
-    Cube volume : 0.000529095760318436
-    TCube volume: 0.0005290897318879092
-    Z separation (m): 0.0
-File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/b/2025-10-29_15-42-04.json
-  Max: 0.24757433832349962
-    at step=412, time=13.733334, value=0.24757433832349962
-    Cube volume : 0.0005291438502122186
-    TCube volume: 0.0005290897872881854
-    Z separation (m): 0.0
-File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/b/2025-10-29_15-46-58.json
-  Max: 0.24757433832349962
-    at step=412, time=13.733334, value=0.24757433832349962
-    Cube volume : 0.0005291438502122186
-    TCube volume: 0.0005290897872881854
-    Z separation (m): 0.0
-File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/b/2025-10-29_15-51-51.json
-  Max: 0.24757433832349962
-    at step=412, time=13.733334, value=0.24757433832349962
-    Cube volume : 0.0005291438502122186
-    TCube volume: 0.0005290897872881854
-    Z separation (m): 0.0
-File: /home/workstation/project/franka_rope_equibot/logs/eval/ws_ppt/15/b/2025-10-29_15-56-47.json
-  Max: 0.26532055308862257
-    at step=400, time=13.333334, value=0.26532055308862257
-    Cube volume : 0.0005556664298053456
-    TCube volume: 0.0005290897400606073
-    Z separation (m): 0.0
+2025-10-29_14-53-14.json -> metric: 0.3496083425440915 (used frames: 373 )
+2025-10-29_14-58-06.json -> metric: 0.567185415740329 (used frames: 373 )
+2025-10-29_15-03-00.json -> metric: 0.551243371731578 (used frames: 373 )
+2025-10-29_15-07-54.json -> metric: 0.11289292103245592 (used frames: 373 )
+2025-10-29_15-12-48.json -> metric: 0.3614303959131545 (used frames: 373 )
+2025-10-29_15-17-40.json -> metric: 0.0 (used frames: 373 )
+2025-10-29_15-22-33.json -> metric: 0.7064229551720617 (used frames: 373 )
+2025-10-29_15-27-26.json -> metric: 0.7545518559501057 (used frames: 373 )
+2025-10-29_15-32-19.json -> metric: 0.714403007648762 (used frames: 373 )
+2025-10-29_15-37-12.json -> metric: 0.7422802850356295 (used frames: 373 )
+2025-10-29_15-42-04.json -> metric: 0.0 (used frames: 373 )
+2025-10-29_15-46-58.json -> metric: 0.0 (used frames: 373 )
+2025-10-29_15-51-51.json -> metric: 0.5035792094615624 (used frames: 373 )
+2025-10-29_15-56-47.json -> metric: 0.6459745668837786 (used frames: 373 )
