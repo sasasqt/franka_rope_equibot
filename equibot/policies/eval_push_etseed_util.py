@@ -106,7 +106,10 @@ class EvalUtils(ControlFlow):
             sample._world_xform.GetAttribute('xformOp:scale').Set(Gf.Vec3f(list(cls.cfg.scale)))
             _scale=cls.cfg.scale
             # cls._tgt_pc=np.array([vector*_scale for vector in cls._tgt_pc])
-
+        if cls.cfg.tgt_offset is not None:
+            cls._tgt_offset=np.array(cls.cfg.tgt_offset)
+        else:
+            cls._tgt_offset=np.array([0,0,0])
         #     await omni.kit.app.get_app().next_update_async()
         #     # await asyncio.sleep(3) # BUG weird concurrent issue, otherwise shape undo for the scene rotation (in simulation)
         await omni.kit.app.get_app().next_update_async()
@@ -198,14 +201,14 @@ class EvalUtils(ControlFlow):
                     _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
                     ori=R.from_matrix(ori).as_quat(scalar_first=True)
                     world.scene.get_object('tgt_vbar').set_world_pose(
-                        position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+_ori@cls._translation,
+                        position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+_ori@cls._translation+cls._tgt_offset,
                         orientation=ori,
                     )
 
                     _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
                     ori=R.from_matrix(ori).as_quat(scalar_first=True)
                     world.scene.get_object('tgt_hbar').set_world_pose(
-                        position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+_ori@cls._translation,
+                        position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+_ori@cls._translation+cls._tgt_offset,
                         orientation=ori,
                     )
                 except:
@@ -429,14 +432,14 @@ class EvalUtils(ControlFlow):
                 _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
                 world.scene.get_object('tgt_vbar').set_world_pose(
-                    position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+_ori@cls._translation,
+                    position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+_ori@cls._translation+cls._tgt_offset,
                     orientation=ori,
                 )
 
                 _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
                 world.scene.get_object('tgt_hbar').set_world_pose(
-                    position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+_ori@cls._translation,
+                    position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+_ori@cls._translation+cls._tgt_offset,
                     orientation=ori,
                 )
             except:
@@ -646,14 +649,14 @@ class EvalUtils(ControlFlow):
                     _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
                     ori=R.from_matrix(ori).as_quat(scalar_first=True)
                     world.scene.get_object('tgt_vbar').set_world_pose(
-                        position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+_ori@cls._translation,
+                        position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+_ori@cls._translation+cls._tgt_offset,
                         orientation=ori,
                     )
 
                     _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
                     ori=R.from_matrix(ori).as_quat(scalar_first=True)
                     world.scene.get_object('tgt_hbar').set_world_pose(
-                        position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+_ori@cls._translation,
+                        position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+_ori@cls._translation+cls._tgt_offset,
                         orientation=ori,
                     )
                 except:

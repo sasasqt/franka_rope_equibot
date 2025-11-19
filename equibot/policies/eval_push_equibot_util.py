@@ -216,14 +216,14 @@ class EvalUtils(ControlFlow):
                     ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
                     ori=R.from_matrix(ori).as_quat(scalar_first=True)
                     world.scene.get_object('tgt_vbar').set_world_pose(
-                        position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+cls._translation,
+                        position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+cls._translation+cls._tgt_offset,
                         orientation=ori,
                     )
 
                     ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
                     ori=R.from_matrix(ori).as_quat(scalar_first=True)
                     world.scene.get_object('tgt_hbar').set_world_pose(
-                        position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+cls._translation,
+                        position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+cls._translation+cls._tgt_offset,
                         orientation=ori,
                     )
                 except:
@@ -453,14 +453,14 @@ class EvalUtils(ControlFlow):
                 ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
                 world.scene.get_object('tgt_vbar').set_world_pose(
-                    position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+cls._translation,
+                    position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+cls._translation+cls._tgt_offset,
                     orientation=ori,
                 )
 
                 ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
                 world.scene.get_object('tgt_hbar').set_world_pose(
-                    position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+cls._translation,
+                    position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+cls._translation+cls._tgt_offset,
                     orientation=ori,
                 )
             except:
@@ -677,14 +677,14 @@ class EvalUtils(ControlFlow):
                 ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
                 world.scene.get_object('tgt_vbar').set_world_pose(
-                    position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+cls._translation,
+                    position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+cls._translation+cls._tgt_offset,
                     orientation=ori,
                 )
 
                 ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
                 world.scene.get_object('tgt_hbar').set_world_pose(
-                    position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+cls._translation,
+                    position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+cls._translation+cls._tgt_offset,
                     orientation=ori,
                 )
             except:

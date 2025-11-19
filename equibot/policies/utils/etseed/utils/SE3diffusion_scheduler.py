@@ -164,7 +164,11 @@ class DiffusionScheduler(torch.nn.Module):
         # perturbation + interpolation, see eq 34
         noisy_interpolated_H_t = H_pure_noise @ H_t #  [B,Ho,4,4]
         
-        snr=alpha_bars/(1-alpha_bars)
+        _snr=alpha_bars/(1-alpha_bars+ 1e-12)
+        snr = {
+            "rot": _snr,
+            "trans": _snr,
+        }
         return noisy_interpolated_H_t, se3.exp(_noise),H_t, snr
 
     def add_noise9_decoupled(
