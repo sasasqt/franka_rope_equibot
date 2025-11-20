@@ -166,7 +166,7 @@ def metric_for_file(path, resolution=80, margin=0.05,
 
     frames = data["Isaac Sim Data"]
 
-    start_idx = get_start_index_after_first_drop(frames)
+    start_idx = 0#get_start_index_after_first_drop(frames)
     if start_idx is None:
         # No drop -> specification says "only counts after" the drop,
         # so we treat this as having no valid frames.

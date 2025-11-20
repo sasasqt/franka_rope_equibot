@@ -186,37 +186,38 @@ class EvalUtils(ControlFlow):
                     )
                 _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                world.scene.get_object('vbar').set_world_pose(
-                    position=np.array(data_frame.data["T"]["vbar_world_position"])+_ori@cls._translation,
+                world.scene.get_object('vbar').set_local_pose(
+                    translation=np.array(data_frame.data["T"]["vbar_world_position"]),#+_ori@cls._translation,
                     orientation=ori,
                 )
 
                 _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                world.scene.get_object('hbar').set_world_pose(
-                    position=np.array(data_frame.data["T"]["hbar_world_position"])+_ori@cls._translation,
+                world.scene.get_object('hbar').set_local_pose(
+                    translation=np.array(data_frame.data["T"]["hbar_world_position"]),#+_ori@cls._translation,
                     orientation=ori,
                 )
                 try:
                     _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
                     ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                    world.scene.get_object('tgt_vbar').set_world_pose(
-                        position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+_ori@cls._translation+cls._tgt_offset,
+                    world.scene.get_object('tgt_vbar').set_local_pose(
+                        translation=np.array(data_frame.data["Target_T"]["vbar_world_position"]),#+cls._tgt_offset,#+_ori@cls._translation#+cls._tgt_offset,
                         orientation=ori,
                     )
 
                     _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
                     ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                    world.scene.get_object('tgt_hbar').set_world_pose(
-                        position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+_ori@cls._translation+cls._tgt_offset,
+                    world.scene.get_object('tgt_hbar').set_local_pose(
+                        translation=np.array(data_frame.data["Target_T"]["hbar_world_position"]),#+cls._tgt_offset,#+_ori@cls._translation#+cls._tgt_offset,
                         orientation=ori,
                     )
+
                 except:
                     pass
                 # rope.set_world_pose(
                 #     positions=np.array(data_frame.data["Rope"]["Rope_world_position"]),
                 #     orientations=np.array(data_frame.data["Rope"]["Rope_world_orientation"]),
-                # )
+                # )value=Gf.Vec3f(0.0, 0.0, 30.0),
 
 
             right_target_world_pos=scene.get_object(target_name).get_world_pose()[0]
@@ -416,32 +417,33 @@ class EvalUtils(ControlFlow):
 
             _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
             ori=R.from_matrix(ori).as_quat(scalar_first=True)
-            world.scene.get_object('vbar').set_world_pose(
-                position=np.array(data_frame.data["T"]["vbar_world_position"])+_ori@cls._translation,
+            world.scene.get_object('vbar').set_local_pose(
+                translation=np.array(data_frame.data["T"]["vbar_world_position"]),#+_ori@cls._translation,
                 orientation=ori,
             )
 
             _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
             ori=R.from_matrix(ori).as_quat(scalar_first=True)
-            world.scene.get_object('hbar').set_world_pose(
-                position=np.array(data_frame.data["T"]["hbar_world_position"])+_ori@cls._translation,
+            world.scene.get_object('hbar').set_local_pose(
+                translation=np.array(data_frame.data["T"]["hbar_world_position"]),#+_ori@cls._translation,
                 orientation=ori,
             )
             
             try:
                 _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                world.scene.get_object('tgt_vbar').set_world_pose(
-                    position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+_ori@cls._translation+cls._tgt_offset,
+                world.scene.get_object('tgt_vbar').set_local_pose(
+                    translation=np.array(data_frame.data["Target_T"]["vbar_world_position"]),#+cls._tgt_offset,#+_ori@cls._translation#+cls._tgt_offset,
                     orientation=ori,
                 )
 
                 _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                world.scene.get_object('tgt_hbar').set_world_pose(
-                    position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+_ori@cls._translation+cls._tgt_offset,
+                world.scene.get_object('tgt_hbar').set_local_pose(
+                    translation=np.array(data_frame.data["Target_T"]["hbar_world_position"]),#+cls._tgt_offset,#+_ori@cls._translation#+cls._tgt_offset,
                     orientation=ori,
                 )
+                
             except:
                 pass            
                 # rope.set_world_pose(
@@ -633,32 +635,33 @@ class EvalUtils(ControlFlow):
 
                 _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                world.scene.get_object('vbar').set_world_pose(#TODO
-                    position=np.array(data_frame.data["T"]["vbar_world_position"])+_ori@cls._translation,
+                world.scene.get_object('vbar').set_local_pose(#TODO
+                    translation=np.array(data_frame.data["T"]["vbar_world_position"]),#+_ori@cls._translation,
                     orientation=ori,
                 )
 
                 _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                world.scene.get_object('hbar').set_world_pose(#TODO
-                    position=np.array(data_frame.data["T"]["hbar_world_position"])+_ori@cls._translation,
+                world.scene.get_object('hbar').set_local_pose(#TODO
+                    translation=np.array(data_frame.data["T"]["hbar_world_position"]),#+_ori@cls._translation,
                     orientation=ori,
                 )
 
                 try:
                     _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["vbar_world_orientation"]),scalar_first=True).as_matrix()
                     ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                    world.scene.get_object('tgt_vbar').set_world_pose(
-                        position=np.array(data_frame.data["Target_T"]["vbar_world_position"])+_ori@cls._translation+cls._tgt_offset,
+                    world.scene.get_object('tgt_vbar').set_local_pose(
+                        translation=np.array(data_frame.data["Target_T"]["vbar_world_position"]),#+cls._tgt_offset,#+_ori@cls._translation#+cls._tgt_offset,
                         orientation=ori,
                     )
 
                     _ori=ori=cls._rotation@R.from_quat(np.array(data_frame.data["Target_T"]["hbar_world_orientation"]),scalar_first=True).as_matrix()
                     ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                    world.scene.get_object('tgt_hbar').set_world_pose(
-                        position=np.array(data_frame.data["Target_T"]["hbar_world_position"])+_ori@cls._translation+cls._tgt_offset,
+                    world.scene.get_object('tgt_hbar').set_local_pose(
+                        translation=np.array(data_frame.data["Target_T"]["hbar_world_position"]),#+cls._tgt_offset,#+_ori@cls._translation#+cls._tgt_offset,
                         orientation=ori,
                     )
+
                 except:
                     pass
                 # rope.set_world_pose(
@@ -743,16 +746,16 @@ class EvalUtils(ControlFlow):
         # if cls.cfg.from_demo is not None and cls.count < 0 and cls.count>=-2:
         #     data_frame = cls.data_logger.get_data_frame(data_frame_index=cls.start_time+1+cls.count)
         #     for idx,_str in enumerate(["Left","Right"]):  
-        #         world.scene.get_object(target_name).set_world_pose(
+        #         world.scene.get_object(target_name).set_local_pose(
         #             position=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
         #             orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
         #         )
 
-        #         world.scene.get_object('vbar').set_world_pose(
+        #         world.scene.get_object('vbar').set_local_pose(
         #             position=np.array(data_frame.data["T"]["vbar_world_position"]),
         #             orientation=np.array(data_frame.data["T"]["vbar_world_orientation"]),
         #         )
-        #         world.scene.get_object('hbar').set_world_pose(
+        #         world.scene.get_object('hbar').set_local_pose(
         #             position=np.array(data_frame.data["T"]["hbar_world_position"]),
         #             orientation=np.array(data_frame.data["T"]["hbar_world_orientation"]),
         #         )

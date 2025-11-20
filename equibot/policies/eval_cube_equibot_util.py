@@ -191,25 +191,25 @@ class EvalUtils(ControlFlow):
                     #     translation=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                     #     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                     # )
-                    ori=cls._rotation@R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
+                    ori=R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
                     ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                    world.scene.get_object(target_name).set_world_pose(#TODO
-                        position=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])+cls._translation),
+                    world.scene.get_object(target_name).set_local_pose(#TODO
+                        translation=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])),
                         orientation=np.array(ori),
                     )
-                ori=cls._rotation@R.from_quat(np.array(data_frame.data["Cube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
+                ori=R.from_quat(np.array(data_frame.data["Cube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
 
                 
-                world.scene.get_object('/World/Extras/Cube/Cube/cube').set_world_poses(
-                    positions=np.array([np.array(data_frame.data["Cube"]["cube_world_position"])+cls._translation]),
+                world.scene.get_object('/World/Extras/Cube/Cube/cube').set_local_poses(
+                    translations=np.array([np.array(data_frame.data["Cube"]["cube_world_position"])]),
                     orientations=np.array([ori]),
                 )
 
-                ori=cls._rotation@R.from_quat(np.array(data_frame.data["TCube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
+                ori=R.from_quat(np.array(data_frame.data["TCube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                world.scene.get_object('/World/Extras/TCube/TCube/cube').set_world_poses(
-                    positions=np.array([np.array(data_frame.data["TCube"]["cube_world_position"])+cls._translation+cls._tgt_offset]),
+                world.scene.get_object('/World/Extras/TCube/TCube/cube').set_local_poses(
+                    translations=np.array([np.array(data_frame.data["TCube"]["cube_world_position"])+cls._tgt_offset]),
                     orientations=np.array([ori]),
                 )
             
@@ -438,24 +438,24 @@ class EvalUtils(ControlFlow):
                 #     translation=np.array(data_frame.data[_str][f"{_str}_target_world_position"]),
                 #     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                 # )
-                ori=cls._rotation@R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
+                ori=R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                world.scene.get_object(target_name).set_world_pose(#TODO
-                    position=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])+cls._translation),
+                world.scene.get_object(target_name).set_local_pose(#TODO
+                    translation=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])),
                     orientation=np.array(ori),
                 )
                 
             ori=cls._rotation@R.from_quat(np.array(data_frame.data["Cube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
             ori=R.from_matrix(ori).as_quat(scalar_first=True)
-            world.scene.get_object('/World/Extras/Cube/Cube/cube').set_world_poses(
-                positions=np.array([np.array(data_frame.data["Cube"]["cube_world_position"])+cls._translation]),
+            world.scene.get_object('/World/Extras/Cube/Cube/cube').set_local_poses(
+                translations=np.array([np.array(data_frame.data["Cube"]["cube_world_position"])]),
                 orientations=np.array([ori]),
             )
 
-            ori=cls._rotation@R.from_quat(np.array(data_frame.data["TCube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
+            ori=R.from_quat(np.array(data_frame.data["TCube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
             ori=R.from_matrix(ori).as_quat(scalar_first=True)
-            world.scene.get_object('/World/Extras/TCube/TCube/cube').set_world_poses(
-                positions=np.array([np.array(data_frame.data["TCube"]["cube_world_position"])+cls._translation+cls._tgt_offset]),
+            world.scene.get_object('/World/Extras/TCube/TCube/cube').set_local_poses(
+                translations=np.array([np.array(data_frame.data["TCube"]["cube_world_position"])+cls._tgt_offset]),
                 orientations=np.array([ori]),
             )
                 # rope.set_world_pose(
@@ -646,24 +646,24 @@ class EvalUtils(ControlFlow):
                 #     orientation=np.array(data_frame.data[_str][f"{_str}_target_world_orientation"])
                 # )
 
-                ori=cls._rotation@R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
+                ori=R.from_quat(np.array(data_frame.data[_str][f"{_str}_target_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                world.scene.get_object(target_name).set_world_pose(#TODO
-                    position=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])+cls._translation),
+                world.scene.get_object(target_name).set_local_pose(#TODO
+                    translation=np.array(np.array(data_frame.data[_str][f"{_str}_target_world_position"])),
                     orientation=np.array(ori),
                 )
 
-                ori=cls._rotation@R.from_quat(np.array(data_frame.data["Cube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
+                ori=R.from_quat(np.array(data_frame.data["Cube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                world.scene.get_object('/World/Extras/Cube/Cube/cube').set_world_poses(#TODO
-                    positions=np.array([np.array(data_frame.data["Cube"]["cube_world_position"])+cls._translation]),
+                world.scene.get_object('/World/Extras/Cube/Cube/cube').set_local_poses(#TODO
+                    translations=np.array([np.array(data_frame.data["Cube"]["cube_world_position"])]),
                     orientations=np.array([ori]),
                 )
 
-                ori=cls._rotation@R.from_quat(np.array(data_frame.data["TCube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
+                ori=R.from_quat(np.array(data_frame.data["TCube"]["cube_world_orientation"]),scalar_first=True).as_matrix()
                 ori=R.from_matrix(ori).as_quat(scalar_first=True)
-                world.scene.get_object('/World/Extras/TCube/TCube/cube').set_world_poses(#TODO
-                    positions=np.array([np.array(data_frame.data["TCube"]["cube_world_position"])+cls._translation+cls._tgt_offset]),
+                world.scene.get_object('/World/Extras/TCube/TCube/cube').set_local_poses(#TODO
+                    translations=np.array([np.array(data_frame.data["TCube"]["cube_world_position"])+cls._tgt_offset]),
                     orientations=np.array([ori]),
                 )
 
@@ -1107,14 +1107,14 @@ def update_action(agent_ac,target,eef,gripper,rel,rpy,eps,cap=None,cup=None,upda
     # else:
     #     _gripper=agent_ac[3][3]
     _gripper=agent_ac[3][3]
-    # if _gripper < 0.5:
-    #     gripper.close()
-    #     print(f"{_gripper} gripper is closing")
-    # else:
-    #     gripper.open()
-    #     print(f"{_gripper} gripper is opening")
+    if _gripper < 0.5:
+        gripper.close()
+        print(f"{_gripper} gripper is closing")
+    else:
+        gripper.open()
+        print(f"{_gripper} gripper is opening")
 
-    gripper.close()
+    # gripper.close()
     print(f"{_gripper} gripper is ?????")
 
 
