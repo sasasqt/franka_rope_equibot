@@ -251,6 +251,8 @@ class FrankaRope(BaseSample):
         fixed_joint.CreateBody0Rel().SetTargets([vbar_str])
         fixed_joint.CreateBody1Rel().SetTargets([hbar_str])
 
+        usd_target_tshape_xform.AddTranslateOp().Set(Gf.Vec3f([0.1,0,0]))
+
         if self._randomize:
             self.pusht_pos=[random.uniform(0.05, 0.15),random.uniform(-0.15, 0.15),0]
             self.pusht_ori=[0,0,random.uniform(-70, 70)]
@@ -399,8 +401,8 @@ class FrankaRope(BaseSample):
         _scale=0.4
         from omni.isaac.core.prims import XFormPrimView
         self.pusht_ori=[]
-        # prims = XFormPrimView(prim_paths_expr=f'{cube_str}/cube',name=f'{cube_str}/cube',scales=[[_scale,_scale,_scale]],translations=[[0.15,0.15,0]]) # BUG inconsistency in isaacsim 4.2.0
-        prims = XFormPrimView(prim_paths_expr=f'{cube_str}/cube',name=f'{cube_str}/cube',scales=[[_scale,_scale,_scale]],translations=[[random.uniform(0.05, 0.15),random.uniform(-0.15, 0.15),0]]) # BUG inconsistency in isaacsim 4.2.0
+        prims = XFormPrimView(prim_paths_expr=f'{cube_str}/cube',name=f'{cube_str}/cube',scales=[[_scale,_scale,_scale]],translations=[[0.15,0.15,0]]) # BUG inconsistency in isaacsim 4.2.0
+        # prims = XFormPrimView(prim_paths_expr=f'{cube_str}/cube',name=f'{cube_str}/cube',scales=[[_scale,_scale,_scale]],translations=[[random.uniform(0.05, 0.15),random.uniform(-0.15, 0.15),0]]) # BUG inconsistency in isaacsim 4.2.0
         # prims = XFormPrimView(prim_paths_expr=f'{cube_str}/cube',name=f'{cube_str}/cube',scales=[[_scale,_scale,_scale]],translations=[[0.1,-0.15,0]]) # ood # BUG inconsistency in isaacsim 4.2.0
         self._world.scene.add(prims)
         self._tcube=self._world.scene.get_object(f'{cube_str}/cube')
